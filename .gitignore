@@ -3,7 +3,10 @@
 /config.toml.bak
 /client_secret.json
 /youtube_token.json
+/youtube_analytics_token.json
 /storage/
+/.agent-logs/
+/.loop_state.json
 /.idea/
 /app/services/__pycache__
 /app/__pycache__/
