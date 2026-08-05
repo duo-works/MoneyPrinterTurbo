@@ -82,7 +82,14 @@ def _get_with_retry(
                 raise
             sleep_fn(float(2 ** (attempt + 1)))
             continue
-        if response.status_code != 429:
+        # 429 VE 5xx tekrar denenir; ikisi de gecici.
+        #
+        # ⚠️ 5xx once atlanmisti ve ayni koshum bu kez "504 Gateway Timeout"
+        # ile dustu — istemci zaman asimini yakalamak yetmiyor, teslim
+        # proxy'si (weserv) hatayi kendi tarafinda da uretebiliyor. Bir onbellek
+        # proxy'sinden gelen 502/503/504 tanimi geregi gecici; kalicilarsa
+        # asagidaki son deneme zaten yukseltiyor.
+        if response.status_code != 429 and not (500 <= response.status_code < 600):
             response.raise_for_status()
             return response
         if attempt == max_attempts - 1:

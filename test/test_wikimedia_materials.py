@@ -420,3 +420,71 @@ def test_download_kalici_timeout_sonunda_yukselir(monkeypatch, tmp_path: Path):
             tmp_path / "scene.jpg",
             sleep_fn=lambda _: None,
         )
+
+
+def test_download_retries_5xx(monkeypatch, tmp_path: Path):
+    """Teslim proxy'sinden gelen 5xx de gecici — tekrar denenmeli.
+
+    Ilk duzeltme yalnizca istemci tarafi zaman asimini kapsiyordu; ayni koshum
+    bu kez "504 Gateway Timeout" ile dustu. weserv hatayi kendi tarafinda da
+    uretebiliyor ve bir onbellek proxy'sinden gelen 502/503/504 tanimi geregi
+    gecici. Olculdu 2026-08-05.
+    """
+
+    class FakeResponse:
+        def __init__(self, status_code: int, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+            self.headers = {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} error")
+
+    responses = [FakeResponse(504), FakeResponse(200, b"x" * 12_000)]
+
+    monkeypatch.setattr(
+        "wikimedia_materials.requests.get", lambda *a, **k: responses.pop(0)
+    )
+
+    _download(
+        "https://upload.wikimedia.org/example.jpg",
+        tmp_path / "scene.jpg",
+        sleep_fn=lambda _: None,
+    )
+
+    assert (tmp_path / "scene.jpg").stat().st_size == 12_000
+    assert responses == [], "504 sonrasi ikinci deneme yapilmadi"
+
+
+def test_download_4xx_tekrar_denenmez(monkeypatch, tmp_path: Path):
+    """404 kalici — tekrar denemek bosuna beklemek olur.
+
+    `download_scene_materials` 403/404'u yakalayip SONRAKI adaya geciyor;
+    burada tekrar denenirse o yol gecikir ve davranis degisir.
+    """
+
+    class FakeResponse:
+        status_code = 404
+        content = b""
+        headers: dict[str, str] = {}
+
+        def raise_for_status(self):
+            raise requests.HTTPError("404 error")
+
+    cagri = []
+
+    def fake_get(*a, **k):
+        cagri.append(1)
+        return FakeResponse()
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", fake_get)
+
+    with pytest.raises(requests.HTTPError):
+        _download(
+            "https://upload.wikimedia.org/example.jpg",
+            tmp_path / "scene.jpg",
+            sleep_fn=lambda _: None,
+        )
+
+    assert len(cagri) == 1, "404 tekrar denenmemeli"
