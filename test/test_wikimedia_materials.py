@@ -488,3 +488,59 @@ def test_download_4xx_tekrar_denenmez(monkeypatch, tmp_path: Path):
         )
 
     assert len(cagri) == 1, "404 tekrar denenmemeli"
+
+
+def test_scene_download_kalici_5xx_sonrasi_sonraki_adaya_geciyor(monkeypatch, tmp_path: Path):
+    """Israrli proxy hatasi butun koshumu degil, o adayi dusurmeli.
+
+    `_get_with_retry` 5xx'i geri cekilmeyle 5 kez deniyor; buraya ulastiysa
+    proxy O GORSEL icin kalici olarak basarisiz demektir. Onceden `raise`
+    ediliyordu ve tek bir sorunlu gorsel butun uretim koshumunu olduruyordu —
+    oysa ayni arama icin calisan baska adaylar var.
+
+    Olculdu 2026-08-05: weserv, Louvre'daki Tanis sfenksinin uzun adli
+    dosyasinda israrla 504 dondu ve dorduncu uretim koshumu de boyle coptu.
+    """
+
+    def page(title: str, width: int, height: int):
+        return {
+            "title": title,
+            "imageinfo": [
+                {
+                    "mime": "image/jpeg",
+                    "url": f"https://upload.wikimedia.org/{title}.jpg",
+                    "descriptionurl": f"https://commons.wikimedia.org/wiki/{title}",
+                    "width": width,
+                    "height": height,
+                    "extmetadata": {
+                        "LicenseShortName": {"value": "Public domain"},
+                        "ImageDescription": {"value": title},
+                    },
+                }
+            ],
+        }
+
+    pages = [
+        page("Sphinx of Tanis broken", 4000, 5000),
+        page("Sphinx of Tanis alternate", 1800, 2400),
+    ]
+    monkeypatch.setattr("wikimedia_materials.search_commons", lambda *_: pages)
+    attempts: list[str] = []
+
+    def fake_download(url, destination):
+        attempts.append(url)
+        if len(attempts) == 1:
+            response = requests.Response()
+            response.status_code = 504
+            raise requests.HTTPError("504 proxy error", response=response)
+        destination.write_bytes(b"x" * 12_000)
+
+    monkeypatch.setattr("wikimedia_materials._download", fake_download)
+
+    files, credits = download_scene_materials(
+        "Sphinx of Tanis", [{"search_term": "Sphinx of Tanis"}], tmp_path
+    )
+
+    assert len(attempts) == 2, "504 sonrasi sonraki adaya gecilmedi"
+    assert files[0].exists()
+    assert credits[0]["title"] == "Sphinx of Tanis alternate"

@@ -314,7 +314,18 @@ def download_scene_materials(
                     _download(candidate["url"], candidate_destination)
                 except requests.HTTPError as exc:
                     status = exc.response.status_code if exc.response is not None else 0
-                    if status not in {403, 404}:
+                    # 403/404 → bu aday teslim edilemiyor.
+                    # 5xx → `_get_with_retry` zaten geri cekilmeyle 5 kez denedi;
+                    # buraya ulastiysa proxy O GORSEL icin kalici olarak
+                    # basarisiz. Ikisi de ayni anlama geliyor: bu adayi birak,
+                    # SONRAKINE gec.
+                    #
+                    # ⚠️ Onceden 5xx `raise` ediyordu ve tek bir sorunlu gorsel
+                    # butun uretim koshumunu olduruyordu — oysa elde baska
+                    # aday var. Olculdu (2026-08-05): weserv, Louvre'daki Tanis
+                    # sfenksinin uzun adli dosyasinda israrla 504 dondu; ayni
+                    # arama icin calisan baska adaylar mevcuttu.
+                    if status not in {403, 404} and not (500 <= status < 600):
                         raise
                     failed_titles.add(candidate["title"])
                     continue
