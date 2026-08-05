@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import requests
 
 from wikimedia_materials import (
@@ -355,3 +356,67 @@ def test_download_scene_materials_honors_excluded_archive_items(monkeypatch, tmp
 
     assert len(files) == 1
     assert credits[0]["title"] == "Historic rescue archive fresh"
+
+
+def test_download_retries_transient_timeout(monkeypatch, tmp_path: Path):
+    """Gecici ag hatasi 429 ile ayni sekilde tekrar denenmeli.
+
+    Onceden yalnizca 429 tekrarlaniyordu; tek bir ReadTimeout butun uretim
+    koshumunu olduruyordu — konu secimi, senaryo, TTS ve uretilmis gorseller
+    bosa gidiyordu, yani gecici bir ag hatasinin bedeli harcanan LLM/gorsel
+    parasi oluyordu.
+
+    Olculdu (2026-08-05): images.weserv.nl bir kez 60 saniyede yanit vermedi ve
+    tam bir koshum coptu. Ayni URL 20 saniye sonra 200 ve 473 KB dondu.
+    """
+
+    class FakeResponse:
+        def __init__(self, status_code: int, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+            self.headers = {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} error")
+
+    sonuclar = [
+        requests.Timeout("read timed out"),
+        FakeResponse(200, b"x" * 12_000),
+    ]
+    sleeps: list[float] = []
+
+    def fake_get(url, *args, **kwargs):
+        sonuc = sonuclar.pop(0)
+        if isinstance(sonuc, Exception):
+            raise sonuc
+        return sonuc
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", fake_get)
+    destination = tmp_path / "scene.jpg"
+
+    _download(
+        "https://upload.wikimedia.org/example.jpg",
+        destination,
+        sleep_fn=sleeps.append,
+    )
+
+    assert destination.stat().st_size == 12_000
+    assert sonuclar == [], "ikinci deneme yapilmadi"
+    assert 2.0 in sleeps, "geri cekilme beklemesi uygulanmali"
+
+
+def test_download_kalici_timeout_sonunda_yukselir(monkeypatch, tmp_path: Path):
+    """Tekrar denemek sonsuz olmamali — kalici hata cagirana ulasmali."""
+
+    def hep_zaman_asimi(url, *args, **kwargs):
+        raise requests.Timeout("read timed out")
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", hep_zaman_asimi)
+
+    with pytest.raises(requests.Timeout):
+        _download(
+            "https://upload.wikimedia.org/example.jpg",
+            tmp_path / "scene.jpg",
+            sleep_fn=lambda _: None,
+        )

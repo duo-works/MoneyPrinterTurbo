@@ -61,12 +61,27 @@ def _get_with_retry(
 ) -> requests.Response:
     for attempt in range(max_attempts):
         sleep_fn(REQUEST_INTERVAL_SECONDS)
-        response = requests.get(
-            url,
-            params=params,
-            headers={"User-Agent": USER_AGENT},
-            timeout=timeout,
-        )
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout,
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            # ⚠️ Gecici ag hatasi 429 ile ayni sekilde tekrar denenmeli.
+            # Onceden yalnizca 429 tekrarlaniyordu ve tek bir ReadTimeout
+            # butun koshumu olduruyordu: konu secimi, senaryo, TTS ve uretilmis
+            # gorseller bosa gidiyor — yani gecici bir ag hatasinin bedeli
+            # harcanan LLM/gorsel parasi oluyor.
+            #
+            # Olculdu (2026-08-05): images.weserv.nl bir kez 60 saniyede
+            # yanit vermedi ve tam bir uretim koshumu coptu. Ayni URL 20 saniye
+            # sonra 200 ve 473 KB dondu, yani hata gercekten geciciydi.
+            if attempt == max_attempts - 1:
+                raise
+            sleep_fn(float(2 ** (attempt + 1)))
+            continue
         if response.status_code != 429:
             response.raise_for_status()
             return response
