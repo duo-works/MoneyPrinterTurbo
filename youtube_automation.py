@@ -207,11 +207,33 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
     )
 
 
+def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
+    """Esik kararini KOD verir; inceleyici modele sorulmaz.
+
+    Olculdu (2026-08-05, DW-87): prompt "visual_alignment_score en az 50
+    olmali" dedigi surece model, kusur gordugu her kagida esigin bir tik
+    altini yaziyordu. Ayni kagit, ayni model, ayni sicaklik, ucer tekrar:
+
+        esik promptta anilinca : 45, 45, 45
+        esik anilmayinca       : 75, 75, 70
+
+    Yani skor bir olcum degildi — "hayir" oyunun sayiya cevrilmis haliydi ve
+    yapisi geregi esigi hicbir zaman gecemezdi. Kapiyi acacak sayiyi kapinin
+    kendisi yaziyordu. Uc kosum, dokuz deneme, dokuzunda da tam 45; tek bir
+    video cikmadi. Sorunlu sahne teshisi ise iki kolda da ayniydi ([3, 7]) —
+    model gordugunu dogru raporluyor, bozuk olan yalnizca sayiydi.
+
+    Bundan sonra model yalnizca OLCER (hangi sahne tutmuyor, kagit ne kadar
+    hizali); gecti/kaldi karari burada verilir.
+    """
+    return gorsel_skor >= MIN_VISUAL_SCORE and altyazi_skor >= MIN_SUBTITLE_SCORE
+
+
 def should_publish(review: QualityReview) -> bool:
-    return (
-        review.publishable
-        and review.visual_alignment_score >= MIN_VISUAL_SCORE
-        and review.subtitle_readability_score >= MIN_SUBTITLE_SCORE
+    # `review.publishable` bilerek OKUNMUYOR: karar skorlardan yeniden
+    # turetiliyor ki modelden gelen bir bayrak ileride sessizce geri sizmasin.
+    return yayina_uygun(
+        review.visual_alignment_score, review.subtitle_readability_score
     )
 
 
@@ -248,16 +270,14 @@ def sorunlu_sahneler(review: QualityReview, toplam_sahne: int) -> list[int]:
 
 
 def should_abandon_topic(review: QualityReview) -> bool:
+    # Eskiden ucuncu bir kosul daha vardi: "publishable false ama iki skor da
+    # esigi geciyor" — modelin gerekcesiz reddi. `publishable` artik skorlardan
+    # turetildigi icin o durum olusamiyor; kosul kaldirildi (DW-87).
+    # Esik de artik elle yazilmiyor, MIN_VISUAL_SCORE'dan geliyor.
     issue_text = " ".join(review.issues).lower()
-    unexplained_or_blocking_rejection = (
-        not review.publishable
-        and review.visual_alignment_score >= MIN_VISUAL_SCORE
-        and review.subtitle_readability_score >= MIN_SUBTITLE_SCORE
-    )
     return (
-        review.visual_alignment_score < 50
+        review.visual_alignment_score < MIN_VISUAL_SCORE
         or "modern footage" in issue_text
-        or unexplained_or_blocking_rejection
     )
 
 
@@ -547,14 +567,18 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
             "Each numbered image must directly match the corresponding scene, visual anchor, and historical period. "
             "Historically grounded AI illustrations are acceptable; do not reject an image merely because it is an illustration, but reject misleading or historically inconsistent details. "
             "Reject generic modern people, vehicles, factories, schools, unrelated maps or plans, single-word coincidences, and misleading period substitutions. "
-            "Return JSON with publishable, visual_alignment_score (0-100), issues (array), revised_search_terms, and problem_scene_numbers (1-based scene numbers that need replacement; empty only when no scene is problematic). Whenever publishable is false or visual_alignment_score is below 50, revised_search_terms must contain one concrete anchor-specific replacement query for each problem scene, in the same order as problem_scene_numbers. "
-            "Set publishable true if and only if visual_alignment_score is at least 50 and there is no blocking mismatch. If publishable is false, include at least one concrete issue."
+            "Return JSON with visual_alignment_score (0-100), issues (array), revised_search_terms, and problem_scene_numbers (1-based scene numbers that need replacement; empty only when no scene is problematic). "
+            # ⚠️ Buraya bir gecme esigi YAZILMAZ — bkz. `yayina_uygun`. Esik
+            # anilinca model olcmeyi birakip esigin bir tik altina oy yaziyor.
+            "visual_alignment_score is a measurement of this contact sheet, not a verdict: 0 means no image matches its scene, 50 means about half of the images match, 100 means every image matches its scene cleanly. Score what you actually see. "
+            "For every scene number in problem_scene_numbers, add one concrete anchor-specific replacement query to revised_search_terms, in the same order, and one concrete issue describing what is wrong."
         ),
     }
     data = _vision_json(prompt, montage)
+    gorsel_skor = int(data.get("visual_alignment_score", 0))
     return QualityReview(
-        publishable=bool(data.get("publishable", False)),
-        visual_alignment_score=int(data.get("visual_alignment_score", 0)),
+        publishable=yayina_uygun(gorsel_skor, 100),
+        visual_alignment_score=gorsel_skor,
         subtitle_readability_score=100,
         issues=[str(issue) for issue in data.get("issues", [])],
         revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
@@ -898,16 +922,19 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             "The image is an 8-frame chronological montage from a vertical Short. "
             "Judge whether visuals match the narration and historical period, whether captions are readable, and whether footage is repetitive. "
             "Historically grounded AI illustrations are acceptable; do not reject them merely for not being archival photographs, but reject misleading or historically inconsistent details. "
-            "Return JSON with publishable, visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), revised_search_terms (one per scene if visual score is below 50). "
-            "Set publishable true if and only if visual_alignment_score is at least 50, subtitle_readability_score is at least 80, and there is no blocking issue. If publishable is false, include at least one concrete issue. "
-            "Reject modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds."
+            "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
+            # ⚠️ Kaynak incelemesiyle ayni kural: esik burada da ANILMAZ.
+            "Both scores are measurements of this montage, not verdicts. visual_alignment_score: 0 means nothing matches the narration, 50 means about half the frames match, 100 means every frame matches cleanly. subtitle_readability_score: 0 means captions are unreadable, 100 means every caption is comfortably legible. Score what you actually see. "
+            "Report modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds as issues."
         ),
     }
     data = _vision_json(prompt, montage)
+    gorsel_skor = int(data.get("visual_alignment_score", 0))
+    altyazi_skor = int(data.get("subtitle_readability_score", 0))
     return QualityReview(
-        publishable=bool(data.get("publishable", False)),
-        visual_alignment_score=int(data.get("visual_alignment_score", 0)),
-        subtitle_readability_score=int(data.get("subtitle_readability_score", 0)),
+        publishable=yayina_uygun(gorsel_skor, altyazi_skor),
+        visual_alignment_score=gorsel_skor,
+        subtitle_readability_score=altyazi_skor,
         issues=[str(issue) for issue in data.get("issues", [])],
         revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
     )
