@@ -215,6 +215,38 @@ def should_publish(review: QualityReview) -> bool:
     )
 
 
+def sorunlu_sahneler(review: QualityReview, toplam_sahne: int) -> list[int]:
+    """Hangi sahneler yeniden uretilecek — inceleme ciktisi kendi icinde celisebilir.
+
+    `problem_scene_numbers` tek basina guvenilmiyor. Olculdu (2026-08-05,
+    "The Marvel of Sigiriya"): `issues` metni **6 ve 7. sahneleri** isaret
+    ederken `problem_scene_numbers` **[3, 4]** dondu. Hat bildirilen listeye
+    guvendigi icin YANLIS sahneleri yeniden uretti; gercekten bozuk olanlara
+    hic dokunulmadi, skor 45'te kaldi (esik 50) ve konu reddedildi.
+
+    Ayni kosumda "The Marvels of Persepolis" tutarliydi ([1-5] / [1-5]), yani
+    celiski her zaman olmuyor — sessizce oluyor. Kimse fark etmeden pahali bir
+    yeniden uretim bosa gidiyor.
+
+    Cozum ikisinin BIRLESIMI. Fazladan bir sahne uretmek birkac kurus; bozuk
+    sahneyi kacirmak butun konuyu ve o ana kadar harcanan LLM/gorsel parasini
+    kaybettiriyor. Yon asimetrik, o yuzden genis taraf dogru taraf.
+
+    Hicbir sahne isaret edilmemisse hepsi doner — onceki davranis korunuyor.
+    """
+    bildirilen = {
+        n for n in (review.problem_scene_numbers or []) if 1 <= n <= toplam_sahne
+    }
+    metinde = {
+        int(m)
+        for konu in (review.issues or [])
+        for m in re.findall(r"[Ss]cene (\d+)", str(konu))
+        if 1 <= int(m) <= toplam_sahne
+    }
+    birlesim = bildirilen | metinde
+    return sorted(birlesim) if birlesim else list(range(1, toplam_sahne + 1))
+
+
 def should_abandon_topic(review: QualityReview) -> bool:
     issue_text = " ".join(review.issues).lower()
     unexplained_or_blocking_rejection = (
@@ -730,13 +762,21 @@ def run_generator(
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_VISUAL_SCORE
     ):
-        problem_scenes = source_review.problem_scene_numbers or list(
-            range(1, len(plan.scenes) + 1)
-        )
+        # ⚠️ `problem_scene_numbers`'a TEK BASINA guvenilmiyor — bkz.
+        # `sorunlu_sahneler`. Olculdu: bildirilen liste ile `issues` metninin
+        # isaret ettigi sahneler farkli cikabiliyor ve yanlis sahne yeniden
+        # uretiliyor.
+        problem_scenes = sorunlu_sahneler(source_review, len(plan.scenes))
+        # `revised_search_terms` bildirilen listeye gore hazirlanmis olabilir;
+        # sahne kumesi genisledigi icin eslesmiyorsa gonderilmiyor. Yanlis
+        # eslenmis bir arama terimi, terim vermemekten daha kotu.
+        revize = source_review.revised_search_terms
+        if revize and len(revize) not in (len(problem_scenes), len(plan.scenes)):
+            revize = []
         replacements = _generate_ai_or_reject(
             plan,
             material_dir / "ai-refinement",
-            revised_search_terms=source_review.revised_search_terms,
+            revised_search_terms=revize,
             scene_numbers=problem_scenes,
         )
         refined_materials = list(material_files)
