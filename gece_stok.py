@@ -69,8 +69,14 @@ def bir_dongu(gizlilik: str) -> dict:
             sonuc = {}
     sonuc.setdefault("status", "unknown")
     sonuc["cikis_kodu"] = surec.returncode
-    if not sonuc.get("url") and surec.returncode not in (0, 2):
-        sonuc["stderr_kuyruk"] = surec.stderr.strip()[-800:]
+    # ⚠️ Basarisizlikta stderr MUTLAKA saklanir. Olculdu (2026-08-06 01:00):
+    # bir dongu goruntu indirirken cokup cikis 1 dondu, ama surucu stderr'i
+    # yutuyordu — geriye "unknown" disinda hicbir iz kalmadi ve traceback'i
+    # gormek icin dongu elle tekrar kosturulmak zorunda kalindi. Kimse basinda
+    # degilken tek kanit bu; kaybedilirse gece teshis edilemez hale geliyor.
+    if not sonuc.get("url"):
+        sonuc["stderr_kuyruk"] = surec.stderr.strip()[-2000:]
+        sonuc["stdout_kuyruk"] = surec.stdout.strip()[-1000:]
     return sonuc
 
 
@@ -95,6 +101,9 @@ def kos(tavan: int, pes_pese_hata: int, gizlilik: str) -> int:
             "gorsel_skor": (sonuc.get("quality") or {}).get("visual_alignment_score"),
             "cikis_kodu": sonuc.get("cikis_kodu"),
         }
+        if sonuc.get("stderr_kuyruk"):
+            kayit["stderr"] = sonuc["stderr_kuyruk"]
+            kayit["stdout"] = sonuc.get("stdout_kuyruk", "")
         yaz(kayit)
 
         if durum == "published":
@@ -109,6 +118,10 @@ def kos(tavan: int, pes_pese_hata: int, gizlilik: str) -> int:
             ard_arda += 1
             print(f"  ❌ {durum} · skor={kayit['gorsel_skor']} "
                   f"· ust uste {ard_arda}", flush=True)
+            if sonuc.get("stderr_kuyruk"):
+                print("  --- stderr ---", flush=True)
+                for satir in sonuc["stderr_kuyruk"].splitlines()[-15:]:
+                    print(f"  | {satir}", flush=True)
             if ard_arda >= pes_pese_hata:
                 print(f"\n⛔ ust uste {ard_arda} basarisizlik — duruluyor. "
                       "Bozuk bir hat butun geceyi yakmasin.", flush=True)
