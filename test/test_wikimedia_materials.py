@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 import requests
 
 from wikimedia_materials import (
@@ -355,3 +356,191 @@ def test_download_scene_materials_honors_excluded_archive_items(monkeypatch, tmp
 
     assert len(files) == 1
     assert credits[0]["title"] == "Historic rescue archive fresh"
+
+
+def test_download_retries_transient_timeout(monkeypatch, tmp_path: Path):
+    """Gecici ag hatasi 429 ile ayni sekilde tekrar denenmeli.
+
+    Onceden yalnizca 429 tekrarlaniyordu; tek bir ReadTimeout butun uretim
+    koshumunu olduruyordu — konu secimi, senaryo, TTS ve uretilmis gorseller
+    bosa gidiyordu, yani gecici bir ag hatasinin bedeli harcanan LLM/gorsel
+    parasi oluyordu.
+
+    Olculdu (2026-08-05): images.weserv.nl bir kez 60 saniyede yanit vermedi ve
+    tam bir koshum coptu. Ayni URL 20 saniye sonra 200 ve 473 KB dondu.
+    """
+
+    class FakeResponse:
+        def __init__(self, status_code: int, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+            self.headers = {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} error")
+
+    sonuclar = [
+        requests.Timeout("read timed out"),
+        FakeResponse(200, b"x" * 12_000),
+    ]
+    sleeps: list[float] = []
+
+    def fake_get(url, *args, **kwargs):
+        sonuc = sonuclar.pop(0)
+        if isinstance(sonuc, Exception):
+            raise sonuc
+        return sonuc
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", fake_get)
+    destination = tmp_path / "scene.jpg"
+
+    _download(
+        "https://upload.wikimedia.org/example.jpg",
+        destination,
+        sleep_fn=sleeps.append,
+    )
+
+    assert destination.stat().st_size == 12_000
+    assert sonuclar == [], "ikinci deneme yapilmadi"
+    assert 2.0 in sleeps, "geri cekilme beklemesi uygulanmali"
+
+
+def test_download_kalici_timeout_sonunda_yukselir(monkeypatch, tmp_path: Path):
+    """Tekrar denemek sonsuz olmamali — kalici hata cagirana ulasmali."""
+
+    def hep_zaman_asimi(url, *args, **kwargs):
+        raise requests.Timeout("read timed out")
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", hep_zaman_asimi)
+
+    with pytest.raises(requests.Timeout):
+        _download(
+            "https://upload.wikimedia.org/example.jpg",
+            tmp_path / "scene.jpg",
+            sleep_fn=lambda _: None,
+        )
+
+
+def test_download_retries_5xx(monkeypatch, tmp_path: Path):
+    """Teslim proxy'sinden gelen 5xx de gecici — tekrar denenmeli.
+
+    Ilk duzeltme yalnizca istemci tarafi zaman asimini kapsiyordu; ayni koshum
+    bu kez "504 Gateway Timeout" ile dustu. weserv hatayi kendi tarafinda da
+    uretebiliyor ve bir onbellek proxy'sinden gelen 502/503/504 tanimi geregi
+    gecici. Olculdu 2026-08-05.
+    """
+
+    class FakeResponse:
+        def __init__(self, status_code: int, content: bytes = b""):
+            self.status_code = status_code
+            self.content = content
+            self.headers = {}
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.HTTPError(f"{self.status_code} error")
+
+    responses = [FakeResponse(504), FakeResponse(200, b"x" * 12_000)]
+
+    monkeypatch.setattr(
+        "wikimedia_materials.requests.get", lambda *a, **k: responses.pop(0)
+    )
+
+    _download(
+        "https://upload.wikimedia.org/example.jpg",
+        tmp_path / "scene.jpg",
+        sleep_fn=lambda _: None,
+    )
+
+    assert (tmp_path / "scene.jpg").stat().st_size == 12_000
+    assert responses == [], "504 sonrasi ikinci deneme yapilmadi"
+
+
+def test_download_4xx_tekrar_denenmez(monkeypatch, tmp_path: Path):
+    """404 kalici — tekrar denemek bosuna beklemek olur.
+
+    `download_scene_materials` 403/404'u yakalayip SONRAKI adaya geciyor;
+    burada tekrar denenirse o yol gecikir ve davranis degisir.
+    """
+
+    class FakeResponse:
+        status_code = 404
+        content = b""
+        headers: dict[str, str] = {}
+
+        def raise_for_status(self):
+            raise requests.HTTPError("404 error")
+
+    cagri = []
+
+    def fake_get(*a, **k):
+        cagri.append(1)
+        return FakeResponse()
+
+    monkeypatch.setattr("wikimedia_materials.requests.get", fake_get)
+
+    with pytest.raises(requests.HTTPError):
+        _download(
+            "https://upload.wikimedia.org/example.jpg",
+            tmp_path / "scene.jpg",
+            sleep_fn=lambda _: None,
+        )
+
+    assert len(cagri) == 1, "404 tekrar denenmemeli"
+
+
+def test_scene_download_kalici_5xx_sonrasi_sonraki_adaya_geciyor(monkeypatch, tmp_path: Path):
+    """Israrli proxy hatasi butun koshumu degil, o adayi dusurmeli.
+
+    `_get_with_retry` 5xx'i geri cekilmeyle 5 kez deniyor; buraya ulastiysa
+    proxy O GORSEL icin kalici olarak basarisiz demektir. Onceden `raise`
+    ediliyordu ve tek bir sorunlu gorsel butun uretim koshumunu olduruyordu —
+    oysa ayni arama icin calisan baska adaylar var.
+
+    Olculdu 2026-08-05: weserv, Louvre'daki Tanis sfenksinin uzun adli
+    dosyasinda israrla 504 dondu ve dorduncu uretim koshumu de boyle coptu.
+    """
+
+    def page(title: str, width: int, height: int):
+        return {
+            "title": title,
+            "imageinfo": [
+                {
+                    "mime": "image/jpeg",
+                    "url": f"https://upload.wikimedia.org/{title}.jpg",
+                    "descriptionurl": f"https://commons.wikimedia.org/wiki/{title}",
+                    "width": width,
+                    "height": height,
+                    "extmetadata": {
+                        "LicenseShortName": {"value": "Public domain"},
+                        "ImageDescription": {"value": title},
+                    },
+                }
+            ],
+        }
+
+    pages = [
+        page("Sphinx of Tanis broken", 4000, 5000),
+        page("Sphinx of Tanis alternate", 1800, 2400),
+    ]
+    monkeypatch.setattr("wikimedia_materials.search_commons", lambda *_: pages)
+    attempts: list[str] = []
+
+    def fake_download(url, destination):
+        attempts.append(url)
+        if len(attempts) == 1:
+            response = requests.Response()
+            response.status_code = 504
+            raise requests.HTTPError("504 proxy error", response=response)
+        destination.write_bytes(b"x" * 12_000)
+
+    monkeypatch.setattr("wikimedia_materials._download", fake_download)
+
+    files, credits = download_scene_materials(
+        "Sphinx of Tanis", [{"search_term": "Sphinx of Tanis"}], tmp_path
+    )
+
+    assert len(attempts) == 2, "504 sonrasi sonraki adaya gecilmedi"
+    assert files[0].exists()
+    assert credits[0]["title"] == "Sphinx of Tanis alternate"
