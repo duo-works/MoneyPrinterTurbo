@@ -246,6 +246,25 @@ def _openai_client() -> tuple[OpenAI, str]:
     return OpenAI(**kwargs), model
 
 
+def _windows() -> bool:
+    """Windows'ta miyiz — platform kontrolu bilerek TEK bir fonksiyonda.
+
+    ⚠️ Testler bunu yamalamali, `os.name`'i DEGIL. Olculdu (2026-08-06, DW-90):
+    `monkeypatch.setattr("youtube_automation.os.name", "nt")` global `os`
+    modulunu degistiriyor (kopyasini degil), cunku `youtube_automation.os` ile
+    `os` ayni nesne. `os.name == "nt"` oldugu surece `pathlib.Path()` her
+    cagrida `WindowsPath` uretmeye calisiyor ve POSIX'te
+    `NotImplementedError` firlatiyor.
+
+    Sonucu tek bir testin dusmesi degildi: pytest'in kendi onbellegi ve
+    terminal yazicisi da `Path()` cagirdigi icin butun oturum `INTERNALERROR`
+    ile coktu. Linux CI 3 Agustos'tan beri kirmiziydi ve dort PR'i birden
+    bloke ediyordu. Windows isi ise yalnizca 6 servis dosyasi kosuyor, bu
+    testi hic almiyor — yani test hicbir yerde calismiyordu.
+    """
+    return os.name == "nt"
+
+
 def _run_hermes(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     popen_kwargs: dict[str, Any] = {
         "cwd": ROOT,
@@ -255,13 +274,18 @@ def _run_hermes(command: list[str], timeout: int) -> subprocess.CompletedProcess
         "stdout": subprocess.PIPE,
         "stderr": subprocess.PIPE,
     }
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    if _windows():
+        # `CREATE_NEW_PROCESS_GROUP` yalnizca Windows'ta tanimli. `getattr`
+        # olmadan Windows dalini POSIX'te sinamak `AttributeError` veriyor,
+        # yani dal test edilemez hale geliyordu.
+        popen_kwargs["creationflags"] = getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
     process = subprocess.Popen(command, **popen_kwargs)
     try:
         stdout, stderr = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
-        if os.name == "nt":
+        if _windows():
             subprocess.run(
                 ["taskkill", "/PID", str(process.pid), "/T", "/F"],
                 text=True,
