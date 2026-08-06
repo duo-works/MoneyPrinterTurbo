@@ -458,6 +458,29 @@ def _recent_titles() -> list[str]:
     return [title for title in titles if title]
 
 
+def kanca(metin: str) -> str:
+    """Anlatimin ilk cumlesi — videonun izlenip izlenmeyecegini belirleyen yer."""
+    ilk = re.split(r"(?<=[.!?])\s", metin.strip(), maxsplit=1)[0]
+    return ilk.strip()
+
+
+def _son_kancalar(adet: int = 12) -> list[str]:
+    """Daha once kullanilmis acilislar — modele "bunlari tekrarlama" demek icin.
+
+    ⚠️ Yasaklamak tek basina yetmiyor; model gecmisini gormeli. Olculdu
+    (2026-08-06, DW-94): prompt zaten "merak boslugu yarat" diyordu ama
+    uretilen **6 videonun 4'u** birebir "Did you know..." ile basladi. Kalan
+    ikisi ("Imagine a world without running water") belirgin sekilde daha
+    guclu — yani cesitlilik mumkun, sadece zorlanmiyordu.
+
+    Sadece yayinlanan kayitlar okunuyor: reddedilen bir videonun kancasi
+    tekrar denenebilir, sorun onda degildi.
+    """
+    return [k for k in (item.get("hook", "") for item in load_state().get("published", [])) if k][
+        -adet:
+    ]
+
+
 def generate_content_plan(
     extra_exclusions: list[str] | None = None, konu: str | None = None
 ) -> ContentPlan:
@@ -488,6 +511,7 @@ def generate_content_plan(
     system = """You are the editorial producer of an English global-history YouTube Shorts channel.
 Return valid JSON only. Create a factual, emotionally compelling, evergreen true story suitable for stock footage.
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
+NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
 Choose only stories with abundant Public Domain or CC0 historical visual evidence on Wikimedia Commons or Met Open Access: prefer subjects documented by many pre-1929 photographs, public-domain engravings, archaeological plates, museum scans, or CC0 object photographs. Use the eligible visual-anchor shortlist in the user request instead of defaulting to famous examples from prior plans. Avoid Antikythera, Nazca, qanats, or other subjects whose useful Commons photos are mostly CC-BY/CC-BY-SA. Current footage of a surviving place or object is acceptable; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 Every planned scene must be honestly illustratable by a readily available view, detail, engraving, archaeological plate, manuscript page, or museum object of the same visual_anchor. Build the narration around visible evidence rather than asking images to reenact invisible causes or one-time events. Do not require hidden foundations, buried soil layers, exact construction stages, named workers or crowds, closures, restoration procedures, process diagrams, or a specific historical moment unless abundant exact Public Domain or CC0 imagery is known to exist. Prefer multiple truthful views and details of one surviving anchor over loosely related contextual footage.
@@ -520,6 +544,16 @@ JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
             + json.dumps(eligible_anchors, ensure_ascii=False)
             + "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
         )
+
+    # Gecmis acilislar HER IKI kipte de veriliyor: konu disaridan gelse bile
+    # kanca modelin kalemi ve kalibina saplanabiliyor (DW-94).
+    if onceki_kancalar := _son_kancalar():
+        user += (
+            "\nThese opening lines were already used on this channel. Do not reuse them, "
+            "and do not reuse their sentence pattern:\n"
+            + json.dumps(onceki_kancalar, ensure_ascii=False)
+        )
+
     for _ in range(5):
         data = _json_completion(system, user)
         plan = ContentPlan(
@@ -1343,6 +1377,9 @@ def run_cycle(
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,
+            # Bir sonraki kosum bunu okuyup ayni acilisi tekrarlamayacak.
+            # Kaydedilmezse `_son_kancalar` hep bos doner ve kalip kirilmaz.
+            "hook": kanca(plan.script),
             "url": url,
             "task_id": task_id,
             "video_path": str(video_path),
