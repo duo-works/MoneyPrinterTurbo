@@ -332,7 +332,11 @@ def test_run_hermes_kills_windows_process_tree_on_timeout(monkeypatch):
         lambda command, **_kwargs: killed.append(command)
         or SimpleNamespace(returncode=0, stdout="", stderr=""),
     )
-    monkeypatch.setattr("youtube_automation.os.name", "nt")
+    # ⚠️ `os.name` YAMALANMAZ — bkz. `youtube_automation._windows`. Global `os`
+    # modulunu "nt" yapmak `pathlib.Path()`'i POSIX'te patlatiyor ve pytest'in
+    # kendi onbellegini de vurdugu icin butun oturumu `INTERNALERROR` ile
+    # coturuyordu (DW-90).
+    monkeypatch.setattr("youtube_automation._windows", lambda: True)
 
     with pytest.raises(RuntimeError, match="timed out"):
         __import__("youtube_automation")._run_hermes(["hermes", "-z", "prompt"], 180)
@@ -1045,3 +1049,33 @@ def test_acquire_lock_reclaims_lock_when_recorded_pid_is_dead(monkeypatch, tmp_p
     __import__("youtube_automation")._acquire_lock()
 
     assert lock.read_text(encoding="utf-8") == str(__import__("os").getpid())
+
+
+def test_hicbir_test_global_os_name_yamalamiyor():
+    """Global `os.name` yamasi geri sizmasin — DW-90'in kapattigi kusur.
+
+    Bu bir davranis degil bir SATIR sorunu oldugu icin testi de satira
+    baktiriyoruz. `monkeypatch.setattr("...os.name", ...)` tek basina butun
+    pytest oturumunu `INTERNALERROR` ile coturuyor: `os.name == "nt"` oldugu
+    surece `pathlib.Path()` POSIX'te `WindowsPath` uretmeye calisiyor ve
+    pytest'in kendi onbellegi de `Path()` cagiriyor.
+
+    Belirti tek bir kirmizi test degil, TUM koshumun cokmesi oldugu icin
+    yakalamasi zor; Linux CI 3 Agustos'tan 6 Agustos'a kadar kirmizi kaldi ve
+    dort PR'i bloke etti. Platform yamasi icin `_windows` kullanilir.
+    """
+    import pathlib as _pathlib
+
+    # Igne parcali kuruluyor: tek parca yazilsaydi bu testin KENDI kaynagi
+    # desene uyar ve test kendini suclardi.
+    igne = 'setattr("youtube_automation.' + 'os.name"'
+    kok = _pathlib.Path(__file__).resolve().parent
+    suclular = sorted(
+        dosya.name
+        for dosya in kok.glob("**/*.py")
+        if igne in dosya.read_text(encoding="utf-8")
+    )
+
+    assert suclular == [], (
+        f"global `os.name` yamalayan test(ler): {suclular} — `_windows` yamalayin"
+    )
