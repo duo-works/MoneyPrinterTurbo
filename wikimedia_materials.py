@@ -108,6 +108,78 @@ def is_safe_license(value: str) -> bool:
     return any(marker in normalized for marker in SAFE_LICENSE_MARKERS)
 
 
+BELGE_ISARETLERI = (
+    "letter of",
+    "letter from",
+    "letter to",
+    "manuscript",
+    "folio",
+    "title page",
+    "frontispiece",
+    "diary",
+    "journal of",
+    "page from",
+    "codex",
+    "charter",
+    "deed of",
+    "handwritten",
+    "signature of",
+    "postcard",
+    "stamp of",
+    "map of",
+    "plan of",
+)
+"""Basligi bunlari iceren Commons dosyasi bir BELGE taramasidir, resim degil.
+
+⚠️ Olculdu (2026-08-06, DW-98): "Lighthouse of Alexandria" videosunda arsiv
+5 sahne besledi ve ikisi belge cikti — 1869 tarihli el yazisi bir mektup
+sayfasi ve iki kucuk panelli bir kitap sayfasi. Ikisi de ekrani tam
+dolduruyor ama izleyiciye hicbir sey gostermiyor: birinde okunamayan el
+yazisi, digerinde kitabin kenar bosluklari.
+
+Arama metin alakasina bakiyor; "Pharos" kelimesi gecen bir gunluk sayfasi
+sorguyla mukemmel eslesiyor ama fener kulesinin resmi degil. Kalite kapisi da
+bunu yakalayamadi (85 verdi) cunku o "gorsel anlatimla uyumlu mu" diye
+soruyor, "bu bir belge mi" diye degil.
+"""
+
+# Dikey karede gorselin doldurmasi gereken en az oran.
+#
+# ⚠️ Olculdu (2026-08-06, DW-98): 1,20-1,30 oranindaki gravurler bulanik arka
+# plan yoluna dusuyor ve ekranin yalnizca **%43-47'sini** dolduruyor. Geri
+# kalani bulanik bant. Shorts'ta yarisi bulanik bir kare, tam ekran bir AI
+# gorselinden kotu — nitekim ayni videoda en iyi iki kare AI olanlardi.
+#
+# Esik olculen veriye gore secildi, yuvarlak sayiya gore degil:
+#
+#     kare  (1,00) → %56 doluluk   kabul edilebilir, geciyor
+#     gravur(1,20) → %47 doluluk   olculdu: kotu, eleniyor
+#     gravur(1,30) → %43 doluluk   olculdu: kotu, eleniyor
+#
+# Elenen sahne bos kalmiyor: AI dolgusu tam ekran bir goruntuyle dolduruyor.
+ASGARI_EKRAN_DOLULUGU = 0.55
+
+
+def belge_taramasi(baslik: str) -> bool:
+    """Bu Commons dosyasi bir belge/el yazmasi taramasi mi — bkz. `BELGE_ISARETLERI`."""
+    normal = (baslik or "").lower()
+    return any(isaret in normal for isaret in BELGE_ISARETLERI)
+
+
+def dikey_karede_yeterli(width: int, height: int) -> bool:
+    """Gorsel 9:16 karede ekranin yeterince buyuk bir kismini dolduruyor mu."""
+    if width <= 0 or height <= 0:
+        return False
+    hedef = 1080 / 1920
+    oran = width / height
+    if oran <= hedef:
+        return True  # dikey ya da kare — kirp-doldur tam ekran verir
+    kalan = (height * hedef) / width
+    if 1 - kalan <= 0.35:
+        return True  # hafif kirpma yeter, yine tam ekran
+    return (hedef / oran) >= ASGARI_EKRAN_DOLULUGU
+
+
 def delivery_url(source_url: str) -> str:
     """Map an allowlisted Wikimedia upload URL to a cache-backed delivery URL."""
     parsed = urllib.parse.urlsplit(source_url)
@@ -203,9 +275,13 @@ def select_candidate(
         url = image.get("url")
         if not url:
             continue
+        if belge_taramasi(title):
+            continue
         width = int(image.get("width") or image.get("thumbwidth") or 0)
         height = int(image.get("height") or image.get("thumbheight") or 0)
         if width < 720 or height < 720:
+            continue
+        if not dikey_karede_yeterli(width, height):
             continue
         orientation_score = 2.0 if height >= width else 1.0
         resolution_score = min(width * height / 1_000_000, 4.0)
@@ -281,8 +357,26 @@ def download_scene_materials(
     visual_anchor: str = "",
     excluded_titles: set[str] | None = None,
     excluded_met_ids: set[int] | None = None,
+    kismi: bool = False,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
+    """Sahne gorsellerini arsivlerden indirir.
+
+    `kismi=False` (varsayilan): bir sahne bile bulunamazsa
+    `MaterialsUnavailableError`. Cagiran taraf AI yedegi kullanmiyorsa dogru
+    davranis bu — delikli bir video yapilamaz.
+
+    `kismi=True`: bulunamayan sahnenin yerine `None` konur ve digerleri
+    korunur. Cagiran taraf yalnizca delikleri AI ile doldurur.
+
+    ⚠️ Olculdu (2026-08-06, DW-97): "hep ya da hic" davranisi kanalin gorsel
+    kimligini bozuyordu. 8 sahnenin 7'sinde gercek arsiv fotografi bulunmus
+    olsa bile, 8'inci bulunamayinca hepsi cope gidiyor ve butun video AI ile
+    uretiliyordu. Sonuc: uretilen 161 gorselin **96'si AI** ve bunlarin
+    **76'si** tam da bu yoldan geldi. AI gorselleri tek bir estetikte
+    olduklari icin videolar birbirinin kopyasi gibi duruyordu.
+    """
     target_dir.mkdir(parents=True, exist_ok=True)
+    eksik: list[int] = []
     used_titles: set[str] = set(excluded_titles or set())
     used_met_ids: set[int] = set(excluded_met_ids or set())
     files: list[Path] = []
@@ -343,9 +437,14 @@ def download_scene_materials(
                 required_anchor=visual_anchor,
             )
             if met_result is None:
-                raise MaterialsUnavailableError(
-                    f"no public-domain or CC0 archive image found for scene {index}: {term}"
-                )
+                if not kismi:
+                    raise MaterialsUnavailableError(
+                        f"no public-domain or CC0 archive image found for scene {index}: {term}"
+                    )
+                # Kismi kip: bu sahne bos birakilir, bulunanlar korunur.
+                files.append(None)
+                eksik.append(index)
+                continue
             met_path, met_credit = met_result
             used_met_ids.add(int(met_credit["object_id"]))
             files.append(met_path)
@@ -361,6 +460,11 @@ def download_scene_materials(
                 "license": selected["license"],
                 "artist": selected["artist"],
             }
+        )
+    if kismi and len(eksik) == len(scenes):
+        # Hicbir sahne bulunamadi — kismi kipte bile bu bir basarisizlik.
+        raise MaterialsUnavailableError(
+            f"no archive image found for any of the {len(scenes)} scenes"
         )
     (target_dir / "credits.json").write_text(
         json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8"

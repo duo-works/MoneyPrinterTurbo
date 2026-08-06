@@ -763,6 +763,39 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
     )
 
 
+GORSEL_DIL = (
+    "Choose the visual treatment from what the scene actually shows, and do not default to "
+    "one look for every scene: "
+    "(a) if the subject survives today — a standing monument, a ruin, a landscape, a museum "
+    "object — render it as a modern high-resolution colour photograph in natural daylight, with "
+    "the real colours of its stone, metal, wood or earth; "
+    "(b) if the scene shows people, work or an event from the past, render it as a richly "
+    "coloured historical painting or a detailed period illustration, not a faded photograph; "
+    "(c) only use a monochrome or sepia archival look when the scene is genuinely about the "
+    "early photographic era or an aged document. "
+    "Vary lighting, time of day, weather, distance and camera angle between scenes so that "
+    "consecutive images do not look like one another."
+)
+"""Sahne basina gorsel dil — tek bir estetige sabitlenmez.
+
+⚠️ Olculdu (2026-08-06, DW-97): prompt "realistic archival-documentary
+aesthetic" diyordu ve **her sahne sepya** cikiyordu. Uretilen videolarin
+gorsellerinin %60'i AI (Commons her sahneyi besleyemiyor), dolayisiyla bu tek
+cumle butun kanalin gorsel kimligini tek bir soluk tona kilitliyordu:
+Chartres, Colosseum, Karnak ve Viking videolari yan yana konunca ayirt
+edilemiyordu.
+
+"Archival" kelimesi modele "eski fotograf" dedirtiyor, eski fotograf da
+tanim geregi sepya/monokrom. Oysa sahnelerin cogu bugun **ayakta duran** bir
+yapiyi anlatiyor ve onun gercek rengi var.
+
+Cozum tek estetigi yasaklamak degil, secimi sahnenin konusuna baglamak:
+ayakta duran sey → gercek renkli fotograf, gecmisteki olay → renkli tarihi
+resim, gercekten arsivlik olan → sepya. Isik, saat, hava ve mesafe de
+sahneden sahneye degistiriliyor; ardisik iki kare birbirine benzememeli.
+"""
+
+
 def generate_ai_scene_materials(
     plan: ContentPlan,
     target_dir: Path,
@@ -790,18 +823,25 @@ def generate_ai_scene_materials(
         if index in revised_by_scene:
             visual_detail = revised_by_scene[index]
         prompt = (
-            "Create a historically grounded vertical documentary illustration for a YouTube Short. "
+            "Create a vertical image for a YouTube Short about history. "
             f"Visual anchor: {plan.visual_anchor}. Scene {index}: {scene.get('narration', '')}. "
             f"Required visible detail: {visual_detail}. "
-            "Use a realistic archival-documentary aesthetic, one clear focal subject, strong vertical composition, "
-            "and period-appropriate architecture, clothing, tools, and materials. No modern objects, no logos, "
-            "no captions, no text, no watermark, and no invented event presented as a surviving photograph."
+            # ⚠️ Gorsel dil sahnenin KONUSUNA gore secilir, tek bir estetige
+            # sabitlenmez — bkz. `GORSEL_DIL`.
+            + GORSEL_DIL
+            + " One clear focal subject, strong vertical composition, period-appropriate "
+            "architecture, clothing, tools, and materials. No modern objects unless the scene is "
+            "explicitly set today, no logos, no captions, no text, no watermark, and no invented "
+            "event presented as a surviving photograph."
         )
         request = {
             "model": model,
             "prompt": prompt,
             "size": "1024x1536",
-            "quality": "medium",
+            # `medium` ile `high` arasindaki fark Shorts'ta tam ekran izlenen
+            # bir goruntude gorunur: doku, kenar netligi, yuz detayi. Gorsel
+            # basina birkac kurus fark, videonun tamamini tasiyan sey.
+            "quality": "high",
             "n": 1,
         }
         try:
@@ -853,6 +893,32 @@ def generate_ai_scene_materials(
     return files
 
 
+def _delikleri_doldur(
+    plan: ContentPlan, dosyalar: list[Path | None], material_dir: Path
+) -> list[Path]:
+    """Arsivin besleyemedigi sahneleri AI ile doldurur; bulunanlara dokunmaz.
+
+    Onceki davranis "hep ya da hic"ti: tek sahne eksik olunca butun video AI
+    ile uretiliyordu ve bulunmus gercek fotograflar cope gidiyordu (DW-97).
+    Karisik video hem daha inandirici hem gorsel olarak daha zengin.
+    """
+    eksik = [sira for sira, yol in enumerate(dosyalar, 1) if yol is None]
+    if not eksik:
+        return [yol for yol in dosyalar if yol is not None]
+
+    print(
+        f"ℹ️ {len(dosyalar) - len(eksik)}/{len(dosyalar)} sahne arşivden geldi; "
+        f"{len(eksik)} sahne AI ile dolduruluyor: {eksik}"
+    )
+    uretilenler = _generate_ai_or_reject(
+        plan, material_dir / "ai-dolgu", scene_numbers=eksik
+    )
+    tamamlanmis = list(dosyalar)
+    for sira, uretilen in zip(eksik, uretilenler, strict=True):
+        tamamlanmis[sira - 1] = uretilen
+    return [yol for yol in tamamlanmis if yol is not None]
+
+
 def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
     try:
         return generate_ai_scene_materials(*args, **kwargs)
@@ -878,6 +944,10 @@ def run_generator(
             plan.scenes,
             material_dir,
             visual_anchor=plan.visual_anchor,
+            # AI yedegi acikken tek eksik sahne yuzunden butun arsivi atmak
+            # yanlis: bulunan gercek fotograflar korunur, yalnizca delikler
+            # AI ile doldurulur (DW-97).
+            kismi=AI_VISUAL_FALLBACK_ENABLED,
         )
     except MaterialsUnavailableError as exc:
         if not AI_VISUAL_FALLBACK_ENABLED:
@@ -886,6 +956,8 @@ def run_generator(
             ) from exc
         material_files = _generate_ai_or_reject(plan, material_dir / "ai-fallback")
         credits = []
+    else:
+        material_files = _delikleri_doldur(plan, material_files, material_dir)
     source_montage = create_source_montage(material_files, attempt)
     source_review = review_source_materials(plan, source_montage)
     if not AI_VISUAL_FALLBACK_ENABLED and (
