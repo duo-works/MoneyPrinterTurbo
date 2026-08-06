@@ -959,8 +959,11 @@ def test_run_cycle_records_source_rejections_and_tries_new_topics(monkeypatch, t
     monkeypatch.setattr("youtube_automation.publication_slot_key", lambda *_, **__: "2026-07-30-02")
     exclusion_calls = []
 
-    def next_plan(exclusions=None):
+    def next_plan(exclusions=None, konu=None):
         exclusion_calls.append(list(exclusions or []))
+        # Kuyruksuz kipte konu HER ZAMAN None olmali; aksi halde hat sessizce
+        # huniye baglanmis demektir (DW-89).
+        assert konu is None
         return next(generated)
 
     monkeypatch.setattr("youtube_automation.generate_content_plan", next_plan)
@@ -994,9 +997,10 @@ def test_run_cycle_returns_quality_rejection_when_distinct_topics_are_exhausted(
     plan = valid_plan()
     calls = 0
 
-    def next_plan(_exclusions=None):
+    def next_plan(_exclusions=None, konu=None):
         nonlocal calls
         calls += 1
+        assert konu is None, "kuyruksuz kipte konu disaridan gelmemeli"
         if calls == 1:
             return plan
         raise DistinctTopicUnavailableError("no distinct topic")

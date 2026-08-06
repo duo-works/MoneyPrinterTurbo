@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw, ImageOps
 import requests
 
 from app.config import config
+import notion_kuyrugu
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
 
@@ -40,6 +41,10 @@ AI_VISUAL_FALLBACK_ENABLED = str(
 INFERENCE_BACKEND = str(
     config.app.get("youtube_automation_inference_backend", "hermes-cli")
 ).strip().lower()
+# Trend hunisinin CLI koprusu. PATH'te olmadigi icin (her iki kurulumda da bir
+# sanal ortamin icinde) yol yapilandirmadan geliyor; bos birakilirsa
+# `shutil.which` denenir ve bulunamazsa anlasilir bir hata verilir.
+YTOTO_PATH = str(config.app.get("ytoto_path", "")).strip() or None
 EDITORIAL_ANCHOR_POOL = [
     "Great Sphinx",
     "Moai",
@@ -453,7 +458,20 @@ def _recent_titles() -> list[str]:
     return [title for title in titles if title]
 
 
-def generate_content_plan(extra_exclusions: list[str] | None = None) -> ContentPlan:
+def generate_content_plan(
+    extra_exclusions: list[str] | None = None, konu: str | None = None
+) -> ContentPlan:
+    """Video planini uretir; `konu` verilirse KONUYU SECMEZ, verileni isler.
+
+    `konu` disaridan geldiginde (trend hunisinden, DW-89) benzerlik kontrolu
+    uygulanmaz. Sebep: bu konuyu model degil, olculmus talep verisi ve onu
+    onaylayan insan sectI. "Cok benziyor" diye reddetmek, insanin kararini
+    modelin cagrisimina feda etmek olurdu.
+
+    Bu ayrimin bedeli olculdu: 6 Agustos gecesi uretilen 6 videonun konusunu
+    model kendi havuzundan sectI ve ayni gecede iki Roma muhendisligi videosu
+    cikti. Huni beslemesinin varlik sebebi bu.
+    """
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = [
@@ -479,15 +497,29 @@ The title must be natural, under 65 characters when practical, and contain #Shor
 Description must contain a two-sentence summary followed by 3-5 hashtags.
 Tags must be an array of 6-10 concise strings.
 JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
-    user = (
-        "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
-        + json.dumps(previous[-50:], ensure_ascii=False)
-        + "\nNever reuse any of these concrete visual anchors:\n"
-        + json.dumps(previous_anchors, ensure_ascii=False)
-        + "\nChoose the visual_anchor from this unused editorial shortlist when it is non-empty:\n"
-        + json.dumps(eligible_anchors, ensure_ascii=False)
-        + "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
-    )
+    if konu:
+        # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.
+        # Kisitlar (sahne sayisi, capa tekrari, kamu malI gorsel) aynen gecerli.
+        user = (
+            "Build one video plan about this exact subject, which was chosen from measured "
+            "search-demand data by a human editor:\n"
+            f"{json.dumps(konu, ensure_ascii=False)}\n"
+            "Keep this subject. Do not substitute a different topic, era, or place. "
+            "You choose the visual_anchor, the angle, and the scenes so that every scene is "
+            "honestly illustratable from Public Domain or CC0 imagery of that same subject. "
+            "If the subject is broad, narrow it to one concrete named site, artifact, or invention "
+            "that belongs to it."
+        )
+    else:
+        user = (
+            "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
+            + json.dumps(previous[-50:], ensure_ascii=False)
+            + "\nNever reuse any of these concrete visual anchors:\n"
+            + json.dumps(previous_anchors, ensure_ascii=False)
+            + "\nChoose the visual_anchor from this unused editorial shortlist when it is non-empty:\n"
+            + json.dumps(eligible_anchors, ensure_ascii=False)
+            + "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
+        )
     for _ in range(5):
         data = _json_completion(system, user)
         plan = ContentPlan(
@@ -518,6 +550,10 @@ JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
                 f"{exc}. Return a completely corrected plan that follows every constraint."
             )
             continue
+        if konu:
+            # Benzerlik kapisi atlaniyor — gerekcesi docstring'de. Dogrulama
+            # (`validate_content_plan`) yukarida zaten uygulandI.
+            return plan
         if (
             not is_duplicate_topic(plan.topic, previous)
             and not is_duplicate_topic(plan.title, previous)
@@ -1033,18 +1069,39 @@ def run_cycle(
     dry_run: bool = False,
     privacy: str = "public",
     not_before: str | None = None,
+    kuyruktan: bool = False,
 ) -> dict[str, Any]:
     slot = publication_slot_key()
     state = load_state()
     if slot in state.get("completed_slots", []):
         return {"status": "skipped", "reason": "slot already completed", "slot": slot}
 
+    # Kuyruk kipinde konu trend hunisinden gelir. Aday YOKSA kosum durur —
+    # modelin kendi konusuna DUSMEZ. Sessiz geri dusus, kuyruga bagli
+    # oldugunu sanan ama aslinda kendi konusunu ureten bir hat demek olurdu;
+    # bu, hic baglanmamis olmaktan daha kotu cunku fark edilmiyor.
+    aday: notion_kuyrugu.Aday | None = None
+    if kuyruktan:
+        adaylar = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH)
+        if not adaylar:
+            return {
+                "status": "no-candidate",
+                "slot": slot,
+                "reason": (
+                    "`Seçildi` kuyrugu bos — Notion'da bir adayi bu duruma alin. "
+                    "Konu uydurulmadi."
+                ),
+            }
+        aday = adaylar[0]
+        notion_kuyrugu.adayi_kap(aday, ytoto_path=YTOTO_PATH)
+    aday_kapatildi = False
+
     _acquire_lock()
     try:
         exclusions: list[str] = []
         reviews: list[dict[str, Any]] = []
         try:
-            plan = generate_content_plan(exclusions)
+            plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
         except DistinctTopicUnavailableError as exc:
             reviews.append(
                 {
@@ -1096,7 +1153,7 @@ def run_cycle(
                 save_state(state)
                 if attempt < 3:
                     try:
-                        plan = generate_content_plan(exclusions)
+                        plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -1143,7 +1200,7 @@ def run_cycle(
                 save_state(state)
                 if attempt < 3:
                     try:
-                        plan = generate_content_plan(exclusions)
+                        plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -1201,9 +1258,27 @@ def run_cycle(
             state.setdefault("completed_slots", []).append(slot)
             state.setdefault("published", []).append(record)
             save_state(state)
+        if aday is not None and url:
+            notion_kuyrugu.adayi_kapat(
+                aday,
+                video_url=url,
+                uretim_notu=f"görsel uyum {review.visual_alignment_score}/100",
+                ytoto_path=YTOTO_PATH,
+            )
+            aday_kapatildi = True
         return record
     finally:
         LOCK_FILE.unlink(missing_ok=True)
+        # Kapmanin karsiligi TEK yerde: hangi cikis yolundan donulurse
+        # donulsun (planlama hatasi, red, beklenmedik istisna) aday kuyruga
+        # geri konur. Her `return`'e ayri ayri yazilsaydi biri unutulur ve o
+        # yol adayi `Uretiliyor`da birakirdi — sessizce, kimse gormeden.
+        if aday is not None and not aday_kapatildi:
+            notion_kuyrugu.adayi_birak(
+                aday,
+                gerekce=f"{slot} koşumu video üretemedi; kuyruğa geri kondu",
+                ytoto_path=YTOTO_PATH,
+            )
 
 
 def main() -> None:
@@ -1211,15 +1286,28 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--privacy", choices=["public", "unlisted", "private"], default="public")
     parser.add_argument("--not-before", metavar="HH:MM")
+    parser.add_argument(
+        "--from-notion",
+        action="store_true",
+        help=(
+            "Konuyu trend hunisinden al (`Seçildi` kuyruğu). Aday yoksa koşum "
+            "durur; modelin kendi konusuna DÜŞMEZ."
+        ),
+    )
     args = parser.parse_args()
     result = run_cycle(
         dry_run=args.dry_run,
         privacy=args.privacy,
         not_before=args.not_before,
+        kuyruktan=args.from_notion,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
         raise SystemExit(2)
+    # Bos kuyruk bir hata degil ama basari da degil: cagiran taraf (gece stok
+    # surucusu) bunu "uretilecek is yok" diye ayirt edebilmeli.
+    if result.get("status") == "no-candidate":
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":
