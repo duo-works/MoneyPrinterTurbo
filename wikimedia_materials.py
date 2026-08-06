@@ -61,13 +61,35 @@ def _get_with_retry(
 ) -> requests.Response:
     for attempt in range(max_attempts):
         sleep_fn(REQUEST_INTERVAL_SECONDS)
-        response = requests.get(
-            url,
-            params=params,
-            headers={"User-Agent": USER_AGENT},
-            timeout=timeout,
-        )
-        if response.status_code != 429:
+        try:
+            response = requests.get(
+                url,
+                params=params,
+                headers={"User-Agent": USER_AGENT},
+                timeout=timeout,
+            )
+        except (requests.Timeout, requests.ConnectionError):
+            # ⚠️ Gecici ag hatasi 429 ile ayni sekilde tekrar denenmeli.
+            # Onceden yalnizca 429 tekrarlaniyordu ve tek bir ReadTimeout
+            # butun koshumu olduruyordu: konu secimi, senaryo, TTS ve uretilmis
+            # gorseller bosa gidiyor — yani gecici bir ag hatasinin bedeli
+            # harcanan LLM/gorsel parasi oluyor.
+            #
+            # Olculdu (2026-08-05): images.weserv.nl bir kez 60 saniyede
+            # yanit vermedi ve tam bir uretim koshumu coptu. Ayni URL 20 saniye
+            # sonra 200 ve 473 KB dondu, yani hata gercekten geciciydi.
+            if attempt == max_attempts - 1:
+                raise
+            sleep_fn(float(2 ** (attempt + 1)))
+            continue
+        # 429 VE 5xx tekrar denenir; ikisi de gecici.
+        #
+        # ⚠️ 5xx once atlanmisti ve ayni koshum bu kez "504 Gateway Timeout"
+        # ile dustu — istemci zaman asimini yakalamak yetmiyor, teslim
+        # proxy'si (weserv) hatayi kendi tarafinda da uretebiliyor. Bir onbellek
+        # proxy'sinden gelen 502/503/504 tanimi geregi gecici; kalicilarsa
+        # asagidaki son deneme zaten yukseltiyor.
+        if response.status_code != 429 and not (500 <= response.status_code < 600):
             response.raise_for_status()
             return response
         if attempt == max_attempts - 1:
@@ -292,7 +314,18 @@ def download_scene_materials(
                     _download(candidate["url"], candidate_destination)
                 except requests.HTTPError as exc:
                     status = exc.response.status_code if exc.response is not None else 0
-                    if status not in {403, 404}:
+                    # 403/404 → bu aday teslim edilemiyor.
+                    # 5xx → `_get_with_retry` zaten geri cekilmeyle 5 kez denedi;
+                    # buraya ulastiysa proxy O GORSEL icin kalici olarak
+                    # basarisiz. Ikisi de ayni anlama geliyor: bu adayi birak,
+                    # SONRAKINE gec.
+                    #
+                    # ⚠️ Onceden 5xx `raise` ediyordu ve tek bir sorunlu gorsel
+                    # butun uretim koshumunu olduruyordu — oysa elde baska
+                    # aday var. Olculdu (2026-08-05): weserv, Louvre'daki Tanis
+                    # sfenksinin uzun adli dosyasinda israrla 504 dondu; ayni
+                    # arama icin calisan baska adaylar mevcuttu.
+                    if status not in {403, 404} and not (500 <= status < 600):
                         raise
                     failed_titles.add(candidate["title"])
                     continue
