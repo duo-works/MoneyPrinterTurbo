@@ -281,8 +281,26 @@ def download_scene_materials(
     visual_anchor: str = "",
     excluded_titles: set[str] | None = None,
     excluded_met_ids: set[int] | None = None,
+    kismi: bool = False,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
+    """Sahne gorsellerini arsivlerden indirir.
+
+    `kismi=False` (varsayilan): bir sahne bile bulunamazsa
+    `MaterialsUnavailableError`. Cagiran taraf AI yedegi kullanmiyorsa dogru
+    davranis bu — delikli bir video yapilamaz.
+
+    `kismi=True`: bulunamayan sahnenin yerine `None` konur ve digerleri
+    korunur. Cagiran taraf yalnizca delikleri AI ile doldurur.
+
+    ⚠️ Olculdu (2026-08-06, DW-97): "hep ya da hic" davranisi kanalin gorsel
+    kimligini bozuyordu. 8 sahnenin 7'sinde gercek arsiv fotografi bulunmus
+    olsa bile, 8'inci bulunamayinca hepsi cope gidiyor ve butun video AI ile
+    uretiliyordu. Sonuc: uretilen 161 gorselin **96'si AI** ve bunlarin
+    **76'si** tam da bu yoldan geldi. AI gorselleri tek bir estetikte
+    olduklari icin videolar birbirinin kopyasi gibi duruyordu.
+    """
     target_dir.mkdir(parents=True, exist_ok=True)
+    eksik: list[int] = []
     used_titles: set[str] = set(excluded_titles or set())
     used_met_ids: set[int] = set(excluded_met_ids or set())
     files: list[Path] = []
@@ -343,9 +361,14 @@ def download_scene_materials(
                 required_anchor=visual_anchor,
             )
             if met_result is None:
-                raise MaterialsUnavailableError(
-                    f"no public-domain or CC0 archive image found for scene {index}: {term}"
-                )
+                if not kismi:
+                    raise MaterialsUnavailableError(
+                        f"no public-domain or CC0 archive image found for scene {index}: {term}"
+                    )
+                # Kismi kip: bu sahne bos birakilir, bulunanlar korunur.
+                files.append(None)
+                eksik.append(index)
+                continue
             met_path, met_credit = met_result
             used_met_ids.add(int(met_credit["object_id"]))
             files.append(met_path)
@@ -361,6 +384,11 @@ def download_scene_materials(
                 "license": selected["license"],
                 "artist": selected["artist"],
             }
+        )
+    if kismi and len(eksik) == len(scenes):
+        # Hicbir sahne bulunamadi — kismi kipte bile bu bir basarisizlik.
+        raise MaterialsUnavailableError(
+            f"no archive image found for any of the {len(scenes)} scenes"
         )
     (target_dir / "credits.json").write_text(
         json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8"
