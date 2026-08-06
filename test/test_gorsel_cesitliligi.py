@@ -154,3 +154,74 @@ def test_kismi_kip_hatta_baglanmis():
 
     assert "kismi=AI_VISUAL_FALLBACK_ENABLED" in govde, "kismi kip hatta bagli olmali"
     assert "_delikleri_doldur(" in govde, "delikler doldurulmali"
+
+
+# --- Arsiv kalite barasi (DW-98) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "baslik",
+    [
+        "File:Letter of 1869 January 17 - DPLA - ba98c73e.jpg",
+        "File:Manuscript folio 23 recto.jpg",
+        "File:Title page of Historia Naturalis.jpg",
+        "File:Diary of a traveller 1890.jpg",
+        "File:Map of ancient Alexandria.jpg",
+    ],
+)
+def test_belge_taramalari_eleniyor(baslik):
+    """Olculdu: arsiv 5 sahne besledi, ikisi belge cikti.
+
+    1869 tarihli el yazisi bir mektup sahne 4'u doldurdu — ekrani tam
+    kapliyor ama izleyici okunamayan bir el yazisi goruyor. Kalite kapisi da
+    yakalayamadi (85 verdi) cunku "gorsel anlatimla uyumlu mu" diye soruyor,
+    "bu bir belge mi" diye degil.
+    """
+    assert wm.belge_taramasi(baslik)
+
+
+@pytest.mark.parametrize(
+    "baslik",
+    [
+        "File:Colosseum in Rome, Italy - April 2007.jpg",
+        "File:Karnak Temple hypostyle hall columns.jpg",
+        "File:Philip Galle - Lighthouse of Alexandria.jpg",
+    ],
+)
+def test_gercek_gorseller_elenmiyor(baslik):
+    assert not wm.belge_taramasi(baslik)
+
+
+def test_cok_genis_gorsel_eleniyor():
+    """1,20-1,30 oranindaki gravurler ekranin yalnizca %43-47'sini dolduruyor."""
+    assert not wm.dikey_karede_yeterli(1280, 984)  # oran 1,30 → %43
+    assert not wm.dikey_karede_yeterli(1280, 1062)  # oran 1,21 → %47
+
+
+def test_dikey_ve_kare_gorseller_geciyor():
+    assert wm.dikey_karede_yeterli(1280, 1606)  # dikey
+    assert wm.dikey_karede_yeterli(1024, 1536)  # 2:3
+    assert wm.dikey_karede_yeterli(1000, 1000)  # kare
+
+
+def test_hafif_yatay_gorsel_geciyor():
+    """Kirp-doldur esigi icindeki gorsel tam ekran veriyor, elenmemeli."""
+    assert wm.dikey_karede_yeterli(1200, 1300)
+
+
+def test_gecersiz_olcu_eleniyor():
+    assert not wm.dikey_karede_yeterli(0, 100)
+    assert not wm.dikey_karede_yeterli(100, 0)
+
+
+def test_filtreler_secime_bagli():
+    """Fonksiyonlar dogru olsa bile aday secimi onlari cagirmazsa kusur surer.
+
+    Mutasyon dersi (DW-97): izole dogruluk yetmiyor, baglanti da kilitlenmeli.
+    """
+    kaynak = Path(wm.__file__).read_text(encoding="utf-8")
+    i = kaynak.index("def select_candidate(")
+    govde = kaynak[i : i + 3000]
+
+    assert "belge_taramasi(title)" in govde
+    assert "dikey_karede_yeterli(width, height)" in govde
