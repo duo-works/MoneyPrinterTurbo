@@ -13,6 +13,7 @@ import argparse
 import os
 import sys
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -24,32 +25,65 @@ CLIENT_SECRET_FILE = os.path.join(os.path.dirname(__file__), "client_secret.json
 TOKEN_FILE = os.path.join(os.path.dirname(__file__), "youtube_token.json")
 
 
+def _token_yaz(creds):
+    """Token'i yalnizca sahibinin okuyabilecegi izinle yazar.
+
+    Icinde refresh token var: uzun omurlu ve kanala yukleme yetkisi veren bir
+    kimlik bilgisi. Duz `open(...).write` dosyayi umask'e birakiyordu ve
+    olculdu — pratikte 0644 cikiyor, yani makinedeki her kullanici okuyabilir.
+    """
+    with open(TOKEN_FILE, "w", encoding="utf-8") as token_file:
+        token_file.write(creds.to_json())
+    os.chmod(TOKEN_FILE, 0o600)
+
+
 def get_authenticated_service():
     creds = None
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+    # `Credentials.valid` KAPSAM KONTROL ETMIYOR — kaynagi yalnizca
+    # "token var mi ve dolmus mu" diye bakiyor, `has_scopes` ayri bir metot.
+    # SCOPES ileride genisletilirse (or. analytics icin readonly) diskteki eski
+    # token gecerli gorunmeye devam eder ve hata calisma aninda
+    # `403 insufficient scopes` olarak, cagri yerinde patlar.
+    if not creds or not creds.valid or not creds.has_scopes(SCOPES):
+        yenilendi = False
+
+        if creds and creds.expired and creds.refresh_token and creds.has_scopes(SCOPES):
+            try:
+                creds.refresh(Request())
+                yenilendi = True
+            except RefreshError:
+                # Iptal edilmis ya da 7 gunde dolmus refresh token. Onay ekrani
+                # "Testing" durumundayken bu yol HER HAFTA geciliyor; yakalanmazsa
+                # zamanlanmis gorev kutuphane traceback'i ile oluyor.
+                creds = None
+                if os.path.exists(TOKEN_FILE):
+                    os.remove(TOKEN_FILE)
+
+        if not yenilendi:
             if not os.path.exists(CLIENT_SECRET_FILE):
                 sys.exit(
                     f"client_secret.json bulunamadi: {CLIENT_SECRET_FILE}\n"
                     "Google Cloud Console'dan indirip proje koekune koy."
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRET_FILE, SCOPES
-            )
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
             creds = flow.run_local_server(port=0)
 
-        with open(TOKEN_FILE, "w", encoding="utf-8") as token_file:
-            token_file.write(creds.to_json())
+        _token_yaz(creds)
 
     return build("youtube", "v3", credentials=creds)
 
 
-def upload_video(video_path, title, description, tags, privacy_status):
+def upload_video(
+    video_path,
+    title,
+    description,
+    tags,
+    privacy_status,
+    contains_synthetic_media=True,
+):
     if not os.path.exists(video_path):
         sys.exit(f"Video dosyasi bulunamadi: {video_path}")
 
@@ -65,6 +99,13 @@ def upload_video(video_path, title, description, tags, privacy_status):
         "status": {
             "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": False,
+            # ⚠️ Bu beyan zorunlu ve eksikti. Bu hat videoyu LLM senaryosu +
+            # TTS ses + stok goruntu ile uretiyor, yani icerik sentetik.
+            # YouTube gercekci sentetik/degistirilmis medya icin aciklama
+            # istiyor; beyan edilmemesi uyum riski. Varsayilan True cunku bu
+            # hattin urettigi HER video sentetik — istisna varsa cagiran taraf
+            # acikca False gecmeli.
+            "containsSyntheticMedia": contains_synthetic_media,
         },
     }
 
@@ -96,9 +137,19 @@ def main():
     parser.add_argument("--tags", default="", help="Virgulle ayrilmis etiketler")
     parser.add_argument(
         "--privacy",
-        default="public",
+        default="private",
         choices=["public", "unlisted", "private"],
-        help="Gizlilik durumu (varsayilan: public)",
+        # ⚠️ Varsayilan "public" idi. PRD'nin "v1'de OLMAYACAKLAR" listesinde
+        # "otomatik yayin karari" var; zamanlanmis bir hatta varsayilan public,
+        # metadata'da bir satir unutmanin cezasini "yayinda" yapiyor.
+        # Yon asimetrik: erken yayinlanan videoyu geri almak izlenme ve oneri
+        # sinyali kaybi demek; gec yayinlanani yayinlamak bir tik.
+        help="Gizlilik durumu (varsayilan: private — yayin acik bir karar olmali)",
+    )
+    parser.add_argument(
+        "--not-synthetic",
+        action="store_true",
+        help="containsSyntheticMedia=False gonder (bu hat icin normalde gerekmez)",
     )
     args = parser.parse_args()
 
@@ -106,7 +157,14 @@ def main():
     if "#shorts" not in args.description.lower() and "shorts" not in [t.lower() for t in tags]:
         tags.append("Shorts")
 
-    upload_video(args.video_path, args.title, args.description, tags, args.privacy)
+    upload_video(
+        args.video_path,
+        args.title,
+        args.description,
+        tags,
+        args.privacy,
+        contains_synthetic_media=not args.not_synthetic,
+    )
 
 
 if __name__ == "__main__":
