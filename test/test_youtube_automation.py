@@ -357,7 +357,10 @@ def test_commons_credits_are_added_to_description_without_duplicate_links():
     assert text.count("File:A.jpg") == 1
     assert "File:B.jpg" in text
     assert "metmuseum.org/art/collection/search/9" in text
-    assert text.startswith("Public-domain / CC0 visual sources:")
+    # ⚠️ Baslik DW-99'da degisti: artik CC BY gorselleri de kabul ediliyor,
+    # "Public-domain / CC0" demek yaniltici olurdu. Ayrintili atif sozlesmesi
+    # `test_lisans.py`'de kilitli.
+    assert text.startswith("Visual sources (public domain, CC0 or CC BY):")
 
 
 def test_should_publish_requires_visual_and_subtitle_quality_thresholds():

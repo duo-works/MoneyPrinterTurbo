@@ -200,16 +200,30 @@ def parse_cli_result(stdout: str) -> dict[str, Any]:
 
 
 def format_commons_credits(credits: list[dict[str, Any]]) -> str:
-    links: list[str] = []
+    """Gorsel kaynaklarini video aciklamasi icin bicimlendirir.
+
+    ⚠️ CC BY gorselleri icin atif **hukuki zorunluluk**, nezaket degil: lisans
+    eser sahibinin adini ve lisansi istiyor. DW-99'dan once yalnizca PD/CC0
+    kabul ediliyordu ve atif isteyen bir sey yoktu; basliktaki "Public-domain /
+    CC0" ifadesi artik yaniltici olurdu.
+
+    Bu yuzden satirlar zenginlestirildi: baglanti + varsa sanatci + lisans adi.
+    Ayni kaynak birden cok sahnede kullanildiysa bir kez yaziliyor.
+    """
+    satirlar: list[str] = []
+    gorulen: set[str] = set()
     for credit in credits:
         link = str(credit.get("source_url", "")).strip()
-        if link and link not in links:
-            links.append(link)
-    if not links:
+        if not link or link in gorulen:
+            continue
+        gorulen.add(link)
+        sanatci = str(credit.get("artist", "")).strip()
+        lisans = str(credit.get("license", "")).strip()
+        ek = " · ".join(parca for parca in (sanatci, lisans) if parca)
+        satirlar.append(f"- {link}" + (f" ({ek})" if ek else ""))
+    if not satirlar:
         return ""
-    return "Public-domain / CC0 visual sources:\n" + "\n".join(
-        f"- {link}" for link in links
-    )
+    return "Visual sources (public domain, CC0 or CC BY):\n" + "\n".join(satirlar)
 
 
 def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
