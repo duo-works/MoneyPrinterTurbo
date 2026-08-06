@@ -124,12 +124,28 @@ def search_met(query: str, limit: int = 8) -> list[dict[str, Any]]:
             objects.append(_OBJECT_CACHE[object_id])
             continue
         time.sleep(0.1)
-        detail = requests.get(
-            OBJECT_URL.format(object_id=object_id),
-            headers={"User-Agent": USER_AGENT},
-            timeout=30,
-        )
-        detail.raise_for_status()
+        try:
+            detail = requests.get(
+                OBJECT_URL.format(object_id=object_id),
+                headers={"User-Agent": USER_AGENT},
+                timeout=30,
+            )
+            detail.raise_for_status()
+        except (requests.Timeout, requests.ConnectionError):
+            # Gecici ag hatasi — bu nesne atlanir, arama devam eder.
+            continue
+        except requests.HTTPError:
+            # ⚠️ Met arama indeksi, detay ucunda artik BULUNMAYAN nesne
+            # kimlikleri donduruyor. Olculdu (2026-08-06, DW-95): nesne
+            # 844492 aramada cikti, `/objects/844492` 404 verdi ve
+            # `raise_for_status` butun uretim kosumunu oldurdu — konu,
+            # icerik plani ve o ana kadar harcanan LLM parasi bosa gitti.
+            #
+            # Tek bir eksik nesne arama sonucunu gecersiz kilmaz: geri kalan
+            # nesneler kullanilabilir durumda. Atlamak dogru davranis,
+            # durmak degil. Ayni ders DW-86'da Wikimedia tarafinda ogrenildi;
+            # bu modul o duzeltmenin disinda kalmis.
+            continue
         obj = detail.json()
         _OBJECT_CACHE[object_id] = obj
         objects.append(obj)
