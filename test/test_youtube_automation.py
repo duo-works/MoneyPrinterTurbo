@@ -369,15 +369,27 @@ def test_should_publish_requires_visual_and_subtitle_quality_thresholds():
 
 
 def test_very_low_or_blocking_visual_review_abandons_topic():
+    """Konu yalnizca OLCUM kotuyse terk edilir — modelin bayragiyla degil.
+
+    Bu test eskiden tersini kilitliyordu: `publishable=False` gelen bir
+    inceleme, skorlari esigin USTUNDE olsa bile konuyu terk ettiriyordu.
+    DW-87 o kurali kaldirdi cunku bayrak artik skorlardan turetiliyor; modelin
+    "hayir" demesi tek basina bir kanit degil. Skoru 68 olan bir kagit
+    iyilestirilecek bir kagittir, cope atilacak bir konu degil.
+    """
     badly_mismatched = QualityReview(False, 40, 90, ["Modern footage conflicts with narration"])
-    blocking_rejection_above_threshold = QualityReview(
-        False, 68, 90, ["One scene needs replacement"]
+    modern_footage_above_threshold = QualityReview(
+        False, 90, 90, ["Contains modern footage of a highway"]
     )
+    fixable_above_threshold = QualityReview(False, 68, 90, ["One scene needs replacement"])
     unexplained_rejection = QualityReview(False, 80, 85, [])
 
     assert should_abandon_topic(badly_mismatched)
-    assert should_abandon_topic(blocking_rejection_above_threshold)
-    assert should_abandon_topic(unexplained_rejection)
+    # "modern footage" esikten bagimsiz bir engel — korunuyor.
+    assert should_abandon_topic(modern_footage_above_threshold)
+    # Esigi gecen ikisi artik terk EDILMIYOR; hat sahneleri yenileyip tekrar dener.
+    assert not should_abandon_topic(fixable_above_threshold)
+    assert not should_abandon_topic(unexplained_rejection)
 
 
 def test_publication_slot_key_uses_istanbul_date_and_hour():
@@ -860,8 +872,12 @@ def test_review_source_materials_parses_visual_gate_response(monkeypatch, tmp_pa
     prompt_text = captured["messages"][0]["content"][0]["text"]
     assert "historic rescue" in prompt_text
     assert "before video rendering" in prompt_text
-    assert "if and only if visual_alignment_score is at least 50" in prompt_text
-    assert "at least one concrete issue" in prompt_text
+    # ⚠️ Esik promptta ANILMAZ — bkz. `yayina_uygun`. Model esigi okuyunca
+    # olcmeyi birakip esigin bir tik altina oy yaziyordu (45/45/45'e karsi
+    # 75/75/70). Skor bir olcek olarak tarif ediliyor, karar kodda veriliyor.
+    assert "at least 50" not in prompt_text
+    assert "publishable" not in prompt_text
+    assert "measurement of this contact sheet, not a verdict" in prompt_text
     assert "problem_scene_numbers" in prompt_text
     assert "historically grounded ai illustrations are acceptable" in prompt_text.lower()
 
@@ -890,11 +906,14 @@ def test_review_video_prompt_requires_consistent_publishable_decision(monkeypatc
     review_video(valid_plan(), montage)
 
     prompt_text = captured["messages"][0]["content"][0]["text"]
-    assert "if and only if" in prompt_text
-    assert "visual_alignment_score is at least 50" in prompt_text
-    assert "subtitle_readability_score is at least 80" in prompt_text
+    # Ayni kural video incelemesinde de gecerli: burada IKI esik birden
+    # yaziliydi (50 ve 80). Ikisi de kaldirildi; skorlar olcek olarak tarif
+    # ediliyor, gecti/kaldi karari `yayina_uygun`'da.
+    assert "at least 50" not in prompt_text
+    assert "at least 80" not in prompt_text
+    assert "publishable" not in prompt_text
+    assert "measurements of this montage, not verdicts" in prompt_text
     assert "first 2-3 seconds" in prompt_text
-    assert "at least one concrete issue" in prompt_text
     assert "historically grounded ai illustrations are acceptable" in prompt_text.lower()
 
 
@@ -917,9 +936,13 @@ def test_source_review_requests_revisions_for_blocking_publishable_false(monkeyp
 
     review_source_materials(valid_plan(), tmp_path / "sources.jpg")
 
-    assert "publishable is false or visual_alignment_score is below 50" in captured[
-        "instructions"
-    ]
+    # Niyet ayni kaliyor: sorunlu her sahne icin somut bir yenileme sorgusu
+    # istenmeli. Degisen, bunun ESIGE baglanmamasi — kosul artik "skor 50'nin
+    # altindaysa" degil, "problem_scene_numbers'ta olan her sahne icin".
+    yonerge = captured["instructions"]
+    assert "for every scene number in problem_scene_numbers" in yonerge.lower()
+    assert "revised_search_terms" in yonerge
+    assert "below 50" not in yonerge
 
 
 def test_run_cycle_records_source_rejections_and_tries_new_topics(monkeypatch, tmp_path):
