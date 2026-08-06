@@ -593,6 +593,85 @@ def refine_search_terms(plan: ContentPlan, review: QualityReview) -> ContentPlan
     return plan
 
 
+SHORTS_EN = 1080
+SHORTS_BOY = 1920
+"""Shorts karesi. Kaynak gorseller buna getirilmezse ekranin bir kismi siyah kalir."""
+
+# Merkezden kirpma bu orandan fazlasini atacaksa kirpmak yerine bulanik arka
+# plan kullanilir. 0.35 olculerek secildi: 2:3 AI gorselleri %16 kirpiliyor
+# (sorunsuz), 16:9 arsiv fotograflari %68 kirpilirdi ve konu kadraj disinda
+# kalirdi — bir akveduktun yalnizca bir kemeri gorunurdu.
+AZAMI_KIRPMA = 0.35
+
+
+def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
+    """Gorseli 1080x1920'ye getirir — siyah bant birakmadan.
+
+    ⚠️ Olculdu (2026-08-06, DW-93): uretilen videolarin ustunde ve altinda
+    150'ser piksel siyah bant vardi, yani ekranin **%15,6'si** bostaydi
+    (`cropdetect` → `crop=1080:1620:0:150`). Sebep `app/services/video.py`:
+    kaynak oran hedeften farkliysa siyah bir `ColorClip` uzerine gorseli
+    ortaliyor (letterbox). Telefonda amatorce gorunuyor ve dikey alanin altida
+    birini harciyor.
+
+    Cekirdek video servisi degistirilmedi: webui de onu kullaniyor ve
+    davranisi degistirmek bu hattin disina tasar. Bunun yerine gorseller
+    **kaynagында** dogru orana getiriliyor; servis bir daha bant ekleyemiyor
+    cunku oran zaten tutuyor.
+
+    Iki yol var, hangisi secildigi kirpma miktarina bagli:
+
+    - **Kirp-doldur** (2:3 AI gorselleri): kenarlardan %16 gider, konu kalir.
+    - **Bulanik arka plan** (16:9 arsiv fotograflari): kirpmak konuyu kadraj
+      disinda birakirdi, o yuzden gorselin buyutulmus bulanik kopyasi arka
+      plana konur ve net gorsel ortada tam olarak gorunur. Shorts'ta yaygin
+      ve siyah banttan cok daha iyi duruyor.
+    """
+    from PIL import ImageFilter
+
+    with Image.open(kaynak) as ham:
+        gorsel = ham.convert("RGB")
+        en, boy = gorsel.size
+        hedef_oran = SHORTS_EN / SHORTS_BOY
+        oran = en / boy
+
+        # Kirp-doldur uygulanirsa kaynagin ne kadari atilir?
+        if oran > hedef_oran:
+            kalan = (boy * hedef_oran) / en  # genislikten kirpilir
+        else:
+            kalan = (en / hedef_oran) / boy  # yukseklikten kirpilir
+        kirpma = 1 - kalan
+
+        if kirpma <= AZAMI_KIRPMA:
+            sonuc = ImageOps.fit(
+                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
+            )
+        else:
+            arka = ImageOps.fit(
+                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
+            ).filter(ImageFilter.GaussianBlur(radius=40))
+            on = ImageOps.contain(
+                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
+            )
+            arka.paste(
+                on,
+                ((SHORTS_EN - on.width) // 2, (SHORTS_BOY - on.height) // 2),
+            )
+            sonuc = arka
+
+        hedef.parent.mkdir(parents=True, exist_ok=True)
+        sonuc.save(hedef, format="JPEG", quality=92)
+    return hedef
+
+
+def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
+    """Sahne gorsellerinin tamamini Shorts karesine getirir; sira korunur."""
+    return [
+        dikeye_uydur(dosya, hedef_dizin / f"sahne-{sira:02d}.jpg")
+        for sira, dosya in enumerate(dosyalar, 1)
+    ]
+
+
 def create_source_montage(material_files: list[Path], attempt: int) -> Path:
     if not material_files:
         raise ValueError("source montage requires at least one image")
@@ -874,6 +953,13 @@ def run_generator(
         or source_review.visual_alignment_score < MIN_VISUAL_SCORE
     ):
         raise SourceMaterialRejected(source_review)
+
+    # ⚠️ Render'dan HEMEN once, kalite kapisindan SONRA. Sira bilincli: kapi
+    # kaynak gorselin kendisini degerlendirmeli, kirpilmis halini degil. Ama
+    # render'a giden dosyalar Shorts oraninda olmali, yoksa video servisi
+    # siyah bant ekliyor (DW-93).
+    material_files = dikeye_uydur_hepsi(material_files, material_dir / "dikey")
+
     command = [
         sys.executable,
         "cli.py",
@@ -906,12 +992,21 @@ def run_generator(
         "--subtitle-enabled",
         "--subtitle-position",
         "custom",
+        # ⚠️ Konum ve font birlikte ayarlanir; biri digerini bozar (DW-93).
+        # Olculdu: en uzun altyazi blogu 82 karakter ve 72px fontta 1080
+        # genislige **4-5 satir** sigiyor. Blok o kadar buyuyor ki %72'lik
+        # konumdan yukari tasip gorselin ana oznesini kapatiyordu — Viking
+        # gemisinin govdesi, akveduktcunun eli.
+        #
+        # 56px'te ayni blok 3 satira iniyor ve %78 konumla alt ucte birde
+        # kaliyor. Daha da kucultmek Shorts'ta okunabilirligi bozar; asil
+        # cozum satiri kisaltmak degil, blogu kucultmek.
         "--custom-position",
-        "72",
+        "78",
         "--text-fore-color",
         "#FFFFFF",
         "--font-size",
-        "72",
+        "56",
         "--stroke-color",
         "#000000",
         "--stroke-width",
