@@ -16,6 +16,30 @@ from met_materials import download_met_scene_material
 API_URL = "https://commons.wikimedia.org/w/api.php"
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
 SAFE_LICENSE_MARKERS = ("public domain", "pd-", "cc0")
+"""Kosulsuz kullanilabilen lisanslar — atif bile gerekmiyor."""
+
+ATIF_LISANS_ISARETLERI = ("cc by",)
+"""Yalnizca ATIF isteyen lisanslar. Share-alike (BY-SA) BURAYA GIRMEZ.
+
+⚠️ Olculdu (2026-08-06, DW-99): yalnizca PD/CC0 kabul edilirken ayakta duran
+anitlarin gercek fotograflarinin **%78'i** reddediliyordu. Uc sorgu, 90 aday:
+
+    20  Public domain + CC0    kabul
+    30  CC BY                  RED  ← yalnizca atif istiyor, biz zaten yapiyoruz
+    40  CC BY-SA               RED  ← share-alike, disarida birakildi
+
+Sonucu somuttu: Machu Picchu videosunda 8 sahnenin 7'si AI oldu cunku arsiv
+tek bir gorsel verebildi. Oysa Commons'ta binlerce Machu Picchu fotografi var.
+
+**CC BY-SA bilerek disarida.** "Share-alike" turev eserin ayni lisansla
+yayinlanmasini istiyor; bu, videonun tamamının CC BY-SA olmasi anlamina
+gelebilir ve baskalarinin videoyu alip kullanmasina kapi acar. Bu bir is
+karari; kullanici PD/CC0 + CC BY'de karar kildi.
+
+⚠️ Metin eslesmesi TUZAKLI: "cc by-sa 4.0" metni "cc by" iceriyor. Naif bir
+`in` kontrolu share-alike'i de gecirirdi — `atif_gerektiren` once SA'yi
+disliyor, sonra BY'ye bakiyor. Bir test bu tuzagi kilitliyor.
+"""
 REQUEST_INTERVAL_SECONDS = 1.0
 DELIVERY_PROXY_URL = "https://images.weserv.nl/"
 GENERIC_SEARCH_WORDS = {
@@ -104,8 +128,32 @@ def _get_with_retry(
 
 
 def is_safe_license(value: str) -> bool:
+    """Kosulsuz kullanilabilir mi — PD ya da CC0."""
     normalized = (value or "").strip().lower()
     return any(marker in normalized for marker in SAFE_LICENSE_MARKERS)
+
+
+def paylasimli_lisans(value: str) -> bool:
+    """Share-alike (BY-SA) mi — turev eseri ayni lisansa zorlar, kabul edilmiyor."""
+    normalized = (value or "").strip().lower()
+    return "sa" in normalized.replace("-", " ").split() or "share" in normalized
+
+
+def atif_gerektiren(value: str) -> bool:
+    """Yalnizca ATIF isteyen bir lisans mi — CC BY, ama CC BY-SA DEGIL.
+
+    ⚠️ Sira onemli: "cc by-sa 4.0" metni "cc by" iceriyor. Once share-alike
+    elenmezse naif eslesme onu da gecirirdi (DW-99).
+    """
+    normalized = (value or "").strip().lower()
+    if paylasimli_lisans(normalized):
+        return False
+    return any(marker in normalized for marker in ATIF_LISANS_ISARETLERI)
+
+
+def kullanilabilir_lisans(value: str) -> bool:
+    """Videoda kullanilabilir mi — PD/CC0 ya da yalnizca atif isteyen CC BY."""
+    return is_safe_license(value) or atif_gerektiren(value)
 
 
 BELGE_ISARETLERI = (
@@ -270,7 +318,7 @@ def select_candidate(
         if mime not in {"image/jpeg", "image/png", "image/webp"}:
             continue
         license_name = _metadata_value(image, "LicenseShortName")
-        if not is_safe_license(license_name):
+        if not kullanilabilir_lisans(license_name):
             continue
         url = image.get("url")
         if not url:
