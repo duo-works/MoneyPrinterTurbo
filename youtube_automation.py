@@ -523,13 +523,15 @@ def generate_content_plan(
         if not is_duplicate_visual_anchor(anchor, previous_anchors)
     ]
     system = """You are the editorial producer of an English global-history YouTube Shorts channel.
-Return valid JSON only. Create a factual, emotionally compelling, evergreen true story suitable for stock footage.
+Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
-Choose only stories with abundant Public Domain or CC0 historical visual evidence on Wikimedia Commons or Met Open Access: prefer subjects documented by many pre-1929 photographs, public-domain engravings, archaeological plates, museum scans, or CC0 object photographs. Use the eligible visual-anchor shortlist in the user request instead of defaulting to famous examples from prior plans. Avoid Antikythera, Nazca, qanats, or other subjects whose useful Commons photos are mostly CC-BY/CC-BY-SA. Current footage of a surviving place or object is acceptable; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
-Every planned scene must be honestly illustratable by a readily available view, detail, engraving, archaeological plate, manuscript page, or museum object of the same visual_anchor. Build the narration around visible evidence rather than asking images to reenact invisible causes or one-time events. Do not require hidden foundations, buried soil layers, exact construction stages, named workers or crowds, closures, restoration procedures, process diagrams, or a specific historical moment unless abundant exact Public Domain or CC0 imagery is known to exist. Prefer multiple truthful views and details of one surviving anchor over loosely related contextual footage.
-Prefer ancient engineering, surviving monuments, unusual inventions, archaeology, navigation, historic foods/crafts, natural phenomena, and locations with visible evidence. Avoid war rescues, named battles, period-specific crowds, disasters requiring reenactments, and stories where generic modern footage would falsely imply archival evidence.
+Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
+Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
+TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
+When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
+The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
 The title must be natural, under 65 characters when practical, and contain #Shorts.
 Description must contain a two-sentence summary followed by 3-5 hashtags.
@@ -1129,12 +1131,16 @@ def run_generator(
         "56",
         "--stroke-color",
         "#000000",
+        # ⚠️ Kontur artik arka planin YERINE okunabilirligi sagliyor, o yuzden
+        # kalinlastirildi (3 → 5). Siyah serit kalkinca beyaz metnin acik
+        # zeminde (mavi gokyuzu, kum tasi, bulut) kaybolmamasi yalnizca
+        # kontura bagli.
         "--stroke-width",
-        "3",
-        "--subtitle-background-enabled",
-        "--subtitle-background-color",
-        "#000000",
-        "--rounded-subtitle-background",
+        "5",
+        # Siyah serit yok: metin dogrudan goruntunun uzerinde durur (DW-103).
+        # Serit alt ucte biri kapatiyordu ve Shorts'ta goruntuden calinan her
+        # piksel pahali.
+        "--no-subtitle-background-enabled",
     ]
     result = subprocess.run(
         command,

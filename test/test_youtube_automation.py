@@ -141,7 +141,18 @@ def test_generate_content_plan_adds_missing_visual_anchor_to_scene_terms(monkeyp
     validate_content_plan(plan)
 
 
-def test_generate_content_plan_prompt_targets_abundant_public_domain_archives(monkeypatch):
+def test_generate_content_plan_prompt_keeps_its_visual_contract(monkeypatch):
+    """⚠️ Iki kisit DW-103'te KALDIRILDI; ikisi de eskimisti.
+
+    - `pre-1929` (ABD kamu mali esigi) ve "CC-BY olan konulari atla": ikisi de
+      yalnizca PD/CC0 kabul edildigi doneme aitti. DW-99 CC BY'yi acti, yani
+      bu kisitlar artik iyi konulari bosuna eliyordu.
+    - "suitable for stock footage": hattin stok video kullandigi donemden
+      kalma, jenerik goruntuye yonlendiriyordu.
+
+    Kalan sozlesme: kaynak tercihi, capa kisa listesi ve jenerik modern
+    goruntu yasagi.
+    """
     response = {
         "topic": "Roman Pantheon Archive",
         "visual_anchor": "Roman Pantheon",
@@ -170,11 +181,20 @@ def test_generate_content_plan_prompt_targets_abundant_public_domain_archives(mo
 
     generate_content_plan()
 
-    assert "pre-1929" in captured["system"]
     assert "museum scans" in captured["system"]
     assert "Every planned scene" in captured["system"]
     assert "Met Open Access" in captured["system"]
-    assert "hidden foundations" in captured["system"]
+    # Eskimis kisitlar geri sizmamali.
+    assert "pre-1929" not in captured["system"]
+    assert "stock footage" not in captured["system"]
+    assert "mostly CC-BY" not in captured["system"]
+    # Jenerik modern goruntu yasagi DURUYOR — bu hala gecerli.
+    assert "merely share one broad word" in captured["system"]
+    # ⚠️ "hidden foundations" yasagi da DW-103'te KALDIRILDI: hattin yalnizca
+    # arsiv fotografi bulabildigi doneme aitti ve tam da istenen hikaye
+    # anlatimini engelliyordu. Yerine gecen sozlesme
+    # `test_hikaye_ve_altyazi.py`'de kilitli.
+    assert "illustratable" in captured["system"], "sahne-gorsel bagi durmali"
     assert "first 2-3 seconds" in captured["system"]
     assert "curiosity gap" in captured["system"]
 
