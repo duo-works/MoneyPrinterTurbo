@@ -194,6 +194,19 @@ BELGE_ISARETLERI = (
     "chart of",
     "inscription",
     "specimen",
+    # ⚠️ Kitaptan taranmis sayfalar — 2026-08-08'de olculdu. Ustteki filtre
+    # bunlari kacirdi cunku basliktaki isaret "lithograph" degil KISALTMA:
+    # "R. H. Kern delt. P.S. Duval's Lith. Steam Press."
+    #
+    # "(IA " Commons'ta Internet Archive kitap tarama kimligi; dosyanin bir
+    # kitap sayfasindan cikarildigi anlamina geliyor. Gecmise karsi olculdu:
+    # kullanilmis 45 arsiv gorselinin 3'unde geciyor ve UCU DE kitap sayfasi
+    # (Chaco videosunun 1., 5. ve 7. sahneleri). Yanlis pozitif yok.
+    "(ia ",
+    "delt.",
+    "lith.",
+    "steam press",
+    "(to accompany)",
 )
 """Basligi bunlari iceren Commons dosyasi bir BELGE taramasidir, resim degil.
 

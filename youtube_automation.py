@@ -533,9 +533,9 @@ TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not 
 When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
 The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
-The title must be natural, under 65 characters when practical, and contain #Shorts.
-Description must contain a two-sentence summary followed by 3-5 hashtags.
-Tags must be an array of 6-10 concise strings.
+WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
+The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised — never leave the question unanswered in the description. Then 3-5 hashtags.
+Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary — never write a phrase nobody would type into a search box.
 JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
     if konu:
         # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.
