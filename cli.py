@@ -260,10 +260,15 @@ Output and exit status:
     )
     video_group.add_argument(
         "--video-clip-duration",
-        type=_positive_int,
+        # ⚠️ Ondalik kabul ediyor. Tamsayiya zorlandiginda sahne basina sure
+        # sesi tam bolemiyordu: 7 sahne × 5 sn = 35 sn ama ses 35,88 sn olunca
+        # MPT acigi bastan bir klibi TEKRAR ederek kapatiyor, 6 sn'ye
+        # yuvarlayinca da son sahne videoya hic girmiyordu. Ikisinden de
+        # kacinmanin tek yolu 35,88 / 7 = 5,13 gibi bir degeri gecebilmek.
+        type=_positive_float,
         default=None,
         help=(
-            "maximum duration of each source clip in seconds, at least 1 (default: 5)"
+            "maximum duration of each source clip in seconds, greater than 0 (default: 5)"
         ),
     )
     video_group.add_argument(

@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import time
+import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -961,17 +962,17 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
 
 
 GORSEL_DIL = (
-    "Choose the visual treatment from what the scene actually shows, and do not default to "
-    "one look for every scene: "
+    "Render this as a real photograph, not as artwork: "
     "(a) if the subject survives today — a standing monument, a ruin, a landscape, a museum "
-    "object — render it as a modern high-resolution colour photograph in natural daylight, with "
-    "the real colours of its stone, metal, wood or earth; "
-    "(b) if the scene shows people, work or an event from the past, render it as a richly "
-    "coloured historical painting or a detailed period illustration, not a faded photograph; "
+    "object — photograph it as it exists now, in true-to-life colour, with the real colours of "
+    "its stone, metal, wood or earth; "
+    "(b) if the scene shows people, work or an event from the past, photograph a museum-quality "
+    "living-history reconstruction: real people in accurate costume, real materials, shot on "
+    "location today; "
     "(c) only use a monochrome or sepia archival look when the scene is genuinely about the "
     "early photographic era or an aged document. "
-    "Vary lighting, time of day, weather, distance and camera angle between scenes so that "
-    "consecutive images do not look like one another."
+    "Never a painting, never an illustration, never a digital render, never a concept-art or "
+    "matte-painting look."
 )
 """Sahne basina gorsel dil — tek bir estetige sabitlenmez.
 
@@ -988,9 +989,22 @@ tanim geregi sepya/monokrom. Oysa sahnelerin cogu bugun **ayakta duran** bir
 yapiyi anlatiyor ve onun gercek rengi var.
 
 Cozum tek estetigi yasaklamak degil, secimi sahnenin konusuna baglamak:
-ayakta duran sey → gercek renkli fotograf, gecmisteki olay → renkli tarihi
-resim, gercekten arsivlik olan → sepya. Isik, saat, hava ve mesafe de
-sahneden sahneye degistiriliyor; ardisik iki kare birbirine benzememeli.
+ayakta duran sey → gercek renkli fotograf, gecmisteki olay → canlandirma
+fotografi, gercekten arsivlik olan → sepya.
+
+⚠️ Ikinci olcum (2026-08-09): (b) sikki once "richly coloured historical
+painting or a detailed period illustration" diyordu ve kullanicinin
+"sanki cartoon gibi" tarifi tam olarak buydu — model kusuru degil, promptun
+KENDI istegi. Gecmisteki sahneler Commons'ta nadiren fotografla karsilandigi
+icin AI dolgusunun cogu bu sikka dusuyor, yani cizim kanalin varsayilan
+gorunumu haline geliyordu. Sikk, muze kalitesinde bir CANLANDIRMA fotografina
+cevrildi; "no invented event presented as a surviving photograph" guvencesi
+prompt govdesinde yerinde birakildi, cunku canlandirma bugun cekilmis bir
+fotograf gibi durmali, hayatta kalmis bir arsiv belgesi gibi degil.
+
+Isik artik burada tarif EDILMIYOR — o `ISIK_DILI`nin isi. Bu cumlenin
+"vary lighting between scenes" istegi sahneler birbirinden habersiz
+uretildigi icin hicbir zaman islememisti.
 """
 
 KARE_DILI = (
@@ -999,11 +1013,11 @@ KARE_DILI = (
     "a human figure inside the frame for scale, seen from behind or in profile, mid-distance",
     "a low angle from ground level looking steeply up, sky behind the subject",
     "an elevated or overhead view looking down, showing layout and pattern",
-    "a shot at golden hour or dusk with long raking shadows and warm side light",
+    "a two-layer composition with something in the near foreground partly overlapping the subject",
     "a view from inside or through an opening — a doorway, an arch, a gap — framing the subject",
     "an off-centre composition with the subject at one edge and open space beside it",
     "a detail of a single object held, carried or worked on by hands",
-    "an overcast or rain-washed view with cool, muted, high-contrast light",
+    "a receding perspective down a street, corridor or row, leading far into the distance",
 )
 """Sahne basina kadraj — sahne numarasina gore donusumlu.
 
@@ -1023,12 +1037,168 @@ olcek icin insan figuru, alt aci, tepeden gorunum, yan isik, cerceve icinden.
 Donusumlu secildigi icin ek maliyet yok. Liste 10 uzunlukta ve sahne sayisi
 6-10; ortak bolen olmadigi icin ayni sahne numarasi her videoda ayni kadraji
 almiyor.
+
+⚠️ Maddeler yalnizca KADRAJ tarif eder, isik DEGIL. Isik `ISIK_DILI`nin isi.
+Iki liste ayni cumlede isiktan bahsederse birbiriyle celisir — bu modulun
+zaten bir kez dustugu tuzak (bkz. yukarisi). Ilk surumde 6. madde "golden
+hour ... warm side light", 10. madde "overcast ... cool light" diyordu;
+`ISIK_DILI` eklenirken ikisi de kadraj tarifine cevrildi.
 """
+
+ISIK_DILI = (
+    "cold overcast daylight just after rain, wet surfaces, desaturated blue-grey tones",
+    "hard midday sun from overhead, deep black shadows and bleached bright highlights",
+    "golden hour side light with long warm shadows",
+    "blue hour just after sunset, deep indigo sky, cool shadows",
+    "flat even light under a bright white overcast sky, neutral true colours",
+    "green filtered light under vegetation or through a canopy",
+    "misty dawn, pale silver light, low contrast, cool haze in the distance",
+    "clear high-altitude daylight, deep blue sky, crisp shadows, saturated colour",
+    "interior light from a single opening, a bright pool of light in a darker space",
+    "storm light, dark grey-violet sky with one bright shaft breaking through",
+    "warm firelight or torchlight against the deep blue of open shade",
+)
+"""Sahne basina isik ve hava — kadrajdan BAGIMSIZ ikinci bir donusum.
+
+⚠️ Olculdu (2026-08-09, Mohenjo-Daro kosumu): 7 karenin **hepsi** 25°-47° ton
+araliginda cikti, dairesel ton yayilimi 0,007 (0 = tek renk). Video tek renkli
+gorunuyordu. Kadraj cesitliligi (DW-107) yapisal tekrari cozdu ama palet
+sorununa dokunmadi: ayni yeri farkli acilardan cekmek, hepsi ayni kehribar
+tonundaysa yine tek bir goruntu hissi veriyor.
+
+Sebep iki katmanli. Konu zaten tek renkli (kerpic sehir), ve model her
+gorsele varsayilan olarak sicak bir renk katmani ekliyor. `GORSEL_DIL`
+"vary lighting, time of day, weather" diyordu ama bu sahne ICINDE bir istek;
+sahneler birbirinden habersiz uretildigi icin her biri ayni "sicak tarih
+belgeseli" ortalamasina dusuyordu.
+
+Cozum kadrajdaki ile ayni: modelden cesitlilik istemek yerine her sahneye
+BASKA bir isigi acikca vermek. Olculdu (ayni 5 sahne, yalnizca prompt
+degisti): ton yayilimi 0,002 → 0,433, ton araligi 25°-34° → 31°-202°.
+
+Liste 11 (asal) uzunlukta: hem sahne sayisiyla (6-10) hem `KARE_DILI` ile
+(10) ortak boleni yok, boylece kadraj-isik ciftleri videodan videoya kayiyor.
+"""
+
+
+def isik_dili(sahne_no: int, tohum: int = 0) -> str:
+    """`sahne_no` icin isik tarifi (1'den baslar).
+
+    `tohum` videoya ozgu bir kaydirma — konudan turetiliyor. Kaydirma olmasa
+    her videonun 1. sahnesi ayni isigi alirdi ve kanal genelinde her video
+    ayni yagmurlu gri kareyle acilirdi.
+    """
+    return ISIK_DILI[(sahne_no - 1 + tohum) % len(ISIK_DILI)]
+
+
+def isik_tohumu(konu: str) -> int:
+    """Konudan kararli bir kaydirma uretir.
+
+    ⚠️ `hash()` KULLANILMIYOR: Python surec basina rastgele tohumluyor, ayni
+    konu farkli kosumlarda farkli isik alirdi ve bir kosumu yeniden uretmek
+    imkansiz olurdu.
+    """
+    return zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ISIK_DILI)
 
 
 def kare_dili(sahne_no: int) -> str:
     """`sahne_no` icin kadraj tarifi (1'den baslar)."""
     return KARE_DILI[(sahne_no - 1) % len(KARE_DILI)]
+
+
+SES_ADI = "en-US-BrianMultilingualNeural-Male"
+SES_HIZI = 1.08
+"""Anlatim sesi ve hizi — `anlatim_suresi` ile CLI ayni degeri kullanmali.
+
+Ikisi ayrisirsa olculen sure gercek sesin suresi olmaz ve klip hesabi bozulur.
+"""
+
+VARSAYILAN_KLIP_SURESI = 5
+"""Ses olculemediginde kullanilan sure — eski sabit davranis."""
+
+KLIP_PAYI = 1.02
+"""Klip suresine eklenen kucuk pay.
+
+Neden 1,02: `n × klip >= ses` olmali (yoksa MPT acigi kapatmak icin bastan bir
+klibi TEKRAR ediyor) ama ayni anda `(n-1) × klip < ses` olmali (yoksa dongu
+sure dolunca erken kirilir ve SON SAHNE videoya hic girmez). Pay `p` icin ikinci
+kosul `p·(n-1)/n < 1`, yani `n < p/(p-1)`; %2 payda `n < 51` — sahne sayisi
+6-10 oldugu icin fazlasiyla guvenli. MPT'nin ses suresine ekledigi 0,10 sn
+emniyet payi da kapsanir (`0,02 × ses >= 0,10` → ses >= 5 sn; bizim videolar
+~36 sn).
+"""
+
+
+def anlatim_suresi(script: str) -> float:
+    """Anlatimin GERCEK suresi — tahmin degil, olcum.
+
+    ⚠️ Tahmin denendi ve birakildi. Olculdu (2026-08-09): ayni ses ve hizda
+    kelime/saniye 2,05 ile 2,79 arasinda degisiyor — tarih ve sayi yogun metin
+    en yavasi ("1900 BCE" seslendirilirken uc kelimeye aciliyor) ve bu kanalin
+    metinleri tam olarak oyle. %30'luk bir hata payi, klip hesabini anlamsiz
+    kilardi.
+
+    Olcum ucuz ve tekrarlanabilir: edge-tts yerel, ucretsiz ve deterministik.
+    Dogrulandi (2026-08-09): Mohenjo-Daro metni burada 35,88 sn olculdu, gercek
+    kosumun sesi de 35,88 sn'ydi. CLI ayni metni yeniden seslendirecek; ayni
+    ses + ayni hiz + ayni metin ayni sureyi veriyor.
+
+    Olcum basarisiz olursa (ag yok, servis dustu) 0 doner ve cagiran taraf
+    varsayilan klip suresine geri duser — ses olculemedi diye video uretmemek
+    yanlis olurdu.
+    """
+    import asyncio
+    import tempfile
+
+    import edge_tts
+    from moviepy.audio.io.AudioFileClip import AudioFileClip
+
+    from app.services import voice as voice_service
+
+    async def _seslendir(hedef: Path) -> None:
+        iletisim = edge_tts.Communicate(
+            text=script,
+            # ⚠️ Ses adi ve hiz MPT'nin KENDI donusturucusundan geciyor. Elle
+            # "+8%" yazmak, CLI bir gun baska bicim kullanirsa olcumu sessizce
+            # yanlis yapardi.
+            voice=voice_service.parse_voice_name(SES_ADI),
+            rate=voice_service.convert_rate_to_percent(SES_HIZI),
+        )
+        await iletisim.save(str(hedef))
+
+    yol: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as gecici:
+            yol = Path(gecici.name)
+        asyncio.run(_seslendir(yol))
+        klip = AudioFileClip(str(yol))
+        try:
+            return float(klip.duration)
+        finally:
+            klip.close()
+    except Exception as hata:  # noqa: BLE001 — olcum uretimi durduramaz
+        print(f"anlatim suresi olculemedi, varsayilan klip suresi: {hata}", flush=True)
+        return 0.0
+    finally:
+        if yol is not None:
+            yol.unlink(missing_ok=True)
+
+
+def klip_suresi(ses_saniye: float, sahne_sayisi: int) -> float:
+    """Her sahnenin ekranda kalacagi sure.
+
+    ⚠️ Olculdu (2026-08-09, Mohenjo-Daro): 7 sahne × 5 sn = 35,00 sn, ses
+    35,88 sn. MPT acigi `itertools.cycle` ile TAM bir klip ekleyerek kapatiyor,
+    yani video SAHNE 1'IN TEKRARIYLA bitiyordu: kapanis cumlesi ("the unanswered
+    questions linger") geri donusturulmus acilis karesine dusuyordu. Son alti
+    kosumun ucunde ayni sey var.
+
+    Sabit 5 sn yerine sure sahne sayisina bolunuyor, boylece hem tekrar hem de
+    son sahnenin dusmesi imkansiz hale geliyor (bkz. `KLIP_PAYI`).
+    """
+    if ses_saniye <= 0 or sahne_sayisi <= 0:
+        return float(VARSAYILAN_KLIP_SURESI)
+    return round(ses_saniye / sahne_sayisi * KLIP_PAYI, 2)
 
 
 BENZERLIK_ESIGI = 0.80
@@ -1131,6 +1301,22 @@ def generate_ai_scene_materials(
             # sabit kompozisyon cumlesi gidiyor ve `GORSEL_DIL`in cesitlilik
             # istegini bozuyordu — gerekce `KARE_DILI` docstring'inde.
             + f" Frame this scene as {kare_dili(index)}. "
+            # ⚠️ Isik kadrajdan AYRI donuyor ve palet kurali bunun tamamlayicisi:
+            # tek basina isik vermek yetmiyordu, model yine her seyin uzerine
+            # tek bir sicak katman koyuyordu — gerekce `ISIK_DILI` docstring'inde.
+            + f"Light and weather for this scene: {isik_dili(index, isik_tohumu(plan.topic))}. "
+            "Keep this lighting unless the scene's real setting makes it impossible, and in "
+            "that case choose a time of day clearly different from golden hour. "
+            "Do not apply a single global warm colour grade to the whole image, and do not "
+            "render everything in one amber, ochre or sepia tone: let the real colours of sky, "
+            "shadow, vegetation, water, metal, cloth and skin stay distinct from the colour of "
+            "the stone or earth. "
+            # ⚠️ Olculdu (2026-08-09): isik donusumu eklendiginde iki kare 0,21-0,22
+            # parlakliga dustu. Shorts telefonda ve cogu zaman disarida izleniyor;
+            # karanlik kare orada okunmuyor. Isik cesitliligi okunabilirligin
+            # onune gecmemeli.
+            "Whatever the light, the main subject must stay clearly visible and readable at "
+            "small size on a phone screen — no crushed shadows, no silhouette-only frame. "
             + "Strong vertical composition, period-appropriate "
             "architecture, clothing, tools, and materials. No modern objects unless the scene is "
             "explicitly set today, no logos, no captions, no text, no watermark, and no invented "
@@ -1369,6 +1555,17 @@ def run_generator(
     # siyah bant ekliyor (DW-93).
     material_files = dikeye_uydur_hepsi(material_files, material_dir / "dikey")
 
+    # ⚠️ Klip suresi ARTIK SABIT DEGIL. Sabit 5 sn, sahne sayisi × 5 < ses
+    # oldugunda MPT'ye bastan bir klibi tekrar ettiriyordu — gerekce
+    # `klip_suresi` docstring'inde.
+    ses_saniye = anlatim_suresi(plan.script)
+    klip = klip_suresi(ses_saniye, len(plan.scenes))
+    print(
+        f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne · "
+        f"klip {klip} sn (toplam {klip * len(plan.scenes):.2f} sn)",
+        flush=True,
+    )
+
     command = [
         sys.executable,
         "cli.py",
@@ -1391,11 +1588,11 @@ def run_generator(
         "--video-transition-mode",
         "none",
         "--video-clip-duration",
-        "5",
+        str(klip),
         "--voice-name",
-        "en-US-BrianMultilingualNeural-Male",
+        SES_ADI,
         "--voice-rate",
-        "1.08",
+        str(SES_HIZI),
         "--bgm-type",
         "none",
         "--subtitle-enabled",
