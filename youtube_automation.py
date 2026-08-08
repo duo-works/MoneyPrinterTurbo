@@ -23,6 +23,7 @@ import requests
 
 from app.config import config
 import notion_kuyrugu
+import temizlik
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
 
@@ -149,8 +150,117 @@ def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
     return False
 
 
+KANAL_SESI = """You are the editorial producer of an English global-history YouTube Shorts channel.
+
+THE CHANNEL HAS ONE FIXED EDITORIAL ANGLE, AND EVERY SCRIPT MUST HAVE IT: the gap between what people assume happened and what the surviving evidence actually shows. Not "here are facts about a place" — but "here is what the record says, and it is not what you were told."
+Build each script on one of these moves: a widely believed story the evidence contradicts, a mystery where you name what is actually known and where the knowledge stops, a detail so specific it could only come from someone who read the source, or a consequence that outlived the event.
+Say what is NOT known, out loud, at least once. "No one has found..." / "The record stops here." Certainty about everything is the signature of a shallow script; naming the edge of the evidence is what a real researcher does and what makes a viewer trust the channel.
+Take a position in the final line. Not a summary of what was just said — a judgement, an implication, or a question the evidence leaves open. A script that ends by restating its own middle has no author.
+Vary the structure between videos. If the last scripts opened on an object, open on a person or a moment of discovery instead. A recognisable channel is one where the VOICE is constant and the SHAPE is not."""
+"""Kanalin sabit editoryal kimligi — ses ve arastirma acisi (DW-105).
+
+Kanal sahibinin istegi: videolar sablon gibi degil, bir insanin arastirip
+yazdigi gibi dursun. Kimlik iddiayla degil ICERIKLE kuruluyor; bunun icin
+prompt'a "insan yazdi de" gibi bir cumle KONMADI — konsaydi yalan olurdu ve
+zaten izleyicinin gordugu sey metnin kendisi.
+
+Uc unsur seciliyor cunku ucu de olculebilir bicimde jenerik uretimden ayrisiyor:
+
+  * Sabit aci (yayginn inanis ↔ kanit) — her videoya ayni bakis acisini
+    veriyor, kanal bir sey SAVUNUYOR hale geliyor.
+  * Bilginin sinirini soylemek — "kimse bulamadi", "kayit burada bitiyor".
+    Her seye kesin cevap veren metin sig oldugunun isaretidir.
+  * Degisken yapi — ses sabit, kalip degil. Ayni iskeletle uretilen 20 video
+    tam olarak "toplu uretim" gibi gorunen seydir.
+"""
+
+EDITORYAL_YONERGE = """
+Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
+The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
+NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
+Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
+Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
+TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
+When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
+The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
+Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
+WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
+The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised — never leave the question unanswered in the description. Then 3-5 hashtags.
+Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary — never write a phrase nobody would type into a search box.
+JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
+"""Sozlesmenin geri kalani — kanal kimliginden AYRI tutuluyor.
+
+⚠️ Ikisi de modul duzeyinde sabit. Testler eskiden prompt'u KAYNAK
+METNINDEN dilimliyordu (`index("You are the editorial producer")` ile bir
+sonraki uc-tirnak arasi). Kimlik ayri bir sabite tasininca o dilim koptu ve
+11 test dustu — kusur promptta degil, testin onu okuma bicimindeydi.
+"""
+
+
+def editoryal_sistem_yonergesi() -> str:
+    """Modele giden tam sistem yonergesi. Testler bunu okur, kaynagi degil."""
+    return KANAL_SESI + EDITORYAL_YONERGE
+
+KALIP_ACILISLAR = (
+    "did you know",
+    "have you ever",
+    "imagine a",
+    "imagine you",
+    "picture this",
+    "what if i told you",
+    "welcome back",
+    "in this video",
+    "let me tell you",
+    "here's something",
+)
+
+# "In the 12th century", "By 1130", "Around the 1500s", "1130 was the year..."
+TARIHLE_ACILIS = re.compile(
+    r"^\s*(?:(?:in|by|around|during|about|circa|before|after)\s+(?:the\s+)?\d"
+    r"|\d{3,4}\b"
+    r"|(?:in|by|around|during)\s+the\s+\w+\s+century)",
+    re.IGNORECASE,
+)
+
+
+def kanca_kusuru(metin: str) -> str:
+    """Acilis cumlesinin kusuru — yoksa bos dize.
+
+    ⚠️ Prompt bunlari ZATEN yasakliyordu ve model yine de yapti. Olculdu
+    (2026-08-07): yonerge acikca "do not begin with ... dates" diyor,
+    uretilen senaryo "In the 12th century, Chaco Canyon was a thriving hub..."
+    diye basladi ve yayina cikti.
+
+    Bu, esik hikayesinin (DW-87) aynisi: modele kurali soylemek yetmiyor,
+    KOD kontrol etmeli. Ucuz da — dogrulama hatasi zaten modele geri
+    besleniyor, tek denemede duzeliyor.
+
+    Acilis neden bu kadar onemli: Shorts'ta dagitimi belirleyen sey ilk 2-3
+    saniyedeki tutunma. Tarihle baslayan bir cumle merak degil ders havasi
+    kuruyor ve izleyici o cumleyi bitirmeden kaydiriyor.
+    """
+    ilk = kanca(metin).lower()
+    if not ilk:
+        return "script must open with a sentence"
+    for kalip in KALIP_ACILISLAR:
+        if ilk.startswith(kalip):
+            return (
+                f"opening line starts with the stock phrase {kalip!r}; open with the single "
+                "most surprising concrete detail of this subject instead"
+            )
+    if TARIHLE_ACILIS.match(ilk):
+        return (
+            "opening line starts with a date or century, which reads like a lecture; "
+            "lead with the surprising fact and let the date arrive in a later sentence"
+        )
+    return ""
+
+
 def validate_content_plan(plan: ContentPlan) -> None:
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
+    if kusur := kanca_kusuru(plan.script):
+        raise ValueError(kusur)
     if not 80 <= word_count <= 120:
         raise ValueError(f"script must contain 80-120 words, got {word_count}")
     if not 6 <= len(plan.scenes) <= 10:
@@ -607,21 +717,7 @@ def generate_content_plan(
         for anchor in EDITORIAL_ANCHOR_POOL
         if not is_duplicate_visual_anchor(anchor, previous_anchors)
     ]
-    system = """You are the editorial producer of an English global-history YouTube Shorts channel.
-Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
-The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
-NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
-Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
-Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
-Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
-TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
-When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
-The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
-Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
-WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
-The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised — never leave the question unanswered in the description. Then 3-5 hashtags.
-Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary — never write a phrase nobody would type into a search box.
-JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
+    system = editoryal_sistem_yonergesi()
     if konu:
         # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.
         # Kisitlar (sahne sayisi, capa tekrari, kamu malI gorsel) aynen gecerli.
@@ -1575,6 +1671,16 @@ def run_cycle(
                 ytoto_path=YTOTO_PATH,
             )
             aday_kapatildi = True
+        # Onceki kosumlarin artiklari — bu kosumunkiler DURUYOR (montaja ve
+        # sahne gorsellerine cikan videoya bakarken ihtiyac var). Boylece
+        # diskte her zaman en fazla tek kosumluk artik kaliyor.
+        try:
+            bosalan = temizlik.kosum_sonrasi_temizle(task_id, f"{slot}-attempt-1")
+            record["temizlenen_bayt"] = bosalan
+        except temizlik.TemizlikHatasi as hata:
+            # Temizlik bir YAN IS. Basarisiz olmasi, uretilmis ve yayinlanmis
+            # bir videoyu raporlanmamis hale getirmemeli.
+            record["temizlik_hatasi"] = str(hata)
         return record
     finally:
         LOCK_FILE.unlink(missing_ok=True)
