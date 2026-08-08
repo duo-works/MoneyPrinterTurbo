@@ -215,12 +215,50 @@ def test_status_alanlari_eksiksiz(tmp_path, alan):
     assert alan in _yukle(tmp_path)["status"]
 
 
+# --- Gorunurluk alanlari (DW-104) ----------------------------------------
+
+
+def test_dil_alanlari_gonderiliyor(tmp_path):
+    """⚠️ Ikisi de bostu. Dil belirtilmeyince YouTube basligi ve aciklamayi
+    hangi dilde arayana eslestirecegini TAHMIN etmek zorunda kaliyor.
+
+    Kanal Ingilizce uretiyor; `kanal.py` profilinde `varsayilan_dil="en"`
+    yaziliydi ama MPT yukleyicisi bu bilgiyi hic gondermiyordu.
+    """
+    snippet = _yukle(tmp_path)["snippet"]
+
+    assert snippet["defaultLanguage"] == "en"
+    assert snippet["defaultAudioLanguage"] == "en", "konusmanin dili ayri alan"
+
+
+def test_kategori_egitim(tmp_path):
+    """Onceden "22" (People & Blogs) gidiyordu — vlog kumesi.
+
+    Bu kanal belgesel tarzi tarih anlatiyor; 27 (Education) icerigin ne
+    oldugunu dogru soyluyor.
+    """
+    assert _yukle(tmp_path)["snippet"]["categoryId"] == "27"
+
+
+def test_dil_ve_kategori_cagirandan_gecilebilir(tmp_path):
+    """Kanal ileride baska dile acilirsa varsayilan kilit olmamali."""
+    govde = _yukle(tmp_path, language="tr", category_id="22")
+
+    assert govde["snippet"]["defaultLanguage"] == "tr"
+    assert govde["snippet"]["categoryId"] == "22"
+
+
 # --- Kanal dogrulamasi (DW-104) ------------------------------------------
 
 
 def _dogrula(servis, beklenen):
-    ortam = {youtube_upload.KANAL_ORTAM_ANAHTARI: beklenen} if beklenen else {}
-    with patch.dict(os.environ, ortam, clear=not beklenen):
+    """⚠️ `beklenen_kanal` YAMANIYOR, ortam degiskeni degil.
+
+    Ortami temizlemek yetmiyordu: fonksiyon ortam bos olunca makinedeki
+    config.toml'a dusuyor ve test, calistigi makinenin ayarina gore sonuc
+    veriyordu — gercek kanal ayarlandigi anda "ayar yok" testi dustu.
+    """
+    with patch.object(youtube_upload, "beklenen_kanal", return_value=beklenen):
         return youtube_upload.kanali_dogrula(servis)
 
 

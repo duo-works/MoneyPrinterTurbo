@@ -154,6 +154,26 @@ def get_authenticated_service():
     return build("youtube", "v3", credentials=creds)
 
 
+EGITIM_KATEGORISI = "27"
+"""Education. Onceden "22" (People & Blogs) gonderiliyordu.
+
+Kategori, YouTube'un videoyu hangi konu kumesine yerlestirdigini ve kime
+onerdigini besleyen alanlardan biri. Bu kanal belgesel tarzi tarih anlatiyor;
+"People & Blogs" vlog kumesi ve icerigin ne oldugunu YANLIS soyluyor. Dogru
+kategori bir kazanc iddiasi degil, bir dogruluk duzeltmesi.
+"""
+
+VARSAYILAN_DIL = "en"
+"""`defaultLanguage` + `defaultAudioLanguage` — ikisi de bos gidiyordu.
+
+⚠️ Gorunurluk acisindan en pahali eksikti: dil belirtilmeyince YouTube
+basligi ve aciklamayi hangi dilde arayana eslestirecegini tahmin etmek
+zorunda kaliyor, ceviri/altyazi ozellikleri devreye girmiyor. Kanal Ingilizce
+icerik uretiyor ve `kanal.py` profilinde `varsayilan_dil="en"` yazili — MPT
+yukleyicisi bu bilgiyi hic gondermiyordu.
+"""
+
+
 def upload_video(
     video_path,
     title,
@@ -161,6 +181,8 @@ def upload_video(
     tags,
     privacy_status,
     contains_synthetic_media=True,
+    category_id=EGITIM_KATEGORISI,
+    language=VARSAYILAN_DIL,
 ):
     if not os.path.exists(video_path):
         sys.exit(f"Video dosyasi bulunamadi: {video_path}")
@@ -175,7 +197,10 @@ def upload_video(
             "title": title,
             "description": description,
             "tags": tags,
-            "categoryId": "22",  # People & Blogs
+            "categoryId": category_id,
+            # Metnin dili ve konusmanin dili ayri alanlar; ikisi de gerekli.
+            "defaultLanguage": language,
+            "defaultAudioLanguage": language,
         },
         "status": {
             "privacyStatus": privacy_status,
