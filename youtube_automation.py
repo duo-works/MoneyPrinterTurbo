@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageOps
 import requests
 
 from app.config import config
+import gorsel_olcum
 import notion_kuyrugu
 import temizlik
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
@@ -1201,17 +1202,13 @@ def klip_suresi(ses_saniye: float, sahne_sayisi: int) -> float:
     return round(ses_saniye / sahne_sayisi * KLIP_PAYI, 2)
 
 
-BENZERLIK_ESIGI = 0.80
+BENZERLIK_ESIGI = gorsel_olcum.BENZERLIK_ESIGI
 
-
-def _parmak_izi(yol: Path):
-    """Algisal parmak izi — 16x16 gri kare, ortalamaya gore esiklenmis."""
-    import numpy as np
-
-    with Image.open(yol) as im:
-        gri = im.convert("L").resize((16, 16))
-    dizi = np.asarray(gri, dtype=float)
-    return dizi > dizi.mean()
+# ⚠️ Olcumler `gorsel_olcum`'da: `wikimedia_materials` de ayni parmak izini
+# kullaniyor (arsiv tekrarini yakalamak icin) ama bu modulu import edemez —
+# tersi zaten var, dairesel olurdu. Tek uygulama orada, buradakiler baglanti.
+_parmak_izi = gorsel_olcum.parmak_izi
+ton_yayilimi = gorsel_olcum.ton_yayilimi
 
 
 def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[dict[str, Any]]:
@@ -1244,46 +1241,6 @@ def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[
             if oran >= esik:
                 bulunanlar.append({"sahneler": [a, b], "benzerlik": round(oran, 3)})
     return bulunanlar
-
-
-def ton_yayilimi(dosyalar: list[Path]) -> float:
-    """Kareler arasi renk dagilimi: 0 = hepsi tek ton, 1 = tam dagilmis.
-
-    ⚠️ Ton DAIRESEL bir buyukluk (0° ile 359° komsu), bu yuzden duz ortalama
-    ya da standart sapma yaniltir. Dairesel ortalama vektorunun uzunlugu
-    kullaniliyor; pikseller doygunlukla agirliklandiriliyor ki gri alanlar
-    rastgele tonlariyla olcumu bulandirmasin.
-
-    Olculdu (2026-08-09): tek renge kilitli Mohenjo-Daro kosumu 0,007;
-    isik donusumu eklendikten sonra ayni sahneler 0,433.
-    """
-    import numpy as np
-
-    vektorler = []
-    for yol in dosyalar:
-        if yol is None or not Path(yol).exists():
-            continue
-        try:
-            with Image.open(yol) as im:
-                kucuk = im.convert("HSV").resize((64, 96))
-        except OSError:
-            continue
-        dizi = np.asarray(kucuk, dtype=float)
-        aci = dizi[..., 0] / 255.0 * 2 * np.pi
-        doygunluk = dizi[..., 1] / 255.0
-        vektorler.append(
-            (
-                float(np.sum(np.cos(aci) * doygunluk)),
-                float(np.sum(np.sin(aci) * doygunluk)),
-            )
-        )
-
-    if len(vektorler) < 2:
-        return 0.0
-    acilar = [np.arctan2(y, x) for x, y in vektorler]
-    return round(
-        1.0 - float(np.hypot(np.mean(np.cos(acilar)), np.mean(np.sin(acilar)))), 3
-    )
 
 
 def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:

@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 import requests
 
+import gorsel_olcum
 from met_materials import download_met_scene_material
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
@@ -428,6 +429,36 @@ def _download(
         raise RuntimeError(f"downloaded Commons image is unexpectedly small: {url}")
 
 
+def _izi_ekle(yol: Path, izler: list[Any]) -> None:
+    """Secilen sahnenin parmak izini listeye ekler.
+
+    Okunamayan dosya olcumu degil URETIMI ilgilendirir; burada sessizce
+    geciliyor cunku dosya zaten indirilmis ve kullanilacak.
+    """
+    try:
+        izler.append(gorsel_olcum.parmak_izi(yol))
+    except OSError:
+        pass
+
+
+def _tekrar_mi(yol: Path, izler: list[Any]) -> bool:
+    """Aday, secilmis sahnelerden birinin kopyasi mi.
+
+    ⚠️ Olcum basarisiz olursa `False` doner — okunamayan bir dosya yuzunden
+    mesru bir adayi elemek, tekrari kacirmaktan daha kotu.
+    """
+    if not izler:
+        return False
+    try:
+        iz = gorsel_olcum.parmak_izi(yol)
+    except OSError:
+        return False
+    return any(
+        gorsel_olcum.benzerlik(iz, onceki) >= gorsel_olcum.ARSIV_TEKRAR_ESIGI
+        for onceki in izler
+    )
+
+
 def download_scene_materials(
     topic: str,
     scenes: list[dict[str, str]],
@@ -460,12 +491,22 @@ def download_scene_materials(
     used_met_ids: set[int] = set(excluded_met_ids or set())
     files: list[Path] = []
     credits: list[dict[str, Any]] = []
+    # ⚠️ Secilmis sahnelerin parmak izleri — AYNI GORSELIN iki sahnede
+    # kullanilmasini engellemek icin. `used_titles` bunu yakalayamiyor:
+    # olculdu (2026-08-09, Library of Alexandria) "The Great Library of
+    # Alexandria - Colorized.jpg" ile "Ancientlibraryalex.jpg" AYNI gravurdu
+    # ama dosya adlari tamamen farkli. Kullanici sikayeti birebir buydu:
+    # "bir resmi birden fazla kez kullanmissin".
+    secilmis_izler: list[Any] = []
     for index, scene in enumerate(scenes, 1):
         term = scene.get("search_term", "").strip()
         queries = build_search_queries(topic, term)
         selected = None
         destination = None
         failed_titles: set[str] = set()
+        # Tekrar diye elenen ilk aday: baska hicbir sey bulunamazsa buna
+        # donulur. Delik birakmaktansa benzer bir gorsel iyidir.
+        yedek: tuple[dict[str, Any], Path] | None = None
         for query in queries:
             pages = search_commons(query)
             while True:
@@ -502,11 +543,22 @@ def download_scene_materials(
                         raise
                     failed_titles.add(candidate["title"])
                     continue
+                # ⚠️ Indirdikten SONRA bakiliyor: benzerlik pikselden olculuyor,
+                # baslikla ya da URL'yle bilinemez.
+                if _tekrar_mi(candidate_destination, secilmis_izler):
+                    if yedek is None:
+                        yedek = (candidate, candidate_destination)
+                    failed_titles.add(candidate["title"])
+                    continue
                 selected = candidate
                 destination = candidate_destination
                 break
             if selected:
                 break
+        if (not selected or destination is None) and yedek is not None:
+            # Butun adaylar tekrar cikti — yine de bir gorsel koymak, sahneyi
+            # bos birakmaktan iyi.
+            selected, destination = yedek
         if not selected or destination is None:
             met_result = download_met_scene_material(
                 queries,
@@ -526,10 +578,12 @@ def download_scene_materials(
                 continue
             met_path, met_credit = met_result
             used_met_ids.add(int(met_credit["object_id"]))
+            _izi_ekle(met_path, secilmis_izler)
             files.append(met_path)
             credits.append(met_credit)
             continue
         used_titles.add(selected["title"])
+        _izi_ekle(destination, secilmis_izler)
         files.append(destination)
         credits.append(
             {
