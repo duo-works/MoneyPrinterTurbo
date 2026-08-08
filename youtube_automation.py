@@ -199,31 +199,107 @@ def parse_cli_result(stdout: str) -> dict[str, Any]:
     raise ValueError("CLI output did not contain a complete JSON object")
 
 
+AZAMI_KAYNAK_BASLIGI = 70
+AZAMI_SANATCI = 45
+
+
+def _kaynak_basligi(baslik: str) -> str:
+    """Commons dosya adini okunabilir bir baslik haline getirir.
+
+    Ham ad aciklamaya oldugu gibi girmemeli:
+
+        File:Masonry of the Chaco and other ruins. R. H. Kern delt. P.S.
+        Duval's Lith. Steam Press. Philada. (to accompany) Reports of the
+        (IA dr masonry-of-the-chaco-and-other-ruins-...-0380044).jpg
+
+    Icindeki `(IA ...)` arsiv kimligi ve baski atolyesi kunyesi izleyiciye
+    hicbir sey anlatmiyor; yalnizca yer kapliyor.
+    """
+    ad = re.sub(r"^File:", "", (baslik or "").strip())
+    ad = re.sub(r"\.(jpe?g|png|tiff?|gif|svg|webp)$", "", ad, flags=re.IGNORECASE)
+    ad = ad.replace("_", " ")
+
+    # ⚠️ Kunye KESILIYOR, desenle silinmiyor. Ilk deneme
+    # `[A-Z][\w.\s]*\bdelt\b\..*$` idi ve acgozlu oldugu icin basligin tamamini
+    # yedi — "Pottery found at the Publo Hungo Pavie. R. H. delt." ifadesinde
+    # `[\w.\s]*` bastan itibaren esletti ve geriye bos dize kaldi.
+    kesim = len(ad)
+    for kunye in (r"\bdelt\b", r"\blith\b", r"\bduval", r"\bsteam press\b",
+                  r"\bphilada\b", r"to accompany", r"reports of the", r"\(IA\b"):
+        if bulunan := re.search(kunye, ad, flags=re.IGNORECASE):
+            kesim = min(kesim, bulunan.start())
+    kesilmis = ad[:kesim]
+    # Kunyeden geriye kalan sanatci basharfleri: "... Pavie. R. H. " / "... Kern "
+    kesilmis = re.sub(r"(?:\b[A-Z]\.\s*)+(?:[A-Z][a-z]+\s*)?$", "", kesilmis)
+    ad = (kesilmis or ad).strip(" .-,")
+
+    ad = re.sub(r"\s+", " ", ad).strip(" .-,")
+    if len(ad) > AZAMI_KAYNAK_BASLIGI:
+        ad = ad[:AZAMI_KAYNAK_BASLIGI].rsplit(" ", 1)[0].rstrip(" .-,") + "…"
+    return ad
+
+
+def _kaynak_sanatcisi(sanatci: str) -> str:
+    """Sanatci alanini kisaltir.
+
+    Commons bu alani kitap kunyesinden aldigi icin bazen bir isim degil bir
+    isim listesi geliyor: "Johnston, Joseph E. Marcy, R. B. Simpson. James H.
+    Whiting, W.H.C. Kern, Richard H., 1821-1853". Okunmayan bir satir atif
+    islevi gormuyor; kisaltilamayacak kadar uzunsa dusuruluyor.
+    """
+    ad = re.sub(r"<[^>]+>", "", (sanatci or "")).strip()
+    ad = re.sub(r",?\s*\d{4}-\d{0,4}\.?$", "", ad).strip(" .,")
+    ad = re.sub(r"\s+", " ", ad)
+    return "" if len(ad) > AZAMI_SANATCI else ad
+
+
 def format_commons_credits(credits: list[dict[str, Any]]) -> str:
     """Gorsel kaynaklarini video aciklamasi icin bicimlendirir.
 
     ⚠️ CC BY gorselleri icin atif **hukuki zorunluluk**, nezaket degil: lisans
-    eser sahibinin adini ve lisansi istiyor. DW-99'dan once yalnizca PD/CC0
-    kabul ediliyordu ve atif isteyen bir sey yoktu; basliktaki "Public-domain /
-    CC0" ifadesi artik yaniltici olurdu.
+    eser sahibinin adini, lisansi ve kaynagi istiyor. Kamu mali / CC0 icin ise
+    zorunluluk yok — kaynak gostermek nezaket.
 
-    Bu yuzden satirlar zenginlestirildi: baglanti + varsa sanatci + lisans adi.
+    Bicimi bu ayrim belirliyor. Once ham baglanti listesi yaziliyordu ve uc
+    gorsel aciklamanin 1200 karakterini yiyordu; yuzde-kodlu Commons adresleri
+    okunmuyor bile. Artik:
+
+      * Hepsi kamu mali/CC0 ise: tek basliK altinda temiz baslik + sanatci.
+        Baglanti yok, cunku gerekmiyor.
+      * Aralarinda CC BY varsa: YALNIZCA o satirlar baglanti ve lisans adi
+        tasiyor — zorunlulugun oldugu yerde tam, olmadigi yerde sade.
+
     Ayni kaynak birden cok sahnede kullanildiysa bir kez yaziliyor.
     """
+    from wikimedia_materials import is_safe_license
+
     satirlar: list[str] = []
     gorulen: set[str] = set()
+    hepsi_serbest = True
     for credit in credits:
         link = str(credit.get("source_url", "")).strip()
         if not link or link in gorulen:
             continue
         gorulen.add(link)
-        sanatci = str(credit.get("artist", "")).strip()
         lisans = str(credit.get("license", "")).strip()
-        ek = " · ".join(parca for parca in (sanatci, lisans) if parca)
-        satirlar.append(f"- {link}" + (f" ({ek})" if ek else ""))
+        parcalar = [_kaynak_basligi(str(credit.get("title", "")))]
+        if sanatci := _kaynak_sanatcisi(str(credit.get("artist", ""))):
+            parcalar.append(sanatci)
+        # ⚠️ Kosul "CC BY mi" degil "kamu mali/CC0 DEGIL mi". Bilinmeyen bir
+        # lisansi serbest saymak, atifi tam da emin olmadigimiz yerde atlamak
+        # olurdu; yon asimetrik — gereksiz atif zarar vermiyor, eksik atif
+        # lisans ihlali.
+        if not is_safe_license(lisans):
+            hepsi_serbest = False
+            parcalar.append(lisans)
+            parcalar.append(link)
+        satirlar.append("• " + " — ".join(p for p in parcalar if p))
     if not satirlar:
         return ""
-    return "Visual sources (public domain, CC0 or CC BY):\n" + "\n".join(satirlar)
+    baslik = "Images — Wikimedia Commons"
+    if hepsi_serbest:
+        baslik += " (public domain / CC0)"
+    return baslik + "\n" + "\n".join(satirlar)
 
 
 def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
