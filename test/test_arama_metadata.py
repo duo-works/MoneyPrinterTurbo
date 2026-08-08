@@ -19,8 +19,8 @@ KAYNAK = Path(ya.__file__).read_text(encoding="utf-8")
 
 
 def _sistem_yonergesi() -> str:
-    i = KAYNAK.index("You are the editorial producer")
-    return KAYNAK[i : KAYNAK.index('"""', i)]
+    """Modele giden metnin kendisi — kaynak dilimleme degil (bkz. DW-105)."""
+    return ya.editoryal_sistem_yonergesi()
 
 
 def test_baslik_arama_ifadesi_olarak_isteniyor():

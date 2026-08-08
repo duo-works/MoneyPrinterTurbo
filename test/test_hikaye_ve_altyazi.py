@@ -15,8 +15,16 @@ KAYNAK = Path(ya.__file__).read_text(encoding="utf-8")
 
 
 def _sistem_yonergesi() -> str:
-    i = KAYNAK.index("You are the editorial producer")
-    return KAYNAK[i : KAYNAK.index('"""', i)]
+    """⚠️ Eskiden prompt KAYNAK METNINDEN dilimleniyordu:
+
+        i = KAYNAK.index("You are the editorial producer")
+        return KAYNAK[i : KAYNAK.index('\"\"\"', i)]
+
+    Prompt iki sabite ayrilinca (DW-105: kanal kimligi + sozlesme) o dilim
+    ilkinde bitti ve 11 test dustu — hicbiri gercek bir kusur degildi.
+    Artik modele giden metnin KENDISI okunuyor.
+    """
+    return ya.editoryal_sistem_yonergesi()
 
 
 # --- Altyazi bicimi (DW-103) ---------------------------------------------
