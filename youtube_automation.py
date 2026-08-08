@@ -975,6 +975,7 @@ GORSEL_DIL = (
 )
 """Sahne basina gorsel dil — tek bir estetige sabitlenmez.
 
+
 ⚠️ Olculdu (2026-08-06, DW-97): prompt "realistic archival-documentary
 aesthetic" diyordu ve **her sahne sepya** cikiyordu. Uretilen videolarin
 gorsellerinin %60'i AI (Commons her sahneyi besleyemiyor), dolayisiyla bu tek
@@ -991,6 +992,106 @@ ayakta duran sey → gercek renkli fotograf, gecmisteki olay → renkli tarihi
 resim, gercekten arsivlik olan → sepya. Isik, saat, hava ve mesafe de
 sahneden sahneye degistiriliyor; ardisik iki kare birbirine benzememeli.
 """
+
+KARE_DILI = (
+    "a wide establishing shot with the subject small in a large landscape, horizon visible",
+    "a tight close-up on surface texture and craftsmanship, filling the frame, shallow depth",
+    "a human figure inside the frame for scale, seen from behind or in profile, mid-distance",
+    "a low angle from ground level looking steeply up, sky behind the subject",
+    "an elevated or overhead view looking down, showing layout and pattern",
+    "a shot at golden hour or dusk with long raking shadows and warm side light",
+    "a view from inside or through an opening — a doorway, an arch, a gap — framing the subject",
+    "an off-centre composition with the subject at one edge and open space beside it",
+    "a detail of a single object held, carried or worked on by hands",
+    "an overcast or rain-washed view with cool, muted, high-contrast light",
+)
+"""Sahne basina kadraj — sahne numarasina gore donusumlu.
+
+⚠️ Olculdu (2026-08-08, Nazca kosumu): 8 sahnenin ikisi %84 benzer cikti
+(algisal parmak izi) ve ton yayilimi 0,121'de kaldi — DW-97'nin ulastigi
+0,17'nin altinda.
+
+Sebep promptun KENDI ICINDEKI celiskiydi: `GORSEL_DIL` "ardisik iki kare
+birbirine benzememeli" diyor, ama hemen ardindan HER sahneye ayni cumle
+gidiyordu — "One clear focal subject, strong vertical composition". Modelden
+cesitlilik isteyip tek bir kompozisyon tarif etmek.
+
+Cozum "cesitli ol" demeyi tekrarlamak degil, her sahneye BASKA bir kadraj
+vermek. Liste bir kurgucunun cekim listesi gibi: genel plan, doku detayi,
+olcek icin insan figuru, alt aci, tepeden gorunum, yan isik, cerceve icinden.
+
+Donusumlu secildigi icin ek maliyet yok. Liste 10 uzunlukta ve sahne sayisi
+6-10; ortak bolen olmadigi icin ayni sahne numarasi her videoda ayni kadraji
+almiyor.
+"""
+
+
+def kare_dili(sahne_no: int) -> str:
+    """`sahne_no` icin kadraj tarifi (1'den baslar)."""
+    return KARE_DILI[(sahne_no - 1) % len(KARE_DILI)]
+
+
+BENZERLIK_ESIGI = 0.80
+
+
+def _parmak_izi(yol: Path):
+    """Algisal parmak izi — 16x16 gri kare, ortalamaya gore esiklenmis."""
+    import numpy as np
+
+    with Image.open(yol) as im:
+        gri = im.convert("L").resize((16, 16))
+    dizi = np.asarray(gri, dtype=float)
+    return dizi > dizi.mean()
+
+
+def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[dict[str, Any]]:
+    """Birbirine fazla benzeyen sahne ciftleri.
+
+    ⚠️ Bu bir KAPI degil, bir OLCUM. Sahneyi reddetmiyor; benzerligi kayda
+    yaziyor ki sorun montaja gozle bakmakla degil sayiyla izlensin.
+
+    Kapi yapmamanin sebebi: esigin dogru degeri henuz bilinmiyor. Nazca
+    kosumunda %84'luk cift gercekten fazla benzerdi, ama ayni anitin iki
+    farkli acisi da yuksek skor alabilir ve onu reddetmek videoyu konusundan
+    uzaklastirirdi. Once birkac kosumda dagilim olculecek.
+    """
+    import numpy as np
+
+    izler: dict[int, Any] = {}
+    for sira, yol in enumerate(dosyalar, 1):
+        if yol is None or not Path(yol).exists():
+            continue
+        try:
+            izler[sira] = _parmak_izi(Path(yol))
+        except OSError:
+            continue
+
+    bulunanlar: list[dict[str, Any]] = []
+    numaralar = sorted(izler)
+    for i, a in enumerate(numaralar):
+        for b in numaralar[i + 1 :]:
+            oran = float(np.mean(izler[a] == izler[b]))
+            if oran >= esik:
+                bulunanlar.append({"sahneler": [a, b], "benzerlik": round(oran, 3)})
+    return bulunanlar
+
+
+def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
+    """Benzerlik olcumunu kosumun yanina yazar.
+
+    Olcum bir YAN IS: basarisiz olursa video uretimi durmamali. Bu yuzden
+    her istisna yutuluyor — kaydin yoklugu, videonun yoklugundan iyidir.
+    """
+    try:
+        bulunanlar = benzer_kareler([d for d in dosyalar if d is not None])
+        hedef_dizin.mkdir(parents=True, exist_ok=True)
+        (hedef_dizin / "benzerlik.json").write_text(
+            json.dumps(bulunanlar, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        if bulunanlar:
+            print(f"benzer kareler: {bulunanlar}", flush=True)
+    except Exception as hata:  # noqa: BLE001 — olcum uretimi durduramaz
+        print(f"benzerlik olculemedi: {hata}", flush=True)
 
 
 def generate_ai_scene_materials(
@@ -1026,7 +1127,11 @@ def generate_ai_scene_materials(
             # ⚠️ Gorsel dil sahnenin KONUSUNA gore secilir, tek bir estetige
             # sabitlenmez — bkz. `GORSEL_DIL`.
             + GORSEL_DIL
-            + " One clear focal subject, strong vertical composition, period-appropriate "
+            # ⚠️ Kadraj sahne basina DEGISIYOR. Burada eskiden HER sahneye ayni
+            # sabit kompozisyon cumlesi gidiyor ve `GORSEL_DIL`in cesitlilik
+            # istegini bozuyordu — gerekce `KARE_DILI` docstring'inde.
+            + f" Frame this scene as {kare_dili(index)}. "
+            + "Strong vertical composition, period-appropriate "
             "architecture, clothing, tools, and materials. No modern objects unless the scene is "
             "explicitly set today, no logos, no captions, no text, no watermark, and no invented "
             "event presented as a surviving photograph."
@@ -1155,6 +1260,7 @@ def run_generator(
         credits = []
     else:
         material_files = _delikleri_doldur(plan, material_files, material_dir)
+    _benzerligi_kaydet(material_files, material_dir)
     source_montage = create_source_montage(material_files, attempt)
     source_review = review_source_materials(plan, source_montage)
     if not AI_VISUAL_FALLBACK_ENABLED and (

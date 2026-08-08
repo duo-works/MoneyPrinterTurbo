@@ -39,7 +39,9 @@ INCELEMELER = OTOMASYON / "reviews"
 DURUM = OTOMASYON / "state.json"
 KILIT = OTOMASYON / "automation.lock"
 
-KORUNAN_ADLAR = frozenset({"state.json", "credits.json", "final-1.mp4", "script.json"})
+KORUNAN_ADLAR = frozenset(
+    {"state.json", "credits.json", "final-1.mp4", "script.json", "benzerlik.json"}
+)
 """Adi bunlardan biri olan dosyaya ara dosya muamelesi YAPILMAZ.
 
 Ad bazli koruma, dizin bazli mantik yanlis giderse diye ikinci bir kilit.
