@@ -1246,22 +1246,71 @@ def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[
     return bulunanlar
 
 
+def ton_yayilimi(dosyalar: list[Path]) -> float:
+    """Kareler arasi renk dagilimi: 0 = hepsi tek ton, 1 = tam dagilmis.
+
+    ⚠️ Ton DAIRESEL bir buyukluk (0° ile 359° komsu), bu yuzden duz ortalama
+    ya da standart sapma yaniltir. Dairesel ortalama vektorunun uzunlugu
+    kullaniliyor; pikseller doygunlukla agirliklandiriliyor ki gri alanlar
+    rastgele tonlariyla olcumu bulandirmasin.
+
+    Olculdu (2026-08-09): tek renge kilitli Mohenjo-Daro kosumu 0,007;
+    isik donusumu eklendikten sonra ayni sahneler 0,433.
+    """
+    import numpy as np
+
+    vektorler = []
+    for yol in dosyalar:
+        if yol is None or not Path(yol).exists():
+            continue
+        try:
+            with Image.open(yol) as im:
+                kucuk = im.convert("HSV").resize((64, 96))
+        except OSError:
+            continue
+        dizi = np.asarray(kucuk, dtype=float)
+        aci = dizi[..., 0] / 255.0 * 2 * np.pi
+        doygunluk = dizi[..., 1] / 255.0
+        vektorler.append(
+            (
+                float(np.sum(np.cos(aci) * doygunluk)),
+                float(np.sum(np.sin(aci) * doygunluk)),
+            )
+        )
+
+    if len(vektorler) < 2:
+        return 0.0
+    acilar = [np.arctan2(y, x) for x, y in vektorler]
+    return round(
+        1.0 - float(np.hypot(np.mean(np.cos(acilar)), np.mean(np.sin(acilar)))), 3
+    )
+
+
 def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
-    """Benzerlik olcumunu kosumun yanina yazar.
+    """Gorsel olcumleri kosumun yanina yazar.
 
     Olcum bir YAN IS: basarisiz olursa video uretimi durmamali. Bu yuzden
     her istisna yutuluyor — kaydin yoklugu, videonun yoklugundan iyidir.
+
+    ⚠️ Iki AYRI eksen olculuyor ve biri iyilesirken digeri kotulesebilir:
+    Mohenjo-Daro kosumunda yapisal tekrar sifirdi ama ton yayilimi 0,007'ydi.
+    Tek sayiya bakmak "duzeldi" yanilgisi verirdi.
     """
     try:
-        bulunanlar = benzer_kareler([d for d in dosyalar if d is not None])
+        gecerli = [d for d in dosyalar if d is not None]
+        kayit = {
+            "benzer_kareler": benzer_kareler(gecerli),
+            "ton_yayilimi": ton_yayilimi(gecerli),
+        }
         hedef_dizin.mkdir(parents=True, exist_ok=True)
         (hedef_dizin / "benzerlik.json").write_text(
-            json.dumps(bulunanlar, ensure_ascii=False, indent=2), encoding="utf-8"
+            json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        if bulunanlar:
-            print(f"benzer kareler: {bulunanlar}", flush=True)
+        print(f"ton yayilimi: {kayit['ton_yayilimi']}", flush=True)
+        if kayit["benzer_kareler"]:
+            print(f"benzer kareler: {kayit['benzer_kareler']}", flush=True)
     except Exception as hata:  # noqa: BLE001 — olcum uretimi durduramaz
-        print(f"benzerlik olculemedi: {hata}", flush=True)
+        print(f"gorsel olcum yapilamadi: {hata}", flush=True)
 
 
 def generate_ai_scene_materials(

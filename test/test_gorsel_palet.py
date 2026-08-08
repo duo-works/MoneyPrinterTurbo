@@ -234,6 +234,71 @@ def test_ses_ayarlari_tek_yerde():
     assert "str(klip)" in govde
 
 
+# --- Palet olcumu ---------------------------------------------------------
+
+
+def _renkli_kare(yol: Path, hsv_tonu: int) -> Path:
+    from PIL import Image
+
+    Image.new("HSV", (64, 96), (hsv_tonu, 200, 180)).convert("RGB").save(yol)
+    return yol
+
+
+def test_tek_renkli_kosum_dusuk_yayilim_veriyor(tmp_path):
+    """Olculdu: Mohenjo-Daro kosumu 0,007 — video tek renkli gorunuyordu."""
+    kareler = [_renkli_kare(tmp_path / f"{i}.png", 20 + i) for i in range(5)]
+
+    assert ya.ton_yayilimi(kareler) < 0.05
+
+
+def test_dagilmis_palet_yuksek_yayilim_veriyor(tmp_path):
+    kareler = [_renkli_kare(tmp_path / f"{i}.png", t) for i, t in enumerate((0, 60, 120, 180))]
+
+    assert ya.ton_yayilimi(kareler) > 0.5
+
+
+def test_ton_dairesel_olarak_olculuyor(tmp_path):
+    """⚠️ Duz ortalama yaniltir: 0° ile 359° komsu tonlar, uzak degil.
+
+    Duz hesapla bu iki kare "maksimum farkli" cikar ve tek renkli bir kosum
+    cesitli gorunurdu.
+    """
+    kareler = [
+        _renkli_kare(tmp_path / "a.png", 1),
+        _renkli_kare(tmp_path / "b.png", 254),
+    ]
+
+    assert ya.ton_yayilimi(kareler) < 0.05
+
+
+def test_olcum_tek_kareyle_patlamiyor(tmp_path):
+    assert ya.ton_yayilimi([_renkli_kare(tmp_path / "a.png", 30)]) == 0.0
+    assert ya.ton_yayilimi([]) == 0.0
+
+
+def test_okunamayan_dosya_olcumu_dusurmuyor(tmp_path):
+    bozuk = tmp_path / "bozuk.png"
+    bozuk.write_bytes(b"bu bir resim degil")
+
+    assert ya.ton_yayilimi([bozuk, _renkli_kare(tmp_path / "a.png", 30)]) == 0.0
+
+
+def test_iki_eksen_de_kaydediliyor(tmp_path):
+    """⚠️ Biri iyilesirken digeri kotulesebilir — Mohenjo-Daro'da tam oyle oldu:
+    yapisal tekrar sifir, ton yayilimi 0,007. Tek sayi "duzeldi" yanilgisi verir.
+    """
+    import json
+
+    kareler = [_renkli_kare(tmp_path / f"{i}.png", 20 + i * 40) for i in range(3)]
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet(kareler, hedef)
+    kayit = json.loads((hedef / "benzerlik.json").read_text(encoding="utf-8"))
+
+    assert "benzer_kareler" in kayit
+    assert "ton_yayilimi" in kayit
+
+
 def test_klip_suresi_ondalik_gecebiliyor():
     """Tamsayi kisiti ikisinden birini kacinilmaz kiliyordu (35,88 / 7 = 5,13)."""
     from app.models.schema import VideoParams
