@@ -184,6 +184,30 @@ def test_okunmayacak_kadar_uzun_sanatci_dusuruluyor():
     assert "Johnston" not in metin
 
 
+def test_cc_by_de_uzun_sanatci_dusurulmuyor_kisaltiliyor():
+    """⚠️ Kamu maliyla ayni davranmak ATIF IHLALI olurdu.
+
+    CC BY'de eser sahibinin adi lisansin acikca istedigi unsur. Uzun diye
+    dusurmek, baglanti ve lisans adi yazilmis ama ADI yazilmamis bir atif
+    uretirdi — yani gecersiz bir atif.
+    """
+    uzun = "Johnston, Joseph E. Marcy, R. B. Simpson. James H. Whiting, W.H.C. Kern"
+    metin = format_commons_credits(
+        [
+            {
+                "source_url": "https://x/F.jpg",
+                "title": "File:F.jpg",
+                "license": "CC BY 4.0",
+                "artist": uzun,
+            }
+        ]
+    )
+
+    assert "Johnston" in metin, "CC BY'de sanatci yazilmali"
+    assert "CC BY 4.0" in metin
+    assert "https://x/F.jpg" in metin
+
+
 def test_kisa_sanatci_korunuyor():
     metin = format_commons_credits(
         [

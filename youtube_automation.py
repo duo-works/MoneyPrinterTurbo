@@ -239,18 +239,26 @@ def _kaynak_basligi(baslik: str) -> str:
     return ad
 
 
-def _kaynak_sanatcisi(sanatci: str) -> str:
+def _kaynak_sanatcisi(sanatci: str, *, zorunlu: bool = False) -> str:
     """Sanatci alanini kisaltir.
 
     Commons bu alani kitap kunyesinden aldigi icin bazen bir isim degil bir
     isim listesi geliyor: "Johnston, Joseph E. Marcy, R. B. Simpson. James H.
     Whiting, W.H.C. Kern, Richard H., 1821-1853". Okunmayan bir satir atif
-    islevi gormuyor; kisaltilamayacak kadar uzunsa dusuruluyor.
+    islevi gormuyor.
+
+    ⚠️ `zorunlu` ayrimi hukuki. Kamu mali/CC0'da sanatci nezaket, uzunsa
+    dusuruluyor. CC BY'de eser sahibinin adi lisansin ISTEDIGI unsur — orada
+    dusurmek atif ihlali olurdu, bu yuzden kisaltiliyor ama yaziliyor.
     """
     ad = re.sub(r"<[^>]+>", "", (sanatci or "")).strip()
     ad = re.sub(r",?\s*\d{4}-\d{0,4}\.?$", "", ad).strip(" .,")
     ad = re.sub(r"\s+", " ", ad)
-    return "" if len(ad) > AZAMI_SANATCI else ad
+    if len(ad) <= AZAMI_SANATCI:
+        return ad
+    if not zorunlu:
+        return ""
+    return ad[:AZAMI_SANATCI].rsplit(" ", 1)[0].rstrip(" .,") + "…"
 
 
 def format_commons_credits(credits: list[dict[str, Any]]) -> str:
@@ -282,14 +290,15 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
             continue
         gorulen.add(link)
         lisans = str(credit.get("license", "")).strip()
-        parcalar = [_kaynak_basligi(str(credit.get("title", "")))]
-        if sanatci := _kaynak_sanatcisi(str(credit.get("artist", ""))):
-            parcalar.append(sanatci)
         # ⚠️ Kosul "CC BY mi" degil "kamu mali/CC0 DEGIL mi". Bilinmeyen bir
         # lisansi serbest saymak, atifi tam da emin olmadigimiz yerde atlamak
         # olurdu; yon asimetrik — gereksiz atif zarar vermiyor, eksik atif
         # lisans ihlali.
-        if not is_safe_license(lisans):
+        serbest = is_safe_license(lisans)
+        parcalar = [_kaynak_basligi(str(credit.get("title", "")))]
+        if sanatci := _kaynak_sanatcisi(str(credit.get("artist", "")), zorunlu=not serbest):
+            parcalar.append(sanatci)
+        if not serbest:
             hepsi_serbest = False
             parcalar.append(lisans)
             parcalar.append(link)
