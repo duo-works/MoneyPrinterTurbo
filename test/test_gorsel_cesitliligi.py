@@ -183,9 +183,38 @@ def test_belge_taramalari_eleniyor(baslik):
 @pytest.mark.parametrize(
     "baslik",
     [
+        "File:Pottery found at the Pueblo Hungo Pavie, Pl. 32.jpg",
+        "File:Plate 14 - Skull specimens.jpg",
+        "File:Fig. 7 cross-section of the aqueduct.jpg",
+        "File:Diagram of Inca terracing.png",
+        "File:Table of Roman emperors.jpg",
+        "File:Inscription from the temple wall.jpg",
+    ],
+)
+def test_bilimsel_yayin_plakalari_da_eleniyor(baslik):
+    """Olculdu (2026-08-07): "Pottery found at the Pueblo Hungo Pavie" bir
+    KITAP SAYFASIYDI — ustunde "Senate Ex. doc." ve "Pl. 32" yazili, beyaz
+    zeminde cizim panelleri.
+
+    Baslikta belge kelimesi gecmedigi icin ilk filtre kacirdi. Bunlar
+    arkeolojik olarak degerli ama dikey videoda izleyiciye hicbir sey
+    anlatmiyor.
+    """
+    assert wm.belge_taramasi(baslik)
+
+
+@pytest.mark.parametrize(
+    "baslik",
+    [
         "File:Colosseum in Rome, Italy - April 2007.jpg",
         "File:Karnak Temple hypostyle hall columns.jpg",
         "File:Philip Galle - Lighthouse of Alexandria.jpg",
+        # ⚠️ Filtre fazla agresif olmamali: bunlar gercek gorsel.
+        "File:Machu Picchu, Peru (2018).jpg",
+        "File:Chaco Canyon Pueblo Bonito aerial.jpg",
+        "File:The Lighthouse of Alexandria by Magdalena van de Passe.jpg",
+        "File:Terracotta Army pit 1 soldiers.jpg",
+        "File:Lascar Llamas at Machu Picchu.jpg",
     ],
 )
 def test_gercek_gorseller_elenmiyor(baslik):

@@ -176,6 +176,24 @@ BELGE_ISARETLERI = (
     "stamp of",
     "map of",
     "plan of",
+    # ⚠️ Bilimsel yayin plakalari — 2026-08-07'de olculdu. "Pottery found at
+    # the Pueblo Hungo Pavie" bir kitap sayfasiydi: ustunde "Senate Ex. doc."
+    # ve "Pl. 32" yazili, beyaz zeminde cizim panelleri. Baslikta belge
+    # kelimesi gecmedigi icin filtre kacirdi. Bunlar arkeolojik olarak degerli
+    # ama dikey videoda izleyiciye hicbir sey anlatmiyor.
+    "plate ",
+    "pl. ",
+    "fig. ",
+    "figure ",
+    "engraving of",
+    "lithograph",
+    "diagram",
+    "cross-section",
+    "cross section",
+    "table of",
+    "chart of",
+    "inscription",
+    "specimen",
 )
 """Basligi bunlari iceren Commons dosyasi bir BELGE taramasidir, resim degil.
 
