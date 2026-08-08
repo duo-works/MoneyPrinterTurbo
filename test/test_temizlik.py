@@ -208,6 +208,27 @@ def test_kosum_sonrasi_onceki_kosumlari_temizliyor(depo):
     assert (eski / "final-1.mp4").exists(), "video hicbir kosulda burada silinmez"
 
 
+def test_su_anki_kosumun_montaji_korunuyor(depo):
+    """⚠️ Olculdu (2026-08-09): Mohenjo-Daro kosumunun montaji, O KOSUMUN KENDI
+    temizligi tarafindan silindi ve cikan videoya bakilamadi.
+
+    Sebep: `reviews/` duz dosya tutuyor (`<gorev>-montage.jpg`,
+    `source-<slot>.jpg`) ama koruma yalnizca DIZIN adina bakiyordu. Montaj
+    kalite kontrolunun tek gorsel kaydi; kaybi "video ciktisina bak" adimini
+    imkansiz yapiyor.
+    """
+    incelemeler = depo / "youtube_automation" / "reviews"
+    (incelemeler / "aktif-montage.jpg").write_bytes(b"jpg")
+    (incelemeler / "source-2026-08-09-01-attempt-1.jpg").write_bytes(b"jpg")
+    (incelemeler / "eski-montage.jpg").write_bytes(b"jpg")
+
+    temizlik.kosum_sonrasi_temizle("aktif", "2026-08-09-01-attempt-1")
+
+    assert (incelemeler / "aktif-montage.jpg").exists()
+    assert (incelemeler / "source-2026-08-09-01-attempt-1.jpg").exists()
+    assert not (incelemeler / "eski-montage.jpg").exists(), "onceki kosum gitmeli"
+
+
 def test_kosum_sonrasi_malzeme_klasorunu_de_koruyor(depo):
     """Gorev kimligi ve kosum adi FARKLI — ikisi de korunmali.
 

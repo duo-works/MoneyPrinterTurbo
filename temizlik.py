@@ -150,8 +150,18 @@ def ara_dosyalar(*, koru: set[str] | None = None) -> Plan:
             ]
 
     # 4) Kalite incelemesi icin uretilmis montajlar.
+    #
+    # ⚠️ Burada `koru` DOSYA ADINA bakiyor, dizin adina degil. `reviews/` duz
+    # dosya tutuyor — `<gorev_kimligi>-montage.jpg`, `source-<slot>.jpg` — ve
+    # ilk surumde yalnizca dizinler korundugu icin SU ANKI kosumun montaji da
+    # siliniyordu. Olculdu: Mohenjo-Daro kosumunun montaji, o kosumun kendi
+    # temizligi tarafindan silindi ve cikan videoya bakilamadi.
     if INCELEMELER.is_dir():
-        plan.dosyalar += [p for p in INCELEMELER.iterdir() if p.is_file()]
+        plan.dosyalar += [
+            p
+            for p in INCELEMELER.iterdir()
+            if p.is_file() and not any(k and k in p.name for k in koru)
+        ]
 
     plan.dosyalar = [
         d for d in plan.dosyalar if _iceride(d) and d.name not in KORUNAN_ADLAR
