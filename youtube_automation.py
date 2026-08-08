@@ -23,6 +23,7 @@ import requests
 
 from app.config import config
 import notion_kuyrugu
+import temizlik
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
 
@@ -1670,6 +1671,16 @@ def run_cycle(
                 ytoto_path=YTOTO_PATH,
             )
             aday_kapatildi = True
+        # Onceki kosumlarin artiklari — bu kosumunkiler DURUYOR (montaja ve
+        # sahne gorsellerine cikan videoya bakarken ihtiyac var). Boylece
+        # diskte her zaman en fazla tek kosumluk artik kaliyor.
+        try:
+            bosalan = temizlik.kosum_sonrasi_temizle(task_id, f"{slot}-attempt-1")
+            record["temizlenen_bayt"] = bosalan
+        except temizlik.TemizlikHatasi as hata:
+            # Temizlik bir YAN IS. Basarisiz olmasi, uretilmis ve yayinlanmis
+            # bir videoyu raporlanmamis hale getirmemeli.
+            record["temizlik_hatasi"] = str(hata)
         return record
     finally:
         LOCK_FILE.unlink(missing_ok=True)
