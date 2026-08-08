@@ -199,31 +199,116 @@ def parse_cli_result(stdout: str) -> dict[str, Any]:
     raise ValueError("CLI output did not contain a complete JSON object")
 
 
+AZAMI_KAYNAK_BASLIGI = 70
+AZAMI_SANATCI = 45
+
+
+def _kaynak_basligi(baslik: str) -> str:
+    """Commons dosya adini okunabilir bir baslik haline getirir.
+
+    Ham ad aciklamaya oldugu gibi girmemeli:
+
+        File:Masonry of the Chaco and other ruins. R. H. Kern delt. P.S.
+        Duval's Lith. Steam Press. Philada. (to accompany) Reports of the
+        (IA dr masonry-of-the-chaco-and-other-ruins-...-0380044).jpg
+
+    Icindeki `(IA ...)` arsiv kimligi ve baski atolyesi kunyesi izleyiciye
+    hicbir sey anlatmiyor; yalnizca yer kapliyor.
+    """
+    ad = re.sub(r"^File:", "", (baslik or "").strip())
+    ad = re.sub(r"\.(jpe?g|png|tiff?|gif|svg|webp)$", "", ad, flags=re.IGNORECASE)
+    ad = ad.replace("_", " ")
+
+    # ⚠️ Kunye KESILIYOR, desenle silinmiyor. Ilk deneme
+    # `[A-Z][\w.\s]*\bdelt\b\..*$` idi ve acgozlu oldugu icin basligin tamamini
+    # yedi — "Pottery found at the Publo Hungo Pavie. R. H. delt." ifadesinde
+    # `[\w.\s]*` bastan itibaren esletti ve geriye bos dize kaldi.
+    kesim = len(ad)
+    for kunye in (r"\bdelt\b", r"\blith\b", r"\bduval", r"\bsteam press\b",
+                  r"\bphilada\b", r"to accompany", r"reports of the", r"\(IA\b"):
+        if bulunan := re.search(kunye, ad, flags=re.IGNORECASE):
+            kesim = min(kesim, bulunan.start())
+    kesilmis = ad[:kesim]
+    # Kunyeden geriye kalan sanatci basharfleri: "... Pavie. R. H. " / "... Kern "
+    kesilmis = re.sub(r"(?:\b[A-Z]\.\s*)+(?:[A-Z][a-z]+\s*)?$", "", kesilmis)
+    ad = (kesilmis or ad).strip(" .-,")
+
+    ad = re.sub(r"\s+", " ", ad).strip(" .-,")
+    if len(ad) > AZAMI_KAYNAK_BASLIGI:
+        ad = ad[:AZAMI_KAYNAK_BASLIGI].rsplit(" ", 1)[0].rstrip(" .-,") + "…"
+    return ad
+
+
+def _kaynak_sanatcisi(sanatci: str, *, zorunlu: bool = False) -> str:
+    """Sanatci alanini kisaltir.
+
+    Commons bu alani kitap kunyesinden aldigi icin bazen bir isim degil bir
+    isim listesi geliyor: "Johnston, Joseph E. Marcy, R. B. Simpson. James H.
+    Whiting, W.H.C. Kern, Richard H., 1821-1853". Okunmayan bir satir atif
+    islevi gormuyor.
+
+    ⚠️ `zorunlu` ayrimi hukuki. Kamu mali/CC0'da sanatci nezaket, uzunsa
+    dusuruluyor. CC BY'de eser sahibinin adi lisansin ISTEDIGI unsur — orada
+    dusurmek atif ihlali olurdu, bu yuzden kisaltiliyor ama yaziliyor.
+    """
+    ad = re.sub(r"<[^>]+>", "", (sanatci or "")).strip()
+    ad = re.sub(r",?\s*\d{4}-\d{0,4}\.?$", "", ad).strip(" .,")
+    ad = re.sub(r"\s+", " ", ad)
+    if len(ad) <= AZAMI_SANATCI:
+        return ad
+    if not zorunlu:
+        return ""
+    return ad[:AZAMI_SANATCI].rsplit(" ", 1)[0].rstrip(" .,") + "…"
+
+
 def format_commons_credits(credits: list[dict[str, Any]]) -> str:
     """Gorsel kaynaklarini video aciklamasi icin bicimlendirir.
 
     ⚠️ CC BY gorselleri icin atif **hukuki zorunluluk**, nezaket degil: lisans
-    eser sahibinin adini ve lisansi istiyor. DW-99'dan once yalnizca PD/CC0
-    kabul ediliyordu ve atif isteyen bir sey yoktu; basliktaki "Public-domain /
-    CC0" ifadesi artik yaniltici olurdu.
+    eser sahibinin adini, lisansi ve kaynagi istiyor. Kamu mali / CC0 icin ise
+    zorunluluk yok — kaynak gostermek nezaket.
 
-    Bu yuzden satirlar zenginlestirildi: baglanti + varsa sanatci + lisans adi.
+    Bicimi bu ayrim belirliyor. Once ham baglanti listesi yaziliyordu ve uc
+    gorsel aciklamanin 1200 karakterini yiyordu; yuzde-kodlu Commons adresleri
+    okunmuyor bile. Artik:
+
+      * Hepsi kamu mali/CC0 ise: tek basliK altinda temiz baslik + sanatci.
+        Baglanti yok, cunku gerekmiyor.
+      * Aralarinda CC BY varsa: YALNIZCA o satirlar baglanti ve lisans adi
+        tasiyor — zorunlulugun oldugu yerde tam, olmadigi yerde sade.
+
     Ayni kaynak birden cok sahnede kullanildiysa bir kez yaziliyor.
     """
+    from wikimedia_materials import is_safe_license
+
     satirlar: list[str] = []
     gorulen: set[str] = set()
+    hepsi_serbest = True
     for credit in credits:
         link = str(credit.get("source_url", "")).strip()
         if not link or link in gorulen:
             continue
         gorulen.add(link)
-        sanatci = str(credit.get("artist", "")).strip()
         lisans = str(credit.get("license", "")).strip()
-        ek = " · ".join(parca for parca in (sanatci, lisans) if parca)
-        satirlar.append(f"- {link}" + (f" ({ek})" if ek else ""))
+        # ⚠️ Kosul "CC BY mi" degil "kamu mali/CC0 DEGIL mi". Bilinmeyen bir
+        # lisansi serbest saymak, atifi tam da emin olmadigimiz yerde atlamak
+        # olurdu; yon asimetrik — gereksiz atif zarar vermiyor, eksik atif
+        # lisans ihlali.
+        serbest = is_safe_license(lisans)
+        parcalar = [_kaynak_basligi(str(credit.get("title", "")))]
+        if sanatci := _kaynak_sanatcisi(str(credit.get("artist", "")), zorunlu=not serbest):
+            parcalar.append(sanatci)
+        if not serbest:
+            hepsi_serbest = False
+            parcalar.append(lisans)
+            parcalar.append(link)
+        satirlar.append("• " + " — ".join(p for p in parcalar if p))
     if not satirlar:
         return ""
-    return "Visual sources (public domain, CC0 or CC BY):\n" + "\n".join(satirlar)
+    baslik = "Images — Wikimedia Commons"
+    if hepsi_serbest:
+        baslik += " (public domain / CC0)"
+    return baslik + "\n" + "\n".join(satirlar)
 
 
 def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
@@ -533,9 +618,9 @@ TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not 
 When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
 The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
-The title must be natural, under 65 characters when practical, and contain #Shorts.
-Description must contain a two-sentence summary followed by 3-5 hashtags.
-Tags must be an array of 6-10 concise strings.
+WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
+The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised — never leave the question unanswered in the description. Then 3-5 hashtags.
+Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary — never write a phrase nobody would type into a search box.
 JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
     if konu:
         # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.

@@ -206,6 +206,40 @@ def test_bilimsel_yayin_plakalari_da_eleniyor(baslik):
 @pytest.mark.parametrize(
     "baslik",
     [
+        # Chaco videosunun 1., 5. ve 7. sahneleri — ucu de kitap sayfasiydi.
+        (
+            "File:Hieroglyphics on north wall of the Canon of Chaco - Near ruins of the "
+            "Pueblo Chetho Kette. R. H. Kern delt. P.S. Duval's (IA dr hieroglyphics-on-"
+            "north-wall-0380039).jpg"
+        ),
+        (
+            "File:Pottery found at the Publo Hungo Pavie. R. H. delt. P.S. Duval's Lith. "
+            "Steam Press. Philada. (to accompany) Reports of the secretary (IA dr "
+            "pottery-0380036).jpg"
+        ),
+        (
+            "File:Masonry of the Chaco and other ruins. R. H. Kern delt. P.S. Duval's "
+            "Lith. Steam Press. Philada. (to accompany) Reports of the (IA dr "
+            "masonry-0380044).jpg"
+        ),
+    ],
+)
+def test_kitap_taramasi_kisaltmalari_da_eleniyor(baslik):
+    """⚠️ Olculdu (2026-08-08): bu uc gorsel YAYINLANACAK bir videoya girdi.
+
+    DW-98 "lithograph" kelimesini eliyordu ama bu basliklarda kelime degil
+    KISALTMA var: "delt.", "Lith. Steam Press.". Kalite kapisi da yakalamadi
+    (video 70/80 aldi) cunku "gorsel anlatimla uyumlu mu" diye soruyor.
+
+    "(IA " Commons'ta Internet Archive kitap tarama kimligi. Gecmise karsi
+    olculdu: 45 arsiv gorselinin 3'unde geciyor, ucu de bu sayfalar.
+    """
+    assert wm.belge_taramasi(baslik)
+
+
+@pytest.mark.parametrize(
+    "baslik",
+    [
         "File:Colosseum in Rome, Italy - April 2007.jpg",
         "File:Karnak Temple hypostyle hall columns.jpg",
         "File:Philip Galle - Lighthouse of Alexandria.jpg",

@@ -20,9 +20,87 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    # ⚠️ Yalnizca `upload` kapsami varken `channels.list(mine=True)` 403 doner,
+    # yani token'in HANGI kanala bagli oldugu yukleme anina kadar olculemez.
+    # Kanal dogrulamasi bu kapsam olmadan yazilamaz.
+    "https://www.googleapis.com/auth/youtube.readonly",
+]
 CLIENT_SECRET_FILE = os.path.join(os.path.dirname(__file__), "client_secret.json")
 TOKEN_FILE = os.path.join(os.path.dirname(__file__), "youtube_token.json")
+
+KANAL_AYAR_ANAHTARI = "youtube_channel_id"
+KANAL_ORTAM_ANAHTARI = "YOUTUBE_KANAL_ID"
+
+
+class YanlisKanalHatasi(RuntimeError):
+    """Yetkilendirilmis token beklenenden baska bir kanala bagli.
+
+    Yukleme yapilmadan once atilir; hicbir sey yayina gitmez.
+    """
+
+
+def beklenen_kanal() -> str:
+    """Yuklemenin gitmesi gereken kanal kimligi (UC...).
+
+    Once ortam degiskeni, sonra `config.toml` icindeki `[app]` bolumu okunur.
+    Ikisi de bos ise dogrulama yapilamaz — bkz. `kanali_dogrula`.
+    """
+    ortamdan = os.environ.get(KANAL_ORTAM_ANAHTARI, "").strip()
+    if ortamdan:
+        return ortamdan
+    try:
+        from app.config import config
+    except Exception:  # noqa: BLE001 — config yoksa dogrulama zaten yapilamaz
+        return ""
+    return str(config.app.get(KANAL_AYAR_ANAHTARI, "") or "").strip()
+
+
+def kanal_bilgisi(youtube):
+    """Token'in bagli oldugu kanalin (kimlik, ad) ciftini olcer.
+
+    `channels.list` part=snippet 1 birim kota harciyor — `videos.insert`in
+    1600 biriminin yaninda olculemeyecek kadar ucuz.
+    """
+    yanit = youtube.channels().list(part="snippet", mine=True).execute()
+    ogeler = yanit.get("items", [])
+    if not ogeler:
+        raise YanlisKanalHatasi(
+            "Yetkilendirilen Google hesabina bagli bir YouTube kanali yok. "
+            "Token dogru hesapla mi alindi?"
+        )
+    return str(ogeler[0].get("id", "")), str(ogeler[0].get("snippet", {}).get("title", "?"))
+
+
+def kanali_dogrula(youtube):
+    """Yuklemeden ONCE hedef kanali dogrular.
+
+    ⚠️ Kapali-hata (fail closed): beklenen kanal ayarli degilse yukleme
+    YAPILMAZ. Olculdu (2026-08-05): token paylasilan dosyaya yazilinca yanlis
+    kanala baglandi ve video yanlis kanala gitti. O gun kayip tek videoydu;
+    zamanlanmis hatta gunde 6 video var ve hata sessiz.
+
+    Yon asimetrik: yanlis kanala giden videoyu geri almak izlenme ve oneri
+    sinyali kaybi; ayar eksikken duran hat tek satirlik bir duzeltme. Bu yuzden
+    "ayar yoksa dogrulamayi atla" degil, "ayar yoksa yukleme yok" secildi.
+
+    Ilk kurulumda kimlik `--kanali-goster` ile olculur.
+    """
+    beklenen = beklenen_kanal()
+    gercek, ad = kanal_bilgisi(youtube)
+    if not beklenen:
+        raise YanlisKanalHatasi(
+            f"Hedef kanal ayarli degil, hicbir sey yuklenmedi. Token su an {ad!r} "
+            f"({gercek}) kanalina bagli. Dogru kanalsa config.toml icindeki [app] "
+            f'bolumune `{KANAL_AYAR_ANAHTARI} = "{gercek}"` satirini ekleyin.'
+        )
+    if gercek != beklenen:
+        raise YanlisKanalHatasi(
+            f"Token yanlis kanala bagli: {ad!r} ({gercek}). Beklenen: {beklenen}. "
+            "Hicbir sey yuklenmedi. Token'i silip dogru hesapla yeniden yetkilendirin."
+        )
+    return gercek, ad
 
 
 def _token_yaz(creds):
@@ -76,35 +154,79 @@ def get_authenticated_service():
     return build("youtube", "v3", credentials=creds)
 
 
+EGITIM_KATEGORISI = "27"
+"""Education. Onceden "22" (People & Blogs) gonderiliyordu.
+
+Kategori, YouTube'un videoyu hangi konu kumesine yerlestirdigini ve kime
+onerdigini besleyen alanlardan biri. Bu kanal belgesel tarzi tarih anlatiyor;
+"People & Blogs" vlog kumesi ve icerigin ne oldugunu YANLIS soyluyor. Dogru
+kategori bir kazanc iddiasi degil, bir dogruluk duzeltmesi.
+"""
+
+SENTETIK_BEYANI = False
+"""`containsSyntheticMedia` — kanal sahibinin karari (2026-08-08, DW-104).
+
+Onceden True idi ve YouTube aciklamaya "Made with AI — sounds or visuals were
+altered or fully generated" satirini koyuyordu. Kanal sahibi bunun kalkmasini
+istedi; risk anlatildi ve karar tekrarlandi.
+
+⚠️ Bu bir "kapatildi, unutuldu" ayari degil. YouTube beyani GERCEKCI sentetik
+icerik icin istiyor ve su hallerde beyan ZORUNLU kaliyor — cagiran taraf
+acikca True gecmeli:
+
+  * gercek ve taninabilir bir kisiyi soylemedigi bir seyi soylerken gosteren,
+  * gercek bir olayin goruntusunu degistiren,
+  * gerceklesmemis bir olayi gerceklesmis gibi sunan sahne.
+
+Bu hattin urettigi tarih anlatimlari bugun bu uc kovanin disinda: sahneler ya
+kamu mali arsiv gorseli ya da adi konmus bir yerin illustrasyonu. Kanal
+formati bunun disina cikarsa beyan geri acilmali.
+"""
+
+VARSAYILAN_DIL = "en"
+"""`defaultLanguage` + `defaultAudioLanguage` — ikisi de bos gidiyordu.
+
+⚠️ Gorunurluk acisindan en pahali eksikti: dil belirtilmeyince YouTube
+basligi ve aciklamayi hangi dilde arayana eslestirecegini tahmin etmek
+zorunda kaliyor, ceviri/altyazi ozellikleri devreye girmiyor. Kanal Ingilizce
+icerik uretiyor ve `kanal.py` profilinde `varsayilan_dil="en"` yazili — MPT
+yukleyicisi bu bilgiyi hic gondermiyordu.
+"""
+
+
 def upload_video(
     video_path,
     title,
     description,
     tags,
     privacy_status,
-    contains_synthetic_media=True,
+    contains_synthetic_media=SENTETIK_BEYANI,
+    category_id=EGITIM_KATEGORISI,
+    language=VARSAYILAN_DIL,
 ):
     if not os.path.exists(video_path):
         sys.exit(f"Video dosyasi bulunamadi: {video_path}")
 
     youtube = get_authenticated_service()
+    # Dogrulama `videos.insert`ten ONCE: yanlis kanala giden video geri
+    # alinabilir ama izlenme ve oneri sinyali geri gelmez.
+    kanali_dogrula(youtube)
 
     body = {
         "snippet": {
             "title": title,
             "description": description,
             "tags": tags,
-            "categoryId": "22",  # People & Blogs
+            "categoryId": category_id,
+            # Metnin dili ve konusmanin dili ayri alanlar; ikisi de gerekli.
+            "defaultLanguage": language,
+            "defaultAudioLanguage": language,
         },
         "status": {
             "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": False,
-            # ⚠️ Bu beyan zorunlu ve eksikti. Bu hat videoyu LLM senaryosu +
-            # TTS ses + stok goruntu ile uretiyor, yani icerik sentetik.
-            # YouTube gercekci sentetik/degistirilmis medya icin aciklama
-            # istiyor; beyan edilmemesi uyum riski. Varsayilan True cunku bu
-            # hattin urettigi HER video sentetik — istisna varsa cagiran taraf
-            # acikca False gecmeli.
+            # Varsayilani ve hangi hallerde geri acilmasi gerektigi
+            # `SENTETIK_BEYANI`'nda yazili.
             "containsSyntheticMedia": contains_synthetic_media,
         },
     }
@@ -131,8 +253,16 @@ def upload_video(
 
 def main():
     parser = argparse.ArgumentParser(description="YouTube Shorts yukleme")
-    parser.add_argument("video_path", help="Yuklenecek video dosyasinin yolu")
-    parser.add_argument("--title", required=True, help="Video basligi")
+    parser.add_argument("video_path", nargs="?", help="Yuklenecek video dosyasinin yolu")
+    parser.add_argument("--title", help="Video basligi")
+    parser.add_argument(
+        "--kanali-goster",
+        action="store_true",
+        help=(
+            "Yukleme yapmadan token'in bagli oldugu kanali olcup yazar. "
+            "Ilk kurulumda config.toml'a yazilacak kimlik buradan alinir."
+        ),
+    )
     parser.add_argument("--description", default="", help="Video aciklamasi")
     parser.add_argument("--tags", default="", help="Virgulle ayrilmis etiketler")
     parser.add_argument(
@@ -147,11 +277,24 @@ def main():
         help="Gizlilik durumu (varsayilan: private — yayin acik bir karar olmali)",
     )
     parser.add_argument(
-        "--not-synthetic",
+        "--synthetic",
         action="store_true",
-        help="containsSyntheticMedia=False gonder (bu hat icin normalde gerekmez)",
+        help=(
+            "containsSyntheticMedia=True gonder. Gercek bir kisiyi ya da olayi "
+            "gercekci bicimde canlandiran videolarda gerekli — bkz. SENTETIK_BEYANI."
+        ),
     )
     args = parser.parse_args()
+
+    if args.kanali_goster:
+        kimlik, ad = kanal_bilgisi(get_authenticated_service())
+        print(f"Kanal: {ad}")
+        print(f"Kimlik: {kimlik}")
+        print(f'config.toml [app] icin: {KANAL_AYAR_ANAHTARI} = "{kimlik}"')
+        return
+
+    if not args.video_path or not args.title:
+        parser.error("video_path ve --title zorunlu (kanal olcumu icin --kanali-goster)")
 
     tags = [t.strip() for t in args.tags.split(",") if t.strip()]
     if "#shorts" not in args.description.lower() and "shorts" not in [t.lower() for t in tags]:
@@ -163,7 +306,7 @@ def main():
         args.description,
         tags,
         args.privacy,
-        contains_synthetic_media=not args.not_synthetic,
+        contains_synthetic_media=args.synthetic,
     )
 
 
