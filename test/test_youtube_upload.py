@@ -85,23 +85,28 @@ def _yukle(tmp_path, monkeypatch=None, servis=None, **kwargs):
     return servis.videolar.insert_cagrisi["body"]
 
 
-def test_sentetik_medya_beyani_gonderiliyor(tmp_path):
-    """Bu hat videoyu LLM senaryosu + TTS ses ile uretiyor, yani icerik sentetik.
+def test_sentetik_beyani_varsayilan_kapali(tmp_path):
+    """Kanal sahibinin karari (2026-08-08, DW-104).
 
-    Beyan eksikti (DW-84). YouTube gercekci sentetik/degistirilmis medya icin
-    aciklama istiyor; gonderilmemesi uyum riski. Varsayilan True cunku bu hattin
-    urettigi HER video sentetik.
+    DW-84'te varsayilan True yapilmisti ve YouTube aciklamaya "Made with AI"
+    satirini koyuyordu. Kanal sahibi bunun kalkmasini istedi; risk anlatildi,
+    karar tekrarlandi.
+
+    Alan GONDERILMEYE devam ediyor — sessizce dusurulmus degil, acikca False.
     """
     govde = _yukle(tmp_path)
 
-    assert govde["status"]["containsSyntheticMedia"] is True
-
-
-def test_sentetik_olmayan_icerik_acikca_gecilebilir(tmp_path):
-    """Istisna mumkun olmali ama acik bir karar olmali — sessiz varsayilan degil."""
-    govde = _yukle(tmp_path, contains_synthetic_media=False)
-
     assert govde["status"]["containsSyntheticMedia"] is False
+
+
+def test_sentetik_beyani_acikca_acilabiliyor(tmp_path):
+    """⚠️ Beyan bazi hallerde ZORUNLU kaliyor: gercek ve taninabilir bir kisiyi
+    ya da gercek bir olayi gercekci bicimde canlandiran video. Kanal formati
+    oraya kayarsa bu yol kullanilmali — mekanizma duruyor.
+    """
+    govde = _yukle(tmp_path, contains_synthetic_media=True)
+
+    assert govde["status"]["containsSyntheticMedia"] is True
 
 
 def test_gizlilik_cagirandan_geliyor(tmp_path):

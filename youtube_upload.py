@@ -163,6 +163,26 @@ onerdigini besleyen alanlardan biri. Bu kanal belgesel tarzi tarih anlatiyor;
 kategori bir kazanc iddiasi degil, bir dogruluk duzeltmesi.
 """
 
+SENTETIK_BEYANI = False
+"""`containsSyntheticMedia` — kanal sahibinin karari (2026-08-08, DW-104).
+
+Onceden True idi ve YouTube aciklamaya "Made with AI — sounds or visuals were
+altered or fully generated" satirini koyuyordu. Kanal sahibi bunun kalkmasini
+istedi; risk anlatildi ve karar tekrarlandi.
+
+⚠️ Bu bir "kapatildi, unutuldu" ayari degil. YouTube beyani GERCEKCI sentetik
+icerik icin istiyor ve su hallerde beyan ZORUNLU kaliyor — cagiran taraf
+acikca True gecmeli:
+
+  * gercek ve taninabilir bir kisiyi soylemedigi bir seyi soylerken gosteren,
+  * gercek bir olayin goruntusunu degistiren,
+  * gerceklesmemis bir olayi gerceklesmis gibi sunan sahne.
+
+Bu hattin urettigi tarih anlatimlari bugun bu uc kovanin disinda: sahneler ya
+kamu mali arsiv gorseli ya da adi konmus bir yerin illustrasyonu. Kanal
+formati bunun disina cikarsa beyan geri acilmali.
+"""
+
 VARSAYILAN_DIL = "en"
 """`defaultLanguage` + `defaultAudioLanguage` — ikisi de bos gidiyordu.
 
@@ -180,7 +200,7 @@ def upload_video(
     description,
     tags,
     privacy_status,
-    contains_synthetic_media=True,
+    contains_synthetic_media=SENTETIK_BEYANI,
     category_id=EGITIM_KATEGORISI,
     language=VARSAYILAN_DIL,
 ):
@@ -205,12 +225,8 @@ def upload_video(
         "status": {
             "privacyStatus": privacy_status,
             "selfDeclaredMadeForKids": False,
-            # ⚠️ Bu beyan zorunlu ve eksikti. Bu hat videoyu LLM senaryosu +
-            # TTS ses + stok goruntu ile uretiyor, yani icerik sentetik.
-            # YouTube gercekci sentetik/degistirilmis medya icin aciklama
-            # istiyor; beyan edilmemesi uyum riski. Varsayilan True cunku bu
-            # hattin urettigi HER video sentetik — istisna varsa cagiran taraf
-            # acikca False gecmeli.
+            # Varsayilani ve hangi hallerde geri acilmasi gerektigi
+            # `SENTETIK_BEYANI`'nda yazili.
             "containsSyntheticMedia": contains_synthetic_media,
         },
     }
@@ -261,9 +277,12 @@ def main():
         help="Gizlilik durumu (varsayilan: private — yayin acik bir karar olmali)",
     )
     parser.add_argument(
-        "--not-synthetic",
+        "--synthetic",
         action="store_true",
-        help="containsSyntheticMedia=False gonder (bu hat icin normalde gerekmez)",
+        help=(
+            "containsSyntheticMedia=True gonder. Gercek bir kisiyi ya da olayi "
+            "gercekci bicimde canlandiran videolarda gerekli — bkz. SENTETIK_BEYANI."
+        ),
     )
     args = parser.parse_args()
 
@@ -287,7 +306,7 @@ def main():
         args.description,
         tags,
         args.privacy,
-        contains_synthetic_media=not args.not_synthetic,
+        contains_synthetic_media=args.synthetic,
     )
 
 
