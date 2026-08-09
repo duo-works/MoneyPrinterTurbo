@@ -12,7 +12,6 @@ en yaygin sebebi de konunun az bilinmesi — yani huni ne kadar iyi calisirsa
 modelin bilmedigi konu o kadar cok geliyor ve uydurma riski ARTIYOR.
 """
 
-import json
 import sys
 from pathlib import Path
 
@@ -124,39 +123,39 @@ def test_ozet_yoksa_bos(monkeypatch):
 # --- Isteme baglanti ------------------------------------------------------
 
 
-def _istemi_yakala(monkeypatch, *, ozet: str):
-    """`generate_content_plan`i cagirip modele giden user mesajini dondurur."""
-    yakalanan = {}
+def _cikarimi_yamala(monkeypatch, yakalanan: dict) -> None:
+    """Model cagrisini `_json_completion` SEVIYESINDE kesip user istemini yakalar.
 
-    class _Mesaj:
-        content = json.dumps(_GECERLI_PLAN)
+    ⚠️ Dikis yeri burasi olmali, `_openai_client` DEGIL. Ilk surumde OpenAI
+    istemcisi yamalandi ve testler yerelde gecti — ama gecmelerinin sebebi
+    yamanin ise yaramasi degildi: `INFERENCE_BACKEND` varsayilani "hermes-cli"
+    oldugu icin `_json_completion` OpenAI istemcisine hic ugramiyor, `hermes`
+    ikilisini calistiriyor. Yani testler yerelde GERCEK model cagirisi yapti;
+    CI'da ikili olmadigi icin "FileNotFoundError: 'hermes'" ile dustuler.
 
-    class _Secim:
-        message = _Mesaj()
+    `_json_completion` iki arka ucun da ustundeki tek dikis; buradan yamamak
+    testi hem hermetik hem arka uctan bagimsiz yapiyor.
+    """
 
-    class _Yanit:
-        choices = [_Secim()]
+    def sahte(system: str, user: str) -> dict:
+        yakalanan["system"] = system
+        yakalanan["user"] = user
+        return dict(_GECERLI_PLAN)
 
-    class _Tamamlamalar:
-        @staticmethod
-        def create(**kwargs):
-            yakalanan["mesajlar"] = kwargs["messages"]
-            return _Yanit()
-
-    class _Sohbet:
-        completions = _Tamamlamalar()
-
-    class _Istemci:
-        chat = _Sohbet()
-
-    monkeypatch.setattr(ya, "_openai_client", lambda: (_Istemci(), "m"))
+    monkeypatch.setattr(ya, "_json_completion", sahte)
     monkeypatch.setattr(ya, "load_state", lambda: {})
     monkeypatch.setattr(ya, "_recent_titles", lambda: [])
     monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
+
+
+def _istemi_yakala(monkeypatch, *, ozet: str) -> str:
+    """`generate_content_plan`i cagirip modele giden user istemini dondurur."""
+    yakalanan: dict = {}
+    _cikarimi_yamala(monkeypatch, yakalanan)
     monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *_a, **_k: ozet)
 
     ya.generate_content_plan(konu="Franziska Scanagatta")
-    return yakalanan["mesajlar"][-1]["content"]
+    return yakalanan["user"]
 
 
 def test_kaynak_isteme_giriyor(monkeypatch):
@@ -179,30 +178,9 @@ def test_kaynak_yoksa_temkin_uyarisi_giriyor(monkeypatch):
 def test_kaynak_yalnizca_huni_kipinde_cekiliyor(monkeypatch):
     """Konu modelin kendi secimiyse ortada cekilecek bir baslik yok."""
     cagrildi = []
-    monkeypatch.setattr(
-        wm, "vikipedi_ozeti", lambda *a, **k: cagrildi.append(a) or ""
-    )
-    monkeypatch.setattr(ya, "load_state", lambda: {})
-    monkeypatch.setattr(ya, "_recent_titles", lambda: [])
-    monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
+    _cikarimi_yamala(monkeypatch, {})
+    monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *a, **k: cagrildi.append(a) or "")
 
-    class _Mesaj:
-        content = json.dumps(_GECERLI_PLAN)
-
-    class _Secim:
-        message = _Mesaj()
-
-    class _Yanit:
-        choices = [_Secim()]
-
-    class _Istemci:
-        class chat:  # noqa: N801
-            class completions:  # noqa: N801
-                @staticmethod
-                def create(**_k):
-                    return _Yanit()
-
-    monkeypatch.setattr(ya, "_openai_client", lambda: (_Istemci(), "m"))
     ya.generate_content_plan()
 
     assert cagrildi == []
