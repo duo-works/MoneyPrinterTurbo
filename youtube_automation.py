@@ -1297,7 +1297,24 @@ def generate_ai_scene_materials(
         if index in revised_by_scene:
             visual_detail = revised_by_scene[index]
         prompt = (
-            "Create a vertical image for a YouTube Short about history. "
+            # ⚠️ Olculdu (2026-08-09, DW-112): bu cumle eskiden "Create a vertical
+            # image for a YouTube Short about history" idi ve model 7 gorselin
+            # 2'sine BASLIK YAZISI bastI — "CHACO CANYON DISAPPEARANCE MYSTERY"
+            # ve "what happened to them?" goruntunun ICINE gomulu geldi.
+            #
+            # Promptun sonunda zaten "no captions, no text, no watermark" yaziyordu
+            # ve ISE YARAMADI. Sebep olumsuz talimatIn zayifligI degil, acilis
+            # cumlesinin kurdugu CERCEVE: "image for a YouTube Short" modele
+            # kucuk-resim (thumbnail) turunu isaret ediyor ve o turun tanimi
+            # zaten uzerinde iri baslik yazan bir gorsel. Model tur talimatini
+            # izliyordu, yasak listesini degil.
+            #
+            # Cozum turu degistirmek: istenen sey bir fotograf, bir kapak gorseli
+            # degil. "YouTube Short" ifadesi prompttan tamamen cikarildi; dikeylik
+            # ve kullanim yeri tur adI vermeden tarif ediliyor.
+            "Create a single vertical documentary photograph, 2:3 portrait framing. "
+            "This is one frame of footage inside a film, never a poster, never a "
+            "thumbnail, never a title card, never a book or album cover. "
             f"Visual anchor: {plan.visual_anchor}. Scene {index}: {scene.get('narration', '')}. "
             f"Required visible detail: {visual_detail}. "
             # ⚠️ Gorsel dil sahnenin KONUSUNA gore secilir, tek bir estetige
@@ -1325,8 +1342,35 @@ def generate_ai_scene_materials(
             "small size on a phone screen — no crushed shadows, no silhouette-only frame. "
             + "Strong vertical composition, period-appropriate "
             "architecture, clothing, tools, and materials. No modern objects unless the scene is "
-            "explicitly set today, no logos, no captions, no text, no watermark, and no invented "
-            "event presented as a surviving photograph."
+            "explicitly set today, and no invented event presented as a surviving photograph. "
+            # ⚠️ Yasak MUAFIYETSIZ (DW-112). Uc asamada olculdu:
+            #
+            #   1. "no captions, no text, no watermark"
+            #      → model 7 gorselin 2'sine iri BASLIK bastI (bindirme yazi).
+            #   2. Yasak somutlastirildi + "sahnedeki gercek yazi serbest"
+            #      muafiyeti eklendi (oyma, el yazmasi sayfasi)
+            #      → model basligi MUAFIYETIN ICINE tasidI: bir sahnede
+            #        "CHACO CANYON DISAPPERANCE MYSTERY" yazan oyulmus tas
+            #        levha, digerinde adamin elinde "THE QUESTION REMAINS:
+            #        WHAT HAPPENED TO THEM?" yazan kagit. Tastaki yazim hatasi
+            #        ("DISAPPERANCE") isin ne kadar uydurma oldugunun kanIti.
+            #   3. Muafiyet kaldirildi → burasi.
+            #
+            # Ders: modelin istedigi sey basligi GOSTERMEK. Ona yazi icin
+            # herhangi bir mesru zemin birakilirsa basligi oraya koyuyor;
+            # yasak dar degil, **kacamaksiz** olmali.
+            #
+            # Antik isaretler (petroglif, hiyeroglif) ayri tutuluyor ve bu
+            # guvenli: onlar okunabilir Latin sozcugu degil, yani baslik
+            # tasiyamiyorlar. Chaco'nun spiral petroglifi videonun en iyi
+            # karesiydi — onu kaybetmek bedava degil.
+            "The photograph must contain no readable words anywhere in the frame. "
+            "No title text, no headline, no caption, no subtitle, no lower third, no logo, "
+            "no watermark, no signature, no border. Equally forbidden inside the scene: "
+            "signs, placards, plaques, inscribed slabs, banners, posters, labels, open books "
+            "or sheets of paper turned towards the camera — anything that could carry the "
+            "video's title as an object. Ancient carved symbols and petroglyphs that genuinely "
+            "belong to the monument are welcome, but they must never spell out modern words."
         )
         request = {
             "model": model,
@@ -1599,8 +1643,30 @@ def run_generator(
         SES_ADI,
         "--voice-rate",
         str(SES_HIZI),
+        # ⚠️ Arka plan muzigi (DW-112, karar: Mirza 2026-08-09).
+        #
+        # Burasi eskiden "none" idi ve bu bilincli bir politikaydi:
+        # VIDEO_STYLE.md → "Arka plan muzigi: Telif riski belirsizse
+        # kullanilmaz. Yalnizca lisansi dogrulanmis muzik kullanilabilir."
+        #
+        # ⚠️ `resource/songs/` altindaki 29 parca bu sarti KARSILAMIYOR: hepsi
+        # `outputNNN.mp3` diye isimsiz, lisans dosyasi ve kunye yok, ve MPT'nin
+        # kendi README'si onlar icin "YouTube videolarindan alinmistir, telif
+        # sorunu olursa silin" diyor. Yani kaynak belirsiz.
+        #
+        # Risk kullaniciya acikca soylendi ve kullanici paketteki parcalarla
+        # devam etme karari verdi. Karar burada yaziyor ki telif talebi gelirse
+        # sebep aranmasin: donus yolu tek satir, `"random"` → `"none"`.
+        #
+        # Telifsiz bir parcaya gecilirse dogru yol `--bgm-file` ile tek bir
+        # dogrulanmis dosyayi sabitlemek; "random" 29 parca arasindan seciyor
+        # ve hangi videoda hangisinin cikacagi onceden bilinmiyor.
         "--bgm-type",
-        "none",
+        "random",
+        # Anlatim onde kalmali: 0.2 CLI varsayilani ve konusma uzerinde muzigi
+        # duyulur ama bastirmaz seviyede tutuyor.
+        "--bgm-volume",
+        "0.2",
         "--subtitle-enabled",
         "--subtitle-position",
         "custom",
