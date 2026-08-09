@@ -54,6 +54,105 @@ tamamen farkli. `used_titles` zaten vardi ve yetmedi.
 """
 
 
+PARLAKLIK_TABANI = 45.0
+"""Bir karenin "fazla karanlik" sayildigi ortalama luma (0-255) — DUZELTME esigi.
+
+⚠️ Bu esik veriden secildi, goz karariyla degil. Diskteki 22 dikey karenin
+parlaklik dagilimi (2026-08-09):
+
+    29,6  41,5  42,0  |  51,1  54,1  56,4  62,5  ...
+    37,0  40,8  41,7  |
+    ^ sorunlu kume       ^ saglikli kume
+
+Alttaki alti kare 29,6-42,0 arasinda toplaniyor, sonraki kare 51,1 — arada
+9 puanlik bos bir aralik var ve 45 tam ortasina dusuyor. Yani esik iki kumeyi
+ayiriyor, bir kumenin icinden gecmiyor. Dagilimin ortancasi 70,7.
+
+Olculdu (2026-08-09, Chaco Canyon): acilis karesi 37,0 idi ve telefonda gunduz
+isiginda ilk saniye okunmuyordu. Shorts'un ilk karesi izlenme kararinin
+verildigi yer — orada karanlik kare dogrudan kayip.
+
+⚠️ Prompt bunu ZATEN istiyor ("readable at small size on a phone screen — no
+crushed shadows") ve TUTMUYOR. Bu yuzden dilek degil, olcum ve duzeltme.
+"""
+
+PARLAKLIK_HEDEFI = 65.0
+"""Duzeltilen karenin cikarilacagi parlaklik.
+
+Tabanin (45) hemen ustune degil, ortancanin (70,7) hemen altina nisan aliniyor:
+tam tabana cikarmak kareyi sinirda birakir, ortancaya cikarmak ise gecesi olan
+sahneyi gunduze cevirirdi. 65 ikisinin arasinda ve olculdu — Chaco acilis
+karesi bu yolla 37 → 78 cikarildiginda alacakaranlik mavisi ve kumtasinin
+sicakligi korundu, harabeler okunur hale geldi.
+"""
+
+AZAMI_GAMA = 3.0
+"""Duzeltmenin ust siniri.
+
+Neredeyse tamamen siyah bir kare (or. 5/255) hedefe cikarilmaya calisilirsa
+gama sinirsiz buyur ve sonuc gurultuden ibaret gri bir yuzey olur. Boyle bir
+kare zaten kurtarilamaz; duzeltme durur, kare oldugu gibi gecer ve olcum
+kayda yazilir.
+"""
+
+
+def parlaklik(gorsel_ya_da_yol: Any) -> float:
+    """Ortalama luma (0-255). Dosya yolu ya da acik bir PIL goruntusu alir."""
+    if isinstance(gorsel_ya_da_yol, (str, Path)):
+        with Image.open(gorsel_ya_da_yol) as im:
+            gri = im.convert("L").resize((64, 96))
+            return float(np.asarray(gri, dtype=float).mean())
+    gri = gorsel_ya_da_yol.convert("L").resize((64, 96))
+    return float(np.asarray(gri, dtype=float).mean())
+
+
+def _gama_uygula(gorsel: Any, gama: float) -> Any:
+    """Gama egrisi — normalize edilmis degerler uzerinde, bu yuzden KIRPMA YOK.
+
+    cikis = giris^(1/gama) ve giris 0-1 araliginda oldugu icin cikis da
+    0-1'de kalir; hicbir piksel 255'i asip beyaza yapismaz. Parlatmanin
+    "yanik" degil "acilmis" gorunmesinin sebebi bu.
+    """
+    tablo = [round(255.0 * ((i / 255.0) ** (1.0 / gama))) for i in range(256)]
+    return gorsel.point(tablo * len(gorsel.getbands()))
+
+
+def karanligi_ac(gorsel: Any) -> tuple[Any, float | None]:
+    """Kare tabanin altindaysa hedefe kadar acar.
+
+    Doner: (gorsel, uygulanan_gama). Kare zaten yeterince aydinlikse gorsel
+    DEGISMEDEN ve gama `None` olarak doner — yani duzeltme sessizce her kareye
+    dokunmuyor, yalnizca olcum onu isaret ettiginde devreye giriyor.
+
+    ⚠️ Gama analitik olarak hesaplanmiyor, ARANIYOR: ortalamanin gamasi ile
+    gamanin ortalamasi ayni sey degil (Jensen), yani kapali formul hedefi
+    isabet ettirmez. Ikili arama olcup dogruluyor, 12 adim 0,001 hassasiyet
+    veriyor ve hepsi bellekte — maliyeti yok.
+    """
+    mevcut = parlaklik(gorsel)
+    if mevcut >= PARLAKLIK_TABANI:
+        return gorsel, None
+
+    alt, ust = 1.0, AZAMI_GAMA
+    en_iyi = None
+    for _ in range(12):
+        orta = (alt + ust) / 2
+        aday = _gama_uygula(gorsel, orta)
+        if parlaklik(aday) < PARLAKLIK_HEDEFI:
+            alt = orta
+        else:
+            ust = orta
+            en_iyi = aday
+
+    # Hedefe hic ulasilamadiysa (neredeyse siyah kare) elimizden gelenin en
+    # iyisi azami gamadir; yine de tabanin altinda kalabilir ve kalmasi dogru —
+    # uydurma bir parlaklik, karanlik bir kareden daha yaniltici olurdu.
+    if en_iyi is None:
+        en_iyi = _gama_uygula(gorsel, AZAMI_GAMA)
+        return en_iyi, AZAMI_GAMA
+    return en_iyi, round(ust, 3)
+
+
 def parmak_izi(yol: Path) -> Any:
     """Algisal parmak izi — 16x16 gri kare, ortalamaya gore esiklenmis.
 

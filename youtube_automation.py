@@ -892,6 +892,16 @@ def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
             )
             sonuc = arka
 
+        # ⚠️ Parlaklik tabani BURADA, cunku her sahne karesi — AI uretimi de
+        # arsiv fotografi da — bu fonksiyondan geciyor. Uretim tarafina
+        # konsaydi arsivden gelen karanlik kare kacardi.
+        sonuc, gama = gorsel_olcum.karanligi_ac(sonuc)
+        if gama is not None:
+            print(
+                f"karanlik kare acildi: {hedef.name} (gama {gama})",
+                flush=True,
+            )
+
         hedef.parent.mkdir(parents=True, exist_ok=True)
         sonuc.save(hedef, format="JPEG", quality=92)
     return hedef
