@@ -82,7 +82,10 @@ class VideoParams(BaseModel):
     video_aspect: Optional[VideoAspect] = VideoAspect.portrait.value
     video_concat_mode: Optional[VideoConcatMode] = VideoConcatMode.random.value
     video_transition_mode: Optional[VideoTransitionMode] = None
-    video_clip_duration: Optional[int] = 5
+    # Ondalik: sahne basina sure sesin tam bolumu olmadiginda MPT ya bastan bir
+    # klibi tekrar ediyor ya da son sahneyi hic gostermiyor. Tamsayi kisiti
+    # ikisinden birini kacinilmaz kiliyordu (bkz. cli.py --video-clip-duration).
+    video_clip_duration: Optional[float] = 5
     video_clip_speed: Optional[float] = 1.0
     match_materials_to_script: bool = False
     video_count: Optional[int] = 1

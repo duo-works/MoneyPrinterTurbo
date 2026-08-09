@@ -44,17 +44,43 @@ def test_tek_estetige_sabitlenmiyor():
 
 
 def test_gorsel_dil_uc_yolu_da_tarif_ediyor():
+    """Uc yol da duruyor; (b)'nin CEVABI degisti (DW-109).
+
+    ⚠️ (b) once "richly coloured historical painting" istiyordu. Kullanicinin
+    "sanki cartoon gibi" tarifi tam olarak buydu ve gecmisteki sahneler
+    Commons'ta nadiren fotografla karsilandigi icin AI dolgusunun cogu bu
+    sikka dusuyordu — cizim, kanalin varsayilan gorunumu olmustu. Ayrim
+    (bugun ayakta duran / gecmisteki olay / gercekten arsivlik) korunuyor,
+    ama gecmisteki olay artik CANLANDIRMA FOTOGRAFI.
+    """
     dil = ya.GORSEL_DIL
 
     assert "survives today" in dil, "ayakta duran sey gercek fotograf olmali"
-    assert "colour photograph" in dil
-    assert "historical painting" in dil, "gecmisteki olay renkli resim olmali"
+    assert "true-to-life colour" in dil
+    assert "living-history reconstruction" in dil, "gecmisteki olay canlandirma olmali"
+    assert "historical painting" not in dil, "cizim kanalin gorunumu olmustu"
     assert "sepia" in dil, "sepya yalnizca gercekten arsivlik olana"
 
 
 def test_sahneler_arasi_cesitlilik_isteniyor():
-    """Ardisik iki kare birbirine benzememeli."""
-    assert "do not look like one another" in ya.GORSEL_DIL
+    """Ardisik iki kare birbirine benzememeli — SART DURUYOR, yontem degisti.
+
+    ⚠️ Bu sart once `GORSEL_DIL` icinde tek bir cumleydi ("consecutive images
+    do not look like one another") ve HIC ISLEMEDI: sahneler birbirinden
+    habersiz, ayri isteklerle uretiliyor, dolayisiyla modelin "onceki kare"
+    diye bir bilgisi yok. Olculdu (2026-08-09): cumle promptta dururken 7
+    karenin hepsi 25°-47° ton araligina dustu (yayilim 0,007).
+
+    Cesitlilik artik dilekle degil, her sahneye acikca BASKA bir kadraj ve
+    BASKA bir isik vererek saglaniyor. Test o yuzden cumleyi degil, iki
+    donusumun da prompta bagli oldugunu kilitliyor.
+    """
+    kaynak = KAYNAK.read_text(encoding="utf-8")
+    i = kaynak.index("Create a vertical image for a YouTube Short")
+    govde = kaynak[i : kaynak.index("request = {", i)]
+
+    assert "kare_dili(index)" in govde, "kadraj sahne basina degismeli"
+    assert "isik_dili(" in govde, "isik sahne basina degismeli"
 
 
 def test_gorsel_kalitesi_yuksek():
