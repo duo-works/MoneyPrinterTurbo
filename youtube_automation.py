@@ -13,12 +13,18 @@ import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from imageio_ffmpeg import get_ffmpeg_exe
 from moviepy.video.io.VideoFileClip import VideoFileClip
-from openai import BadRequestError, OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    BadRequestError,
+    InternalServerError,
+    OpenAI,
+)
 from PIL import Image, ImageDraw, ImageOps
 import requests
 
@@ -1307,6 +1313,60 @@ def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
         print(f"gorsel olcum yapilamadi: {hata}", flush=True)
 
 
+GORSEL_DENEME_SAYISI = 4
+"""Gecici OpenAI hatasinda kac kez denenecek."""
+
+GORSEL_BEKLEME_SN = 20.0
+"""Ilk bekleme; her denemede ikiye katlaniyor (20 → 40 → 80)."""
+
+
+def _gorsel_uret_tekrarli(
+    client: OpenAI,
+    request: dict[str, Any],
+    *,
+    sahne: int,
+    uyu: Callable[[float], None] = time.sleep,
+) -> Any:
+    """Gorsel uretir; GECICI sunucu hatalarinda tekrar dener.
+
+    ⚠️ Olculdu (2026-08-09, DW-115): bes konuluk bir kosumda api.openai.com
+    Cloudflare uzerinden DORT kez 520 dondu ("origin returned an unknown
+    error"). OpenAI'nin durum sayfasi ayni anda "All Systems Operational"
+    diyordu, yani kesinti aralikliydi ve hatanin kendisi
+    `"retryable": true, "retry_after": 60` tasiyordu.
+
+    Tekrar YOKKEN bedeli agirdi: hata 8 sahnenin ortasinda gelince o ana kadar
+    uretilmis gorseller VE senaryo/plan icin harcanan para copе gidiyordu.
+    Kosumun ikisi tam da boyle dustu.
+
+    Bu, deponun `wikimedia_materials._get_with_retry` icin zaten yazdigi
+    gerekcenin aynisi: "gecici bir ag hatasinin bedeli harcanan LLM/gorsel
+    parasi oluyor". Ayni koruma gorsel ucunda yoktu.
+
+    ⚠️ Yalnizca GECICI hatalar tekrarlanir. `BadRequestError` (moderasyon)
+    ve kredi tukenmesi tekrarlanmaz: ikisi de tekrar denemekle degismez,
+    tekrarlamak yalnizca gecikme uretir.
+    """
+    son_hata: Exception | None = None
+    for deneme in range(GORSEL_DENEME_SAYISI):
+        try:
+            return client.images.generate(**request)
+        except (InternalServerError, APIConnectionError, APITimeoutError) as hata:
+            son_hata = hata
+            if deneme == GORSEL_DENEME_SAYISI - 1:
+                break
+            bekleme = GORSEL_BEKLEME_SN * (2**deneme)
+            print(
+                f"gorsel {sahne}: gecici hata ({type(hata).__name__}), "
+                f"{bekleme:.0f} sn sonra yeniden deneniyor "
+                f"({deneme + 2}/{GORSEL_DENEME_SAYISI})",
+                flush=True,
+            )
+            uyu(bekleme)
+    assert son_hata is not None
+    raise son_hata
+
+
 def generate_ai_scene_materials(
     plan: ContentPlan,
     target_dir: Path,
@@ -1420,7 +1480,7 @@ def generate_ai_scene_materials(
             "n": 1,
         }
         try:
-            response = client.images.generate(**request)
+            response = _gorsel_uret_tekrarli(client, request, sahne=index)
         except BadRequestError as exc:
             body = exc.body if isinstance(exc.body, dict) else {}
             code = str(body.get("code", getattr(exc, "code", "")))
@@ -1433,7 +1493,9 @@ def generate_ai_scene_materials(
                 "No battle, injury, death, weapons, threat, distressed people, modern objects, text, logo, or watermark."
             )
             try:
-                response = client.images.generate(**{**request, "prompt": safe_prompt})
+                response = _gorsel_uret_tekrarli(
+                    client, {**request, "prompt": safe_prompt}, sahne=index
+                )
             except BadRequestError as retry_exc:
                 retry_body = retry_exc.body if isinstance(retry_exc.body, dict) else {}
                 retry_code = str(
