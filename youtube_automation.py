@@ -26,6 +26,7 @@ from app.config import config
 import gorsel_olcum
 import notion_kuyrugu
 import temizlik
+import wikimedia_materials
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
 
@@ -733,6 +734,32 @@ def generate_content_plan(
             "If the subject is broad, narrow it to one concrete named site, artifact, or invention "
             "that belongs to it."
         )
+        # ⚠️ KAYNAK METIN — olculdu (2026-08-09, DW-114). Bu blok olmadan model
+        # yalnizca konunun ADINI goruyordu ve az bilinen konularda ictigi suyu
+        # uyduruyordu: "Franziska Scanagatta" icin senaryo ve etiketler
+        # "Italian opera / 19th century music / opera history" cikti; gercekte
+        # 1794'te erkek kiligina girip Habsburg ordusunda subaylik yapmis bir
+        # kadin. Huninin varlik sebebi arzi az konular bulmak, arzin az olmasinin
+        # en yaygin sebebi ise konunun az bilinmesi — yani huni ne kadar iyi
+        # calisirsa modelin bilmedigi konu o kadar cok geliyor.
+        if kaynak := wikimedia_materials.vikipedi_ozeti(konu):
+            user += (
+                "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia summary of the subject. "
+                "Every factual claim in your script, title, description and tags must be "
+                "consistent with it. Where it is silent, say what is not known instead of "
+                "filling the gap; naming the edge of the evidence is this channel's voice, "
+                "and inventing a fact is the one failure this channel cannot survive.\n"
+                f"{json.dumps(kaynak, ensure_ascii=False)}"
+            )
+        else:
+            # Kaynak yoksa uretim durmuyor ama model UYARILIYOR: bos kaynak,
+            # "serbestsin" degil "temkinli ol" demek.
+            user += (
+                "\n\nNo encyclopedia summary could be retrieved for this subject. Write only "
+                "what you are confident is true of THIS specific subject, keep the claims few "
+                "and general, and state plainly where the record is thin. Do not invent "
+                "names, dates, professions or events to fill the script."
+            )
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
