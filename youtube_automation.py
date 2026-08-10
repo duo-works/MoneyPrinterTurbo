@@ -1723,7 +1723,21 @@ def run_generator(
     _benzerligi_kaydet(material_files, material_dir)
     source_montage = create_source_montage(material_files, attempt, plan.topic)
     source_review = review_source_materials(plan, source_montage)
-    if not AI_VISUAL_FALLBACK_ENABLED and (
+    # ⚠️ ARSIV ONCE — bu blok artik AI yedeginden BAGIMSIZ calisiyor (DW-118).
+    #
+    # Kosul eskiden `not AI_VISUAL_FALLBACK_ENABLED` idi. Yani yedek acikken
+    # (uretimdeki hal) kaynak incelemesi dustugunde hat arsivde daha iyi bir
+    # arama HIC denemeden dogruca `ai-refinement`'a gidiyordu. Arsivi
+    # iyilestiren kod uretimde olu koddu.
+    #
+    # Sonuc olculdu (2026-08-10): Scanagatta 6/6 sahne AI. Kanal sahibinin
+    # geri bildirimi "AI resim biraz cok, internetten bulup uretmeye calis
+    # daha cok" — asil kaldirac burasiydi.
+    #
+    # Sira su: once revize edilmis terimlerle arsiv, hala dusuyorsa AI. Bedeli
+    # basarisiz sahne basina birkac Commons/Met sorgusu; kazanci gercek
+    # fotograf. AI hala orada, ama artik ILK degil SON care.
+    if (
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_VISUAL_SCORE
     ):
@@ -1769,8 +1783,31 @@ def run_generator(
                     },
                 )
             except MaterialsUnavailableError:
-                pass
+                # Arsiv bu sahneleri besleyemedi; asagida AI devralir.
+                arsiv_degisimi = None
             else:
+                # ⚠️ Sayi tutmuyorsa arsiv denemesi BASARISIZ sayilir, hat
+                # COKMEZ (DW-118). Bu blok `strict=True` zip ile dogrudan
+                # eslestiriyor; arsiv beklenenden farkli sayida dosya
+                # dondurdugunde ValueError firlatip butun uretimi dusururdu.
+                # Yedek acikken bu yol artik her kosumda calistigi icin
+                # sessiz bir carpisma noktasiydi. Arsiv YARDIMCI bir yol;
+                # basarisizligi AI'ya devretmeli, kosumu bitirmemeli.
+                if (
+                    len(replacements) == len(problem_scenes)
+                    and len(replacement_credits) == len(problem_scenes)
+                ):
+                    arsiv_degisimi = (replacements, replacement_credits)
+                else:
+                    arsiv_degisimi = None
+                    print(
+                        f"⚠️ arşiv {len(problem_scenes)} sahne için "
+                        f"{len(replacements)} görsel döndürdü; "
+                        "bu deneme atlanıyor",
+                        flush=True,
+                    )
+            if arsiv_degisimi is not None:
+                replacements, replacement_credits = arsiv_degisimi
                 refined_materials = list(material_files)
                 for scene_number, replacement in zip(
                     problem_scenes, replacements, strict=True
