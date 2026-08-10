@@ -629,7 +629,12 @@ def test_generate_ai_scene_materials_writes_one_vertical_image_per_scene(monkeyp
     assert all(path.exists() for path in files)
     with Image.open(files[0]) as generated:
         assert generated.width < generated.height
-    assert "historic rescue" in calls[0]["prompt"]
+    # ⚠️ Bu satir eskiden `"historic rescue" in prompt` idi — yani capanin
+    # ADININ isteme girmesini SART kosuyordu. DW-116 tam olarak onu kaldirdi:
+    # model gordugu adi kadrajin icine yaziyor. Sahne artik anlatimla ve
+    # addan arindirilmis detayla tarif ediliyor.
+    assert "Scene 1" in calls[0]["prompt"]
+    assert "historic rescue" not in calls[0]["prompt"]
 
 
 def test_generate_ai_scene_materials_can_regenerate_only_problem_scenes(monkeypatch, tmp_path):

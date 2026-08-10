@@ -76,10 +76,14 @@ def test_sahneler_arasi_cesitlilik_isteniyor():
     donusumun da prompta bagli oldugunu kilitliyor.
     """
     kaynak = KAYNAK.read_text(encoding="utf-8")
-    i = kaynak.index("Create a vertical image for a YouTube Short")
+    # ⚠️ Capa promptun ACILIS cumlesi; cumle degisirse burasi da degismeli
+    # (bkz. test_kare_dili.py'deki CAPA ve DW-112).
+    i = kaynak.index("Create a single vertical documentary photograph")
     govde = kaynak[i : kaynak.index("request = {", i)]
 
-    assert "kare_dili(index)" in govde, "kadraj sahne basina degismeli"
+    # ⚠️ 2. arguman DW-121'de eklendi (1. sahneye ozel acilis kadraji);
+    # kadrajin sahne basina degismesi sarti aynen duruyor.
+    assert "kare_dili(index, plan.topic)" in govde, "kadraj sahne basina degismeli"
     assert "isik_dili(" in govde, "isik sahne basina degismeli"
 
 

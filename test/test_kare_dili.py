@@ -11,6 +11,13 @@ import youtube_automation as ya  # noqa: E402
 
 KAYNAK = Path(ya.__file__).read_text(encoding="utf-8")
 
+# Prompt govdesini kaynakta bulmak icin kullanilan capa: promptun ACILIS
+# cumlesi. ⚠️ Bu cumle degisirse buranin da degismesi gerekir — testler capayi
+# bulamayinca "substring not found" diye duser, ki DW-112'de tam bu oldu:
+# acilis cumlesi "Create a vertical image for a YouTube Short about history"
+# idi ve model bunu kucuk-resim turu sanip goruntunun icine baslik yaziyordu.
+CAPA = "Create a single vertical documentary photograph"
+
 
 # --- Kadraj cesitliligi ---------------------------------------------------
 
@@ -49,7 +56,7 @@ def test_sabit_kompozisyon_cumlesi_kaldirildi():
     ⚠️ Kapsam PROMPT GOVDESI, dosyanin tamami degil: ifade kaldirilma
     gerekcesini anlatan yorumda hala geciyor ve orada gecmesi DOGRU.
     """
-    i = KAYNAK.index("Create a vertical image for a YouTube Short")
+    i = KAYNAK.index(CAPA)
     govde = KAYNAK[i : i + 1200]
 
     assert "One clear focal subject" not in govde
@@ -57,10 +64,13 @@ def test_sabit_kompozisyon_cumlesi_kaldirildi():
 
 def test_kadraj_prompta_bagli():
     """Baglanti testi — liste dogru olsa bile prompt'a girmezse kusur surer."""
-    i = KAYNAK.index("Create a vertical image for a YouTube Short")
+    i = KAYNAK.index(CAPA)
     govde = KAYNAK[i : i + 1200]
 
-    assert "kare_dili(index)" in govde
+    # ⚠️ `konu` 2. argumani DW-121'de eklendi: 1. sahne artik listenin ilk
+    # elemanini (genis plan, ozne minicik) miras almiyor, kendi acilis
+    # kumesinden konuya gore seciyor.
+    assert "kare_dili(index, plan.topic)" in govde
 
 
 # --- Benzerlik olcumu -----------------------------------------------------
