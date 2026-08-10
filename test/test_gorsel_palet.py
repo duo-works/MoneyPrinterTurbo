@@ -21,6 +21,11 @@ import youtube_automation as ya  # noqa: E402
 
 KAYNAK = Path(ya.__file__).read_text(encoding="utf-8")
 
+# Prompt govdesini kaynakta bulmak icin kullanilan capa: promptun ACILIS
+# cumlesi. ⚠️ Bu cumle degisirse buranin da degismesi gerekir — bkz.
+# test_kare_dili.py'deki ayni sabit ve DW-112.
+CAPA = "Create a single vertical documentary photograph"
+
 
 def _prompt_govdesi() -> str:
     """Prompt govdesi, bitisik string parcalari BIRLESTIRILMIS halde.
@@ -30,7 +35,7 @@ def _prompt_govdesi() -> str:
     `"...no invented "` / `"event presented..."` diye ikiye bolunmus olabilir
     ve testi sahte bir sekilde dusurur.
     """
-    i = KAYNAK.index("Create a vertical image for a YouTube Short")
+    i = KAYNAK.index(CAPA)
     govde = KAYNAK[i : KAYNAK.index("request = {", i)]
     return re.sub(r'"\s*\n\s*(?:\+\s*)?f?"', "", govde)
 

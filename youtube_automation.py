@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -13,12 +14,18 @@ import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from imageio_ffmpeg import get_ffmpeg_exe
 from moviepy.video.io.VideoFileClip import VideoFileClip
-from openai import BadRequestError, OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    BadRequestError,
+    InternalServerError,
+    OpenAI,
+)
 from PIL import Image, ImageDraw, ImageOps
 import requests
 
@@ -26,6 +33,7 @@ from app.config import config
 import gorsel_olcum
 import notion_kuyrugu
 import temizlik
+import wikimedia_materials
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
 
@@ -180,7 +188,9 @@ EDITORYAL_YONERGE = """
 Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
-Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME — never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
+Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
@@ -502,6 +512,212 @@ def publication_slot_key(moment: datetime | None = None) -> str:
     return moment.astimezone(ZoneInfo(TIMEZONE_NAME)).strftime("%Y-%m-%d-%H")
 
 
+def konu_slug(konu: str) -> str:
+    """Konuyu klasor adinda kullanilabilir kisa bir parcaya cevirir (DW-119).
+
+    ⚠️ Aksanli harfler ASCII'ye DUSURULMEZ, atilir: "Jacopo de' Pazzi" →
+    "jacopo-de-pazzi". Amac okunabilir bir ayirt edici, kayipsiz bir kimlik
+    degil. Iki konu ayni slug'a duserse saat anahtari yine ayiriyor.
+
+    Bos slug mumkun (ornegin konu tamamen Latin disi bir alfabedeyse); o
+    durumda "konu" donuyor ki yol parcasi hicbir zaman bos kalmasin.
+    """
+    harfler = [
+        karakter.lower() if (karakter.isascii() and karakter.isalnum()) else "-"
+        for karakter in konu.strip()
+    ]
+    slug = "".join(harfler).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:40] or "konu"
+
+
+# ⚠️ Ozel adin gorsel modeline GITMEMESI icin (DW-116). Ayrintili gerekce
+# `adsiz_gorsel_ifadesi` docstring'inde.
+_TUR_SOZLUGU = {
+    "academy": "military academy building",
+    "college": "college campus building",
+    "university": "university campus building",
+    "school": "school building",
+    "palazzo": "renaissance palace",
+    "palace": "palace",
+    "castle": "castle",
+    "cathedral": "cathedral",
+    "church": "church",
+    "abbey": "abbey",
+    "temple": "temple",
+    "monastery": "monastery",
+    "fortress": "fortress",
+    "fort": "fort",
+    "tower": "tower",
+    "bridge": "bridge",
+    "canyon": "canyon landscape",
+    "valley": "valley landscape",
+    "island": "island landscape",
+    "mountain": "mountain landscape",
+    "river": "river landscape",
+    "cross": "military gallantry medal",
+    "medal": "military medal",
+    "ship": "sailing ship",
+    "vessel": "sailing ship",
+    "wreck": "shipwreck",
+    "tomb": "tomb",
+    "pyramid": "pyramid",
+    "ruins": "stone ruins",
+    "museum": "museum interior",
+    "library": "library interior",
+    "hospital": "hospital building",
+    "prison": "prison building",
+    "theatre": "theatre building",
+    "theater": "theatre building",
+    "observatory": "observatory building",
+    "manuscript": "illuminated manuscript",
+    "codex": "illuminated manuscript",
+}
+
+
+def adsiz_gorsel_ifadesi(capa: str) -> str:
+    """Gorsel capasini OZEL AD ICERMEYEN bir tarife cevirir (DW-116).
+
+    ⚠️ Olculdu (2026-08-10, Franziska Scanagatta): gorsel istemine
+    `Visual anchor: Theresian Military Academy` yaziyordu ve model 2. sahneye
+    kadraji kaplayan kazili bir tas koydu: "THERESIANISCHES MILITÄRAKADEMIE
+    WIENER NEUSTADT".
+
+    DW-112 bu nesneleri ("inscribed slabs, plaques") ZATEN yasakliyordu ve
+    yasak tutmadi. Sebep yasagin zayifligi degil: model gordugu adi yaziyor.
+    Gercek dunyada askeri akademilerin adi kapisinda kazilidir, yani model
+    HATA yapmiyor — istenen seyi yapiyor. Ustelik iki kez soyleniyordu,
+    cunku her sahnenin arama terimi de capayi icermek zorunda.
+
+    Bu yuzden cozum daha sert bir yasak degil: adi HIC GONDERMEMEK. Model
+    goremedigi bir adi yazamaz.
+
+    Ad yalnizca GORSEL URETIMDEN cikariliyor. Arsiv aramasi (Commons, Met)
+    adi olduğu gibi kullanmaya devam ediyor — orada ad tam olarak dogru
+    fotografi bulmanin yolu.
+
+    Donen ifade kasitli olarak GENEL: "Theresian Military Academy" →
+    "military academy building". Sahnenin kim/ne oldugunu anlatim ve arama
+    terimi zaten tasiyor; capanin isi turu ve donemi sabitlemek.
+    """
+    kelimeler = re.findall(r"[A-Za-z]+", capa.lower())
+    for kelime in reversed(kelimeler):
+        if kelime in _TUR_SOZLUGU:
+            return _TUR_SOZLUGU[kelime]
+    # ⚠️ Tur sozlugunde yoksa capa muhtemelen bir KISI ya da uygarlik adi.
+    # Bos donmek dogru: cumle tamamen dusuyor ve sahne tarifi anlatimla
+    # arama teriminden geliyor. Uydurma bir tur vermek yanlis donemde bir
+    # bina cizdirmekten daha kotu.
+    return ""
+
+
+def adsiz_sahne_tarifi(terim: str, capa: str) -> str:
+    """Arama teriminden capanin ozel adini ayiklar (DW-116).
+
+    ⚠️ Adi yalnizca `Visual anchor:` cumlesinden cikarmak YETMEZ. Ad gorsel
+    istemine IKI yerden giriyor: o cumleden ve `Required visible detail`
+    olarak gelen arama teriminden. Arama terimi de capayi icermek ZORUNDA
+    (`_ensure_visual_anchor`), yani ad orada garantili duruyor.
+
+    Tek kanali kapatip digerini acik birakmak kusuru duzeltmez, yalnizca
+    hangi cumlenin suclu oldugunu belirsizlestirir.
+
+    Geriye anlamli bir sey kalmazsa terim OLDUGU GIBI donuyor: bos bir
+    "gorunmesi gereken detay" modele hicbir sey soylemez ve sahne tamamen
+    modelin insafina kalir.
+    """
+    capa_kelimeleri = _normalize_topic(capa)
+    if not capa_kelimeleri:
+        return terim
+    kalan = [
+        kelime
+        for kelime in terim.split()
+        if not (_normalize_topic(kelime) & capa_kelimeleri)
+    ]
+    return " ".join(kalan) if kalan else terim
+
+
+MUZIK_UZANTILARI = (".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma")
+MUZIK_GECMISI = ROOT / "storage" / "youtube_automation" / "muzik_gecmisi.json"
+
+
+def muzik_secenekleri() -> list[str]:
+    """Kullanilabilir parca ADLARI — yol degil.
+
+    CLI `--bgm-file`'i `storage/bgm` ve `resource/songs` beyaz listesinde
+    cozuyor, dolayisiyla ciplak dosya adi yeterli ve daha guvenli: yol
+    kacisi diye bir sey kalmiyor.
+    """
+    adlar: set[str] = set()
+    for dizin in (ROOT / "storage" / "bgm", ROOT / "resource" / "songs"):
+        if not dizin.is_dir():
+            continue
+        for parca in dizin.iterdir():
+            if parca.is_file() and parca.suffix.lower() in MUZIK_UZANTILARI:
+                adlar.add(parca.name)
+    return sorted(adlar)
+
+
+def muzik_sec(
+    secenekler: list[str] | None = None, gecmis_yolu: Path | None = None
+) -> str:
+    """Bu video icin bir parca sec ve secimi KAYDA GECIR (DW-120).
+
+    ⚠️ Eskiden secim `--bgm-type random` ile MPT'nin icinde yapiliyordu:
+    `random.choice(29 parca)`, iadeli ve hicbir yere yazilmadan. Iki sonucu
+    vardi.
+
+    Birincisi: hangi videoda hangi parcanin caldigi HIC BILINMIYORDU.
+    Kullanici "hepsinde ayni muzik var" dediginde iddiayi sinamak icin
+    nihai sesten anlatimi cikarip 29 parcayla korelasyon olcmek gerekti
+    (2026-08-10). Olcum iddiayi cürüttü — 4 video 4 farkli parca kullanmisti,
+    benzerlik 0,99'a karsi ikinci sira 0,04 — ama bunu ogrenmenin baska yolu
+    yoktu. Kayit tutulsaydi tek satirlik bir bakis yetecekti.
+
+    Ikincisi: iadeli secim oldugu icin bir sonraki kosumda ayni parcanin
+    ust uste cikmasi mumkundu. 29 parcadan 5 video icin cakisma olasiligi
+    ~%35; yani "sansa" birakilmis bir sey degil, beklenen bir olay.
+
+    Cozum: son yarinin disindan sec ve secimi diske yaz. Boylece tekrar
+    yalnizca parca havuzu tukendiginde mumkun olur.
+
+    Parca yoksa BOS DONER; cagiran taraf muziksiz devam eder — muzik
+    ugruna video uretimi dusmemeli.
+    """
+    havuz = secenekler if secenekler is not None else muzik_secenekleri()
+    if not havuz:
+        return ""
+
+    yol = gecmis_yolu if gecmis_yolu is not None else MUZIK_GECMISI
+    try:
+        gecmis = [str(ad) for ad in json.loads(yol.read_text(encoding="utf-8"))]
+    except (OSError, ValueError):
+        # Bozuk veya olmayan gecmis muzigi engellememeli — en kotu ihtimalle
+        # bir tekrar olur, ki zaten duzeltmeye calistigimiz sey o kadar.
+        gecmis = []
+
+    # Havuzun yarisi kadar geriye bakiliyor: tamamina bakmak son parca
+    # kalana kadar secimi tek secenege dusurur ve "rastgele" anlamsizlasir.
+    pencere = max(1, len(havuz) // 2)
+    yakinda_kullanilan = set(gecmis[-pencere:])
+    uygun = [ad for ad in havuz if ad not in yakinda_kullanilan] or list(havuz)
+    secilen = random.choice(uygun)
+
+    gecmis.append(secilen)
+    try:
+        yol.parent.mkdir(parents=True, exist_ok=True)
+        yol.write_text(
+            json.dumps(gecmis[-len(havuz):], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as hata:
+        # Yazamadiysak secim yine gecerli; yalnizca bir sonraki kosum bu
+        # parcayi tekrar secebilir. Sessiz kalmiyoruz ki fark edilsin.
+        print(f"⚠️ muzik gecmisi yazilamadi ({hata}); tekrar korumasi bu kosumda yok")
+    return secilen
+
+
 def _openai_client() -> tuple[OpenAI, str]:
     api_key = str(config.app.get("openai_api_key", "")).strip()
     if not api_key:
@@ -733,6 +949,32 @@ def generate_content_plan(
             "If the subject is broad, narrow it to one concrete named site, artifact, or invention "
             "that belongs to it."
         )
+        # ⚠️ KAYNAK METIN — olculdu (2026-08-09, DW-114). Bu blok olmadan model
+        # yalnizca konunun ADINI goruyordu ve az bilinen konularda ictigi suyu
+        # uyduruyordu: "Franziska Scanagatta" icin senaryo ve etiketler
+        # "Italian opera / 19th century music / opera history" cikti; gercekte
+        # 1794'te erkek kiligina girip Habsburg ordusunda subaylik yapmis bir
+        # kadin. Huninin varlik sebebi arzi az konular bulmak, arzin az olmasinin
+        # en yaygin sebebi ise konunun az bilinmesi — yani huni ne kadar iyi
+        # calisirsa modelin bilmedigi konu o kadar cok geliyor.
+        if kaynak := wikimedia_materials.vikipedi_ozeti(konu):
+            user += (
+                "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia summary of the subject. "
+                "Every factual claim in your script, title, description and tags must be "
+                "consistent with it. Where it is silent, say what is not known instead of "
+                "filling the gap; naming the edge of the evidence is this channel's voice, "
+                "and inventing a fact is the one failure this channel cannot survive.\n"
+                f"{json.dumps(kaynak, ensure_ascii=False)}"
+            )
+        else:
+            # Kaynak yoksa uretim durmuyor ama model UYARILIYOR: bos kaynak,
+            # "serbestsin" degil "temkinli ol" demek.
+            user += (
+                "\n\nNo encyclopedia summary could be retrieved for this subject. Write only "
+                "what you are confident is true of THIS specific subject, keep the claims few "
+                "and general, and state plainly where the record is thin. Do not invent "
+                "names, dates, professions or events to fill the script."
+            )
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
@@ -892,6 +1134,16 @@ def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
             )
             sonuc = arka
 
+        # ⚠️ Parlaklik tabani BURADA, cunku her sahne karesi — AI uretimi de
+        # arsiv fotografi da — bu fonksiyondan geciyor. Uretim tarafina
+        # konsaydi arsivden gelen karanlik kare kacardi.
+        sonuc, gama = gorsel_olcum.karanligi_ac(sonuc)
+        if gama is not None:
+            print(
+                f"karanlik kare acildi: {hedef.name} (gama {gama})",
+                flush=True,
+            )
+
         hedef.parent.mkdir(parents=True, exist_ok=True)
         sonuc.save(hedef, format="JPEG", quality=92)
     return hedef
@@ -905,7 +1157,13 @@ def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
     ]
 
 
-def create_source_montage(material_files: list[Path], attempt: int) -> Path:
+def create_source_montage(
+    material_files: list[Path], attempt: int, konu: str = ""
+) -> Path:
+    # ⚠️ `konu` isteğe bagli ama uretimde HER ZAMAN veriliyor (DW-119):
+    # materyal klasoru gibi bu dosya adi da saat anahtarliydi ve ayni saatte
+    # uretilen ikinci video birincinin kontak sayfasini eziyordu. Hakemin ne
+    # gorup ne onayladigi geriye donuk incelenemiyordu.
     if not material_files:
         raise ValueError("source montage requires at least one image")
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
@@ -924,7 +1182,11 @@ def create_source_montage(material_files: list[Path], attempt: int) -> Path:
         draw.rectangle((0, 0, 54, 34), fill="black")
         draw.text((12, 8), str(index), fill="white")
         canvas.paste(tile, (((index - 1) % columns) * cell_width, ((index - 1) // columns) * cell_height))
-    montage = REVIEW_DIR / f"source-{publication_slot_key()}-attempt-{attempt}.jpg"
+    ayirt_edici = f"-{konu_slug(konu)}" if konu else ""
+    montage = (
+        REVIEW_DIR
+        / f"source-{publication_slot_key()}{ayirt_edici}-attempt-{attempt}.jpg"
+    )
     canvas.save(montage, format="JPEG", quality=90)
     return montage
 
@@ -939,6 +1201,28 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
             "Each numbered image must directly match the corresponding scene, visual anchor, and historical period. "
             "Historically grounded AI illustrations are acceptable; do not reject an image merely because it is an illustration, but reject misleading or historically inconsistent details. "
             "Reject generic modern people, vehicles, factories, schools, unrelated maps or plans, single-word coincidences, and misleading period substitutions. "
+            # ⚠️ Iki soru 2026-08-10'da EKLENDI (DW-117). Ikisi de o gecenin
+            # kusurlarini hakemin KACIRMASINDAN geliyor:
+            #
+            #   * Scanagatta'nin 2. karesinde kadraji kaplayan kazili levha
+            #     ("THERESIANISCHES MILITÄRAKADEMIE...") vardi; hakem gormedi
+            #     ve videoyu GECIRDI.
+            #   * Hardham videosunda ekranda baska adamlarin adli portreleri
+            #     vardi ("Temp. 2nd-Lieut. H. KELLY, V.C."); hakem videoyu
+            #     dusurdu ama "modern goruntu" diyerek — yanlis ozneyi hic
+            #     fark etmedi. Yani yakalamasi SANS eseriydi.
+            #
+            # Sorular ayri ayri soruluyor cunku "gorsel konuya uyuyor mu"
+            # sorusu ikisini de kapsamiyor: yanlis kisinin portresi konuya
+            # gayet uyuyor gorunur.
+            "Read the frames, do not only glance at them. For each image answer two "
+            "specific questions and report any failure in issues and problem_scene_numbers. "
+            "First: is there readable lettering anywhere inside the picture — on a sign, "
+            "plaque, carved stone, book, paper, caption strip or nameplate? If yes, quote "
+            "the words you can read. Second: when the topic is a named person, is the human "
+            "shown actually that person, or is it somebody else who merely shares the same "
+            "medal, uniform, institution or era? A portrait captioned with a different "
+            "person's name is always a problem scene. "
             "Return JSON with visual_alignment_score (0-100), issues (array), revised_search_terms, and problem_scene_numbers (1-based scene numbers that need replacement; empty only when no scene is problematic). "
             # ⚠️ Buraya bir gecme esigi YAZILMAZ — bkz. `yayina_uygun`. Esik
             # anilinca model olcmeyi birakip esigin bir tik altina oy yaziyor.
@@ -1102,8 +1386,57 @@ def isik_tohumu(konu: str) -> int:
     return zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ISIK_DILI)
 
 
-def kare_dili(sahne_no: int) -> str:
-    """`sahne_no` icin kadraj tarifi (1'den baslar)."""
+ACILIS_KARELERI = (
+    "a close three-quarter view of the main subject filling most of the frame, "
+    "sharp and immediately readable at phone size",
+    "a tight shot on a single person's face and shoulders, eyes visible, "
+    "the setting soft behind them",
+    "a low camera close behind a person's shoulder as they face the subject, "
+    "the subject large in front of them",
+    "a hands-and-object close-up at the moment of doing something, "
+    "the object large and the action unmistakable",
+    "a doorway or gap in the near foreground with the subject large and lit "
+    "just beyond it, the viewer placed inside the scene",
+)
+"""1. sahneye ozel kadrajlar (DW-121).
+
+⚠️ Olculdu (2026-08-10, Chaco Canyon'un ilk 11 saati): 374 goruntuleme,
+trafigin %97,3'u Shorts akisi — YouTube videoyu dagitiyor. Ama izleyicilerin
+%73'u IZLEMEDEN geciyor, yalnizca %27'si kaliyor. Kalanlar iyi izliyor: 33
+saniyelik videoda ortalama 0:20, yani %61. Govde tutuyor, ACILIS tutmuyor.
+
+Sebep kodda: `kare_dili` listeyi sahne numarasina gore donduruyordu ve
+`KARE_DILI[0]` "a wide establishing shot with the subject small in a large
+landscape". Yani HER videonun 1. sahnesi, tanim geregi, oznenin minicik
+oldugu genis bir plan. Canyon'un ilk 3 saniyesi tam boyle: mavi saat, sonuk,
+figur kadrajin kucuk bir noktasi ve neredeyse hic hareket yok. Telefonda,
+akista, bakilacak bir sey yok.
+
+1. sahnenin isi digerlerinden FARKLI: merak boslugu acmak. Bu yuzden kadraj
+listesinin ilk elemanini miras almiyor, kendi kumesi var — hepsi yakin ve
+telefonda okunakli.
+
+Kume 5 uzunlukta ve konuya gore tohumlaniyor (`isik_tohumu` deseni), yoksa
+kanalin butun videolari ayni kareyle acilir ve tekduzelik bu kez acilista
+olusur.
+"""
+
+
+def acilis_karesi(konu: str) -> str:
+    """1. sahnenin kadraji — konuya gore kararli sekilde secilir."""
+    tohum = zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ACILIS_KARELERI)
+    return ACILIS_KARELERI[tohum]
+
+
+def kare_dili(sahne_no: int, konu: str = "") -> str:
+    """`sahne_no` icin kadraj tarifi (1'den baslar).
+
+    ⚠️ 1. sahne AYRI (DW-121) — gerekce `ACILIS_KARELERI` docstring'inde.
+    `konu` verilmezse eski davranis suruyor; testler ve eski cagrilar
+    bozulmasin diye isteğe bagli birakildi.
+    """
+    if sahne_no == 1 and konu:
+        return acilis_karesi(konu)
     return KARE_DILI[(sahne_no - 1) % len(KARE_DILI)]
 
 
@@ -1270,6 +1603,60 @@ def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
         print(f"gorsel olcum yapilamadi: {hata}", flush=True)
 
 
+GORSEL_DENEME_SAYISI = 4
+"""Gecici OpenAI hatasinda kac kez denenecek."""
+
+GORSEL_BEKLEME_SN = 20.0
+"""Ilk bekleme; her denemede ikiye katlaniyor (20 → 40 → 80)."""
+
+
+def _gorsel_uret_tekrarli(
+    client: OpenAI,
+    request: dict[str, Any],
+    *,
+    sahne: int,
+    uyu: Callable[[float], None] = time.sleep,
+) -> Any:
+    """Gorsel uretir; GECICI sunucu hatalarinda tekrar dener.
+
+    ⚠️ Olculdu (2026-08-09, DW-115): bes konuluk bir kosumda api.openai.com
+    Cloudflare uzerinden DORT kez 520 dondu ("origin returned an unknown
+    error"). OpenAI'nin durum sayfasi ayni anda "All Systems Operational"
+    diyordu, yani kesinti aralikliydi ve hatanin kendisi
+    `"retryable": true, "retry_after": 60` tasiyordu.
+
+    Tekrar YOKKEN bedeli agirdi: hata 8 sahnenin ortasinda gelince o ana kadar
+    uretilmis gorseller VE senaryo/plan icin harcanan para copе gidiyordu.
+    Kosumun ikisi tam da boyle dustu.
+
+    Bu, deponun `wikimedia_materials._get_with_retry` icin zaten yazdigi
+    gerekcenin aynisi: "gecici bir ag hatasinin bedeli harcanan LLM/gorsel
+    parasi oluyor". Ayni koruma gorsel ucunda yoktu.
+
+    ⚠️ Yalnizca GECICI hatalar tekrarlanir. `BadRequestError` (moderasyon)
+    ve kredi tukenmesi tekrarlanmaz: ikisi de tekrar denemekle degismez,
+    tekrarlamak yalnizca gecikme uretir.
+    """
+    son_hata: Exception | None = None
+    for deneme in range(GORSEL_DENEME_SAYISI):
+        try:
+            return client.images.generate(**request)
+        except (InternalServerError, APIConnectionError, APITimeoutError) as hata:
+            son_hata = hata
+            if deneme == GORSEL_DENEME_SAYISI - 1:
+                break
+            bekleme = GORSEL_BEKLEME_SN * (2**deneme)
+            print(
+                f"gorsel {sahne}: gecici hata ({type(hata).__name__}), "
+                f"{bekleme:.0f} sn sonra yeniden deneniyor "
+                f"({deneme + 2}/{GORSEL_DENEME_SAYISI})",
+                flush=True,
+            )
+            uyu(bekleme)
+    assert son_hata is not None
+    raise son_hata
+
+
 def generate_ai_scene_materials(
     plan: ContentPlan,
     target_dir: Path,
@@ -1296,9 +1683,35 @@ def generate_ai_scene_materials(
         visual_detail = scene.get("search_term", "")
         if index in revised_by_scene:
             visual_detail = revised_by_scene[index]
+        # ⚠️ Ozel ad buradan SONRA gorsel modeline gitmiyor (DW-116).
+        # Arsiv aramasi adi kullanmaya devam ediyor; kesilen yalnizca
+        # GORSEL URETIM kanali. Gerekce `adsiz_gorsel_ifadesi`de.
+        visual_detail = adsiz_sahne_tarifi(visual_detail, plan.visual_anchor)
+        capa_ifadesi = adsiz_gorsel_ifadesi(plan.visual_anchor)
         prompt = (
-            "Create a vertical image for a YouTube Short about history. "
-            f"Visual anchor: {plan.visual_anchor}. Scene {index}: {scene.get('narration', '')}. "
+            # ⚠️ Olculdu (2026-08-09, DW-112): bu cumle eskiden "Create a vertical
+            # image for a YouTube Short about history" idi ve model 7 gorselin
+            # 2'sine BASLIK YAZISI bastI — "CHACO CANYON DISAPPEARANCE MYSTERY"
+            # ve "what happened to them?" goruntunun ICINE gomulu geldi.
+            #
+            # Promptun sonunda zaten "no captions, no text, no watermark" yaziyordu
+            # ve ISE YARAMADI. Sebep olumsuz talimatIn zayifligI degil, acilis
+            # cumlesinin kurdugu CERCEVE: "image for a YouTube Short" modele
+            # kucuk-resim (thumbnail) turunu isaret ediyor ve o turun tanimi
+            # zaten uzerinde iri baslik yazan bir gorsel. Model tur talimatini
+            # izliyordu, yasak listesini degil.
+            #
+            # Cozum turu degistirmek: istenen sey bir fotograf, bir kapak gorseli
+            # degil. "YouTube Short" ifadesi prompttan tamamen cikarildi; dikeylik
+            # ve kullanim yeri tur adI vermeden tarif ediliyor.
+            "Create a single vertical documentary photograph, 2:3 portrait framing. "
+            "This is one frame of footage inside a film, never a poster, never a "
+            "thumbnail, never a title card, never a book or album cover. "
+            # ⚠️ Buraya OZEL AD YAZILMAZ (DW-116). Eskiden
+            # `Visual anchor: {plan.visual_anchor}` idi ve model adi kadrajin
+            # icine kazidi. Gerekce `adsiz_gorsel_ifadesi` docstring'inde.
+            + (f"Setting: {capa_ifadesi}. " if capa_ifadesi else "")
+            + f"Scene {index}: {scene.get('narration', '')}. "
             f"Required visible detail: {visual_detail}. "
             # ⚠️ Gorsel dil sahnenin KONUSUNA gore secilir, tek bir estetige
             # sabitlenmez — bkz. `GORSEL_DIL`.
@@ -1306,7 +1719,7 @@ def generate_ai_scene_materials(
             # ⚠️ Kadraj sahne basina DEGISIYOR. Burada eskiden HER sahneye ayni
             # sabit kompozisyon cumlesi gidiyor ve `GORSEL_DIL`in cesitlilik
             # istegini bozuyordu — gerekce `KARE_DILI` docstring'inde.
-            + f" Frame this scene as {kare_dili(index)}. "
+            + f" Frame this scene as {kare_dili(index, plan.topic)}. "
             # ⚠️ Isik kadrajdan AYRI donuyor ve palet kurali bunun tamamlayicisi:
             # tek basina isik vermek yetmiyordu, model yine her seyin uzerine
             # tek bir sicak katman koyuyordu — gerekce `ISIK_DILI` docstring'inde.
@@ -1325,8 +1738,47 @@ def generate_ai_scene_materials(
             "small size on a phone screen — no crushed shadows, no silhouette-only frame. "
             + "Strong vertical composition, period-appropriate "
             "architecture, clothing, tools, and materials. No modern objects unless the scene is "
-            "explicitly set today, no logos, no captions, no text, no watermark, and no invented "
-            "event presented as a surviving photograph."
+            "explicitly set today, and no invented event presented as a surviving photograph. "
+            # ⚠️ Yasak MUAFIYETSIZ (DW-112). Uc asamada olculdu:
+            #
+            #   1. "no captions, no text, no watermark"
+            #      → model 7 gorselin 2'sine iri BASLIK bastI (bindirme yazi).
+            #   2. Yasak somutlastirildi + "sahnedeki gercek yazi serbest"
+            #      muafiyeti eklendi (oyma, el yazmasi sayfasi)
+            #      → model basligi MUAFIYETIN ICINE tasidI: bir sahnede
+            #        "CHACO CANYON DISAPPERANCE MYSTERY" yazan oyulmus tas
+            #        levha, digerinde adamin elinde "THE QUESTION REMAINS:
+            #        WHAT HAPPENED TO THEM?" yazan kagit. Tastaki yazim hatasi
+            #        ("DISAPPERANCE") isin ne kadar uydurma oldugunun kanIti.
+            #   3. Muafiyet kaldirildi → burasi.
+            #
+            # Ders: modelin istedigi sey basligi GOSTERMEK. Ona yazi icin
+            # herhangi bir mesru zemin birakilirsa basligi oraya koyuyor;
+            # yasak dar degil, **kacamaksiz** olmali.
+            #
+            # Antik isaretler (petroglif, hiyeroglif) ayri tutuluyor ve bu
+            # guvenli: onlar okunabilir Latin sozcugu degil, yani baslik
+            # tasiyamiyorlar. Chaco'nun spiral petroglifi videonun en iyi
+            # karesiydi — onu kaybetmek bedava degil.
+            "The photograph must contain no readable words anywhere in the frame. "
+            "No title text, no headline, no caption, no subtitle, no lower third, no logo, "
+            "no watermark, no signature, no border. Equally forbidden inside the scene: "
+            "signs, placards, plaques, inscribed slabs, banners, posters, labels, open books "
+            "or sheets of paper turned towards the camera — anything that could carry the "
+            "video's title as an object. Ancient carved symbols and petroglyphs that genuinely "
+            "belong to the monument are welcome, but they must never spell out modern words. "
+            # ⚠️ Kalan tek sizinti kanali (DW-116). Ozel ad artik `Setting:`
+            # cumlesinden ve arama teriminden CIKARILDI, ama ANLATIM
+            # cumlesinin icinde hala gecebiliyor ("she enrolled in the
+            # Theresian Military Academy") ve anlatim kaldirilamaz — sahnenin
+            # ne oldugunu soyleyen tek sey o.
+            #
+            # Bu yuzden kalan kanal icin kural ADI ISARET EDIYOR: ad senin
+            # icin baglam, cizilecek icerik degil. Onceki yasaklar nesne
+            # turlerini sayiyordu; bu, adin kendisini hedefliyor.
+            "Any proper name that appears in this description is context for you, never "
+            "content for the picture: no personal name, institution name, place name or "
+            "date may be rendered as letters or numerals on any surface in the frame."
         )
         request = {
             "model": model,
@@ -1339,7 +1791,7 @@ def generate_ai_scene_materials(
             "n": 1,
         }
         try:
-            response = client.images.generate(**request)
+            response = _gorsel_uret_tekrarli(client, request, sahne=index)
         except BadRequestError as exc:
             body = exc.body if isinstance(exc.body, dict) else {}
             code = str(body.get("code", getattr(exc, "code", "")))
@@ -1347,12 +1799,17 @@ def generate_ai_scene_materials(
                 raise
             safe_prompt = (
                 "Create a non-violent museum-safe historical reconstruction for a vertical documentary. "
-                f"Show only this neutral subject: {plan.visual_anchor}; {visual_detail}. "
+                # ⚠️ Burada da ozel ad YOK (DW-116). Moderasyon yedegi nadiren
+                # calisiyor ama calistiginda ayni kusuru uretebilir; iki
+                # istemin ayni kurala uymamasi kusurun geri donus yolu olur.
+                f"Show only this neutral subject: {capa_ifadesi or visual_detail}; {visual_detail}. "
                 "Focus on architecture, artifact, landscape, materials, or peaceful daily activity. "
                 "No battle, injury, death, weapons, threat, distressed people, modern objects, text, logo, or watermark."
             )
             try:
-                response = client.images.generate(**{**request, "prompt": safe_prompt})
+                response = _gorsel_uret_tekrarli(
+                    client, {**request, "prompt": safe_prompt}, sahne=index
+                )
             except BadRequestError as retry_exc:
                 retry_body = retry_exc.body if isinstance(retry_exc.body, dict) else {}
                 retry_code = str(
@@ -1425,12 +1882,26 @@ def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
 def run_generator(
     plan: ContentPlan, attempt: int
 ) -> tuple[str, Path, Path, list[dict[str, Any]]]:
+    # ⚠️ Klasor adinda KONU da var (DW-119). Eskiden yalnizca
+    # `publication_slot_key()`-`attempt` idi, yani YYYY-MM-DD-HH: ayni saat
+    # icinde uretilen iki video AYNI klasoru paylasiyordu.
+    #
+    # Olculdu (2026-08-10): 4 video uretildi, geriye 2 klasor kaldi.
+    # `2026-08-10-10-attempt-1` icinde Anita'nin `credits.json`'u duruyor ama
+    # klasorde credits'te gecmeyen `scene-01.jpg` ve `scene-07.jpg` de var —
+    # Jacopo'dan kalanlar.
+    #
+    # Render bugun karismiyor cunku `dikeye_uydur_hepsi` acik listeyle
+    # calisiyor, klasoru taramiyor. Zarar baska yerde: (a) adli iz siliniyor,
+    # Scanagatta'daki levha kusurunun materyalleri incelenemedi; (b) tek
+    # satirlik bir degisiklik downstream'i klasor taramaya cevirirse hat
+    # sessizce YANLIS videoyu uretir. Ad ayrildi ki bu ikisi de imkansiz olsun.
     material_dir = (
         ROOT
         / "storage"
         / "youtube_automation"
         / "commons_materials"
-        / f"{publication_slot_key()}-attempt-{attempt}"
+        / f"{publication_slot_key()}-{konu_slug(plan.topic)}-attempt-{attempt}"
     )
     try:
         material_files, credits = download_scene_materials(
@@ -1453,9 +1924,23 @@ def run_generator(
     else:
         material_files = _delikleri_doldur(plan, material_files, material_dir)
     _benzerligi_kaydet(material_files, material_dir)
-    source_montage = create_source_montage(material_files, attempt)
+    source_montage = create_source_montage(material_files, attempt, plan.topic)
     source_review = review_source_materials(plan, source_montage)
-    if not AI_VISUAL_FALLBACK_ENABLED and (
+    # ⚠️ ARSIV ONCE — bu blok artik AI yedeginden BAGIMSIZ calisiyor (DW-118).
+    #
+    # Kosul eskiden `not AI_VISUAL_FALLBACK_ENABLED` idi. Yani yedek acikken
+    # (uretimdeki hal) kaynak incelemesi dustugunde hat arsivde daha iyi bir
+    # arama HIC denemeden dogruca `ai-refinement`'a gidiyordu. Arsivi
+    # iyilestiren kod uretimde olu koddu.
+    #
+    # Sonuc olculdu (2026-08-10): Scanagatta 6/6 sahne AI. Kanal sahibinin
+    # geri bildirimi "AI resim biraz cok, internetten bulup uretmeye calis
+    # daha cok" — asil kaldirac burasiydi.
+    #
+    # Sira su: once revize edilmis terimlerle arsiv, hala dusuyorsa AI. Bedeli
+    # basarisiz sahne basina birkac Commons/Met sorgusu; kazanci gercek
+    # fotograf. AI hala orada, ama artik ILK degil SON care.
+    if (
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_VISUAL_SCORE
     ):
@@ -1501,8 +1986,31 @@ def run_generator(
                     },
                 )
             except MaterialsUnavailableError:
-                pass
+                # Arsiv bu sahneleri besleyemedi; asagida AI devralir.
+                arsiv_degisimi = None
             else:
+                # ⚠️ Sayi tutmuyorsa arsiv denemesi BASARISIZ sayilir, hat
+                # COKMEZ (DW-118). Bu blok `strict=True` zip ile dogrudan
+                # eslestiriyor; arsiv beklenenden farkli sayida dosya
+                # dondurdugunde ValueError firlatip butun uretimi dusururdu.
+                # Yedek acikken bu yol artik her kosumda calistigi icin
+                # sessiz bir carpisma noktasiydi. Arsiv YARDIMCI bir yol;
+                # basarisizligi AI'ya devretmeli, kosumu bitirmemeli.
+                if (
+                    len(replacements) == len(problem_scenes)
+                    and len(replacement_credits) == len(problem_scenes)
+                ):
+                    arsiv_degisimi = (replacements, replacement_credits)
+                else:
+                    arsiv_degisimi = None
+                    print(
+                        f"⚠️ arşiv {len(problem_scenes)} sahne için "
+                        f"{len(replacements)} görsel döndürdü; "
+                        "bu deneme atlanıyor",
+                        flush=True,
+                    )
+            if arsiv_degisimi is not None:
+                replacements, replacement_credits = arsiv_degisimi
                 refined_materials = list(material_files)
                 for scene_number, replacement in zip(
                     problem_scenes, replacements, strict=True
@@ -1520,7 +2028,7 @@ def run_generator(
                 ):
                     credits.append({**credit, "scene": scene_number})
                 credits.sort(key=lambda credit: int(credit.get("scene", 0)))
-                source_montage = create_source_montage(material_files, attempt)
+                source_montage = create_source_montage(material_files, attempt, plan.topic)
                 source_review = review_source_materials(plan, source_montage)
     if AI_VISUAL_FALLBACK_ENABLED and (
         not source_review.publishable
@@ -1547,7 +2055,7 @@ def run_generator(
         for scene_number, replacement in zip(problem_scenes, replacements, strict=True):
             refined_materials[scene_number - 1] = replacement
         material_files = refined_materials
-        source_montage = create_source_montage(material_files, attempt)
+        source_montage = create_source_montage(material_files, attempt, plan.topic)
         source_review = review_source_materials(plan, source_montage)
     if (
         not source_review.publishable
@@ -1571,6 +2079,11 @@ def run_generator(
         f"klip {klip} sn (toplam {klip * len(plan.scenes):.2f} sn)",
         flush=True,
     )
+
+    # ⚠️ Secim LOGA basiliyor (DW-120). Bu satir olmadigi icin hangi videoda
+    # hangi parcanin caldigini ogrenmek ses korelasyonu olcmeyi gerektirdi.
+    secilen_muzik = muzik_sec()
+    print(f"muzik: {secilen_muzik or 'yok (parca bulunamadi)'}", flush=True)
 
     command = [
         sys.executable,
@@ -1599,8 +2112,36 @@ def run_generator(
         SES_ADI,
         "--voice-rate",
         str(SES_HIZI),
-        "--bgm-type",
-        "none",
+        # ⚠️ Arka plan muzigi (DW-112, karar: Mirza 2026-08-09).
+        #
+        # Burasi eskiden "none" idi ve bu bilincli bir politikaydi:
+        # VIDEO_STYLE.md → "Arka plan muzigi: Telif riski belirsizse
+        # kullanilmaz. Yalnizca lisansi dogrulanmis muzik kullanilabilir."
+        #
+        # ⚠️ `resource/songs/` altindaki 29 parca bu sarti KARSILAMIYOR: hepsi
+        # `outputNNN.mp3` diye isimsiz, lisans dosyasi ve kunye yok, ve MPT'nin
+        # kendi README'si onlar icin "YouTube videolarindan alinmistir, telif
+        # sorunu olursa silin" diyor. Yani kaynak belirsiz.
+        #
+        # Risk kullaniciya acikca soylendi ve kullanici paketteki parcalarla
+        # devam etme karari verdi. Karar burada yaziyor ki telif talebi gelirse
+        # sebep aranmasin: donus yolu tek satir, `"random"` → `"none"`.
+        #
+        # ⚠️ Parca ARTIK BURADA seciliyor, MPT'nin icinde degil (DW-120).
+        # Eskiden `--bgm-type random` idi: secim iadeli yapiliyor ve hicbir
+        # yere yazilmiyordu — gerekce `muzik_sec` docstring'inde.
+        #
+        # Telifsiz bir parcaya gecilirse dogru yol yine burasi: `muzik_sec`
+        # yerine tek bir dogrulanmis dosya adi konur.
+        *(
+            ["--bgm-type", "custom", "--bgm-file", secilen_muzik]
+            if secilen_muzik
+            else ["--bgm-type", "none"]
+        ),
+        # Anlatim onde kalmali: 0.2 CLI varsayilani ve konusma uzerinde muzigi
+        # duyulur ama bastirmaz seviyede tutuyor.
+        "--bgm-volume",
+        "0.2",
         "--subtitle-enabled",
         "--subtitle-position",
         "custom",
@@ -1696,7 +2237,17 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
             # ⚠️ Kaynak incelemesiyle ayni kural: esik burada da ANILMAZ.
             "Both scores are measurements of this montage, not verdicts. visual_alignment_score: 0 means nothing matches the narration, 50 means about half the frames match, 100 means every frame matches cleanly. subtitle_readability_score: 0 means captions are unreadable, 100 means every caption is comfortably legible. Score what you actually see. "
-            "Report modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds as issues."
+            "Report modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds as issues. "
+            # ⚠️ Ayni iki soru burada da soruluyor (DW-117). Kaynak kapisi
+            # ile video kapisi FARKLI goruntuler goruyor: kaynak kapisi ham
+            # gorseli, bu kapi kirpilmis ve altyazili nihai kareyi. Yalnizca
+            # birine koymak digerini acik birakir.
+            "Also answer two specific questions for every frame. First: is there readable "
+            "lettering inside the picture itself — not the subtitle burned along the bottom, "
+            "which is intended — but words on a sign, plaque, carved stone, book, paper or "
+            "nameplate? Quote what you can read. Second: when the narration is about a named "
+            "person, is the human on screen actually that person, or somebody else sharing "
+            "the same medal, uniform, institution or era? Report either as an issue."
         ),
     }
     data = _vision_json(prompt, montage)

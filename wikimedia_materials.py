@@ -17,6 +17,9 @@ from met_materials import download_met_scene_material
 API_URL = "https://commons.wikimedia.org/w/api.php"
 VIKIPEDI_API_URL = "https://en.wikipedia.org/w/api.php"
 VIKIVERI_API_URL = "https://www.wikidata.org/w/api.php"
+VIKIPEDI_OZET_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/"
+"""Ingilizce Vikipedi ozet ucu — anahtarsiz, kotasiz."""
+
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
 SAFE_LICENSE_MARKERS = ("public domain", "pd-", "cc0")
 """Kosulsuz kullanilabilen lisanslar — atif bile gerekmiyor."""
@@ -128,6 +131,50 @@ def _get_with_retry(
             delay = float(2 ** (attempt + 1))
         sleep_fn(max(delay, 0.0))
     raise RuntimeError("unreachable Wikimedia retry state")
+
+
+def vikipedi_ozeti(konu: str, *, timeout: int = 15) -> str:
+    """Konunun Ingilizce Vikipedi ozeti. Bulunamazsa BOS DONER, patlamaz.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-09, DW-114): huniden gelen "Franziska
+    Scanagatta" konusu icin model, senaryoyu ve etiketleri tamamen UYDURDU:
+    "Italian opera", "19th century music", "opera history". Gercekte
+    Scanagatta, 1794'te Theresian Askeri Akademisi'ne girmek icin erkek
+    kiligina giren ve Habsburg ordusunda subay olarak gorev yapan bir kadin.
+    Opera ile hicbir ilgisi yok.
+
+    Kusur YAPISAL, tek bir konunun sanssizligi degil: `generate_content_plan`
+    modele yalnizca konunun ADINI veriyordu. Unlu konularda (Kolezyum, Chaco
+    Canyon) modelin kendi bilgisi yetiyor ve sorun gorunmuyor. Ama huninin
+    VARLIK SEBEBI arzin az oldugu konulari bulmak — ve bir konu hakkinda az
+    video olmasinin en yaygin sebebi, o konunun az bilinmesi. Yani huni tam
+    da modelin bilmedigi konulari seciyor, model de bosluğu uydurmayla
+    dolduruyor. Huni ne kadar iyi calisirsa uydurma riski o kadar artiyor.
+
+    Cozum kaynagi modele vermek. Aday zaten bir Vikipedi maddesinden geliyor
+    (huni okunma sayilarini oradan olcuyor), yani dogru metin elimizde.
+
+    Bos donmek bilincli: ozet yoksa uretim durmamali, ama plan istemi de
+    "kaynak yok" bilgisini gormeli ve modelden bildigini soylemesi degil,
+    bilmedigini soylemesi istenmeli.
+    """
+    try:
+        yanit = _get_with_retry(
+            VIKIPEDI_OZET_URL + urllib.parse.quote(konu.replace(" ", "_"), safe=""),
+            timeout=timeout,
+            max_attempts=2,
+        )
+    except (requests.RequestException, RuntimeError):
+        return ""
+    try:
+        veri = yanit.json()
+    except ValueError:
+        return ""
+    # Belirsizlik sayfasi bir kaynak degil: "X birden fazla seye isaret
+    # edebilir" metni modele hicbir olgu vermez, yanlis dala sapmasina yol acar.
+    if veri.get("type") == "disambiguation":
+        return ""
+    return str(veri.get("extract") or "").strip()
 
 
 def is_safe_license(value: str) -> bool:
