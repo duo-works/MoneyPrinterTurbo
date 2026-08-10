@@ -67,7 +67,10 @@ def test_kadraj_prompta_bagli():
     i = KAYNAK.index(CAPA)
     govde = KAYNAK[i : i + 1200]
 
-    assert "kare_dili(index)" in govde
+    # ⚠️ `konu` 2. argumani DW-121'de eklendi: 1. sahne artik listenin ilk
+    # elemanini (genis plan, ozne minicik) miras almiyor, kendi acilis
+    # kumesinden konuya gore seciyor.
+    assert "kare_dili(index, plan.topic)" in govde
 
 
 # --- Benzerlik olcumu -----------------------------------------------------

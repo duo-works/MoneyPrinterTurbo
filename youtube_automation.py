@@ -1386,8 +1386,57 @@ def isik_tohumu(konu: str) -> int:
     return zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ISIK_DILI)
 
 
-def kare_dili(sahne_no: int) -> str:
-    """`sahne_no` icin kadraj tarifi (1'den baslar)."""
+ACILIS_KARELERI = (
+    "a close three-quarter view of the main subject filling most of the frame, "
+    "sharp and immediately readable at phone size",
+    "a tight shot on a single person's face and shoulders, eyes visible, "
+    "the setting soft behind them",
+    "a low camera close behind a person's shoulder as they face the subject, "
+    "the subject large in front of them",
+    "a hands-and-object close-up at the moment of doing something, "
+    "the object large and the action unmistakable",
+    "a doorway or gap in the near foreground with the subject large and lit "
+    "just beyond it, the viewer placed inside the scene",
+)
+"""1. sahneye ozel kadrajlar (DW-121).
+
+⚠️ Olculdu (2026-08-10, Chaco Canyon'un ilk 11 saati): 374 goruntuleme,
+trafigin %97,3'u Shorts akisi — YouTube videoyu dagitiyor. Ama izleyicilerin
+%73'u IZLEMEDEN geciyor, yalnizca %27'si kaliyor. Kalanlar iyi izliyor: 33
+saniyelik videoda ortalama 0:20, yani %61. Govde tutuyor, ACILIS tutmuyor.
+
+Sebep kodda: `kare_dili` listeyi sahne numarasina gore donduruyordu ve
+`KARE_DILI[0]` "a wide establishing shot with the subject small in a large
+landscape". Yani HER videonun 1. sahnesi, tanim geregi, oznenin minicik
+oldugu genis bir plan. Canyon'un ilk 3 saniyesi tam boyle: mavi saat, sonuk,
+figur kadrajin kucuk bir noktasi ve neredeyse hic hareket yok. Telefonda,
+akista, bakilacak bir sey yok.
+
+1. sahnenin isi digerlerinden FARKLI: merak boslugu acmak. Bu yuzden kadraj
+listesinin ilk elemanini miras almiyor, kendi kumesi var — hepsi yakin ve
+telefonda okunakli.
+
+Kume 5 uzunlukta ve konuya gore tohumlaniyor (`isik_tohumu` deseni), yoksa
+kanalin butun videolari ayni kareyle acilir ve tekduzelik bu kez acilista
+olusur.
+"""
+
+
+def acilis_karesi(konu: str) -> str:
+    """1. sahnenin kadraji — konuya gore kararli sekilde secilir."""
+    tohum = zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ACILIS_KARELERI)
+    return ACILIS_KARELERI[tohum]
+
+
+def kare_dili(sahne_no: int, konu: str = "") -> str:
+    """`sahne_no` icin kadraj tarifi (1'den baslar).
+
+    ⚠️ 1. sahne AYRI (DW-121) — gerekce `ACILIS_KARELERI` docstring'inde.
+    `konu` verilmezse eski davranis suruyor; testler ve eski cagrilar
+    bozulmasin diye isteğe bagli birakildi.
+    """
+    if sahne_no == 1 and konu:
+        return acilis_karesi(konu)
     return KARE_DILI[(sahne_no - 1) % len(KARE_DILI)]
 
 
@@ -1670,7 +1719,7 @@ def generate_ai_scene_materials(
             # ⚠️ Kadraj sahne basina DEGISIYOR. Burada eskiden HER sahneye ayni
             # sabit kompozisyon cumlesi gidiyor ve `GORSEL_DIL`in cesitlilik
             # istegini bozuyordu — gerekce `KARE_DILI` docstring'inde.
-            + f" Frame this scene as {kare_dili(index)}. "
+            + f" Frame this scene as {kare_dili(index, plan.topic)}. "
             # ⚠️ Isik kadrajdan AYRI donuyor ve palet kurali bunun tamamlayicisi:
             # tek basina isik vermek yetmiyordu, model yine her seyin uzerine
             # tek bir sicak katman koyuyordu — gerekce `ISIK_DILI` docstring'inde.

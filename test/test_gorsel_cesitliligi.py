@@ -81,7 +81,9 @@ def test_sahneler_arasi_cesitlilik_isteniyor():
     i = kaynak.index("Create a single vertical documentary photograph")
     govde = kaynak[i : kaynak.index("request = {", i)]
 
-    assert "kare_dili(index)" in govde, "kadraj sahne basina degismeli"
+    # ⚠️ 2. arguman DW-121'de eklendi (1. sahneye ozel acilis kadraji);
+    # kadrajin sahne basina degismesi sarti aynen duruyor.
+    assert "kare_dili(index, plan.topic)" in govde, "kadraj sahne basina degismeli"
     assert "isik_dili(" in govde, "isik sahne basina degismeli"
 
 
