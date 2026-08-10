@@ -1,0 +1,36 @@
+"""Testler aga cikmasin.
+
+⚠️ `download_scene_materials` artik konunun Commons KATEGORISINI de deniyor
+(DW-122). Bu, tam metin aramasini mock'layan testlerin GERCEKTEN aga
+cikmasina yol aciyordu: `search_commons` mock'lu oldugu icin hicbir sey
+bulunamiyor, hat kategori yoluna dusuyor ve Wikipedia/Wikidata/Commons'a
+istek atiyordu. Olculdu: takim 91 saniye suruyordu, bu dosyayla 20.
+
+Varsayilan "kategori yok": mevcut testlerin anlami degismiyor (arsiv
+bulamadi → Met → hata). Kategori cozumunun KENDISINI sinayan testler
+`gercek_kategori_cozumu` fixture'ini isteyerek gercek islevi geri alir.
+"""
+
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import wikimedia_materials as _wm  # noqa: E402
+
+_GERCEK_KATEGORI_COZUMU = _wm.commons_kategorisi
+
+
+@pytest.fixture(autouse=True)
+def _kategori_cozumu_kapali(monkeypatch):
+    monkeypatch.setattr(_wm, "commons_kategorisi", lambda _konu: None)
+    monkeypatch.setattr(_wm, "_KATEGORI_ONBELLEGI", {})
+
+
+@pytest.fixture
+def gercek_kategori_cozumu(monkeypatch):
+    """Autouse susturmasini geri alir — ag katmani testte ayrica yamanmali."""
+    monkeypatch.setattr(_wm, "commons_kategorisi", _GERCEK_KATEGORI_COZUMU)
+    return _GERCEK_KATEGORI_COZUMU

@@ -15,6 +15,8 @@ import gorsel_olcum
 from met_materials import download_met_scene_material
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
+VIKIPEDI_API_URL = "https://en.wikipedia.org/w/api.php"
+VIKIVERI_API_URL = "https://www.wikidata.org/w/api.php"
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
 SAFE_LICENSE_MARKERS = ("public domain", "pd-", "cc0")
 """Kosulsuz kullanilabilen lisanslar — atif bile gerekmiyor."""
@@ -317,6 +319,28 @@ def select_candidate(
     query: str = "",
     required_anchor: str = "",
 ) -> dict[str, Any] | None:
+    adaylar = _puanli_adaylar(pages, used_titles, query, required_anchor)
+    return adaylar[0] if adaylar else None
+
+
+def _kategori_adaylari(
+    pages: list[dict[str, Any]], used_titles: set[str]
+) -> list[dict[str, Any]]:
+    """Kategori havuzunu puana gore siralar — capa ve sorgu kontrolu olmadan.
+
+    Cagiran taraf listeyi bastan gezebilsin diye TEK aday degil LISTE
+    donuyor: indirme dusebilir ya da aday tekrar cikabilir, o zaman
+    sonrakine gecilmeli.
+    """
+    return _puanli_adaylar(pages, used_titles, "", "")
+
+
+def _puanli_adaylar(
+    pages: list[dict[str, Any]],
+    used_titles: set[str],
+    query: str = "",
+    required_anchor: str = "",
+) -> list[dict[str, Any]]:
     candidates: list[tuple[float, dict[str, Any]]] = []
     query_terms = _relevance_terms(query)
     anchor_terms = _relevance_terms(required_anchor)
@@ -387,10 +411,100 @@ def select_candidate(
                 candidate,
             )
         )
-    if not candidates:
-        return None
     candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1]
+    return [aday for _, aday in candidates]
+
+
+_KATEGORI_ONBELLEGI: dict[str, str | None] = {}
+
+
+def commons_kategorisi(konu: str) -> str | None:
+    """Konunun Commons KATEGORISINI Wikidata uzerinden cozer (DW-122).
+
+    Wikipedia basligi → Wikidata ogesi (QID) → P373 (Commons kategorisi).
+
+    ⚠️ Neden tahmin degil de Wikidata: arsiv konuyu bizim yazdigimiz adla
+    saklamiyor. Olculdu (2026-08-10):
+
+        "Franziska Scanagatta"       → Category:Francesca Scanagatta
+        "Theresian Military Academy" → Category:Theresianische Militärakademie
+        "Chaco Canyon"               → Category:Chaco Culture National Historical Park
+
+    Ilk satir Scanagatta videosunun 6/6 sahnesinin neden AI ile uretildigini
+    tek basina acikliyor: gorsel arsivde VARDI, biz **Franziska** diye
+    aradik, Commons **Francesca** diye sakliyor. Yazim ve dil farkini
+    normalize eden sey Wikidata'nin kendisi; `Category:{konu}` tahmini bunu
+    yapamaz.
+
+    Bulunamazsa `None` doner — cagiran taraf tam metin aramasiyla devam eder.
+    """
+    anahtar = konu.strip().casefold()
+    if anahtar in _KATEGORI_ONBELLEGI:
+        return _KATEGORI_ONBELLEGI[anahtar]
+    sonuc: str | None = None
+    try:
+        yanit = _get_with_retry(
+            VIKIPEDI_API_URL,
+            params={
+                "action": "query",
+                "titles": konu.strip(),
+                "prop": "pageprops",
+                "redirects": "1",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=15,
+        )
+        sayfalar = yanit.json().get("query", {}).get("pages", [])
+        kimlik = ""
+        if sayfalar:
+            kimlik = str(sayfalar[0].get("pageprops", {}).get("wikibase_item", ""))
+        if kimlik:
+            iddia = _get_with_retry(
+                VIKIVERI_API_URL,
+                params={
+                    "action": "wbgetclaims",
+                    "entity": kimlik,
+                    "property": "P373",
+                    "format": "json",
+                },
+                timeout=15,
+            )
+            kayitlar = iddia.json().get("claims", {}).get("P373", [])
+            if kayitlar:
+                deger = kayitlar[0].get("mainsnak", {}).get("datavalue", {}).get("value")
+                if isinstance(deger, str) and deger.strip():
+                    sonuc = deger.strip()
+    except (requests.RequestException, ValueError, KeyError, IndexError):
+        # ⚠️ Kategori cozumu bir IYILESTIRME; basarisiz olursa uretim
+        # durmamali. Tam metin aramasi zaten calisiyor.
+        sonuc = None
+    _KATEGORI_ONBELLEGI[anahtar] = sonuc
+    return sonuc
+
+
+def kategori_gorselleri(kategori: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Bir Commons kategorisindeki dosyalari `search_commons` bicimiyle dondurur."""
+    try:
+        yanit = _get_with_retry(
+            API_URL,
+            params={
+                "action": "query",
+                "generator": "categorymembers",
+                "gcmtitle": f"Category:{kategori}",
+                "gcmtype": "file",
+                "gcmlimit": str(limit),
+                "prop": "imageinfo",
+                "iiprop": "url|size|mime|extmetadata",
+                "iiurlwidth": "1080",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=30,
+        )
+        return yanit.json().get("query", {}).get("pages", [])
+    except (requests.RequestException, ValueError):
+        return []
 
 
 def search_commons(query: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -498,6 +612,24 @@ def download_scene_materials(
     # ama dosya adlari tamamen farkli. Kullanici sikayeti birebir buydu:
     # "bir resmi birden fazla kez kullanmissin".
     secilmis_izler: list[Any] = []
+    # Konunun Commons KATEGORISI — tam metin aramasi bir sahneyi bulamayinca
+    # AI'ya gitmeden once buraya bakiliyor (DW-122). Kategori bir kez
+    # cozuluyor; sahne basina istek yok.
+    kategori_havuzu: list[dict[str, Any]] = []
+    for aday_konu in (visual_anchor.strip(), topic.strip()):
+        if not aday_konu:
+            continue
+        kategori = commons_kategorisi(aday_konu)
+        if not kategori:
+            continue
+        kategori_havuzu = kategori_gorselleri(kategori)
+        if kategori_havuzu:
+            print(
+                f"ℹ️ Commons kategorisi: {kategori} "
+                f"({len(kategori_havuzu)} dosya) — {aday_konu}",
+                flush=True,
+            )
+            break
     for index, scene in enumerate(scenes, 1):
         term = scene.get("search_term", "").strip()
         queries = build_search_queries(topic, term)
@@ -554,6 +686,39 @@ def download_scene_materials(
                 destination = candidate_destination
                 break
             if selected:
+                break
+        if (not selected or destination is None) and kategori_havuzu:
+            # ⚠️ Kategori havuzunda capa ve sorgu kontrolu KAPALI (`query=""`,
+            # `required_anchor=""`) ve bu kasitli: kategoriye uyeligi
+            # Commons'in kendi kuratoryasi belirliyor, yani ozne zaten
+            # garantili. Dosya adinda capa kelimelerini aramak tam da
+            # duzeltmeye calistigimiz kusuru geri getirirdi —
+            # `Category:Francesca Scanagatta` icindeki dosyalar "Franziska"
+            # yazmiyor.
+            #
+            # ⚠️ Gevsetme YALNIZCA burada. Ayni gevsetmeyi tam metin
+            # aramasinda yapmak isabeti bozuyor: olculdu (2026-08-10), capa
+            # "Victoria Cross" iken "herhangi bir capa kelimesi" kurali
+            # "Medal, campaign", "Medal, miniature" gibi 13 adsiz madalyayi
+            # iceri aliyordu — DW-116'daki yanlis ozne kusurunun ta kendisi.
+            for aday in _kategori_adaylari(kategori_havuzu, used_titles | failed_titles):
+                suffix = {
+                    "image/jpeg": ".jpg",
+                    "image/png": ".png",
+                    "image/webp": ".webp",
+                }[aday["mime"]]
+                aday_hedefi = target_dir / f"scene-{index:02d}{suffix}"
+                try:
+                    _download(aday["url"], aday_hedefi)
+                except requests.HTTPError:
+                    failed_titles.add(aday["title"])
+                    continue
+                if _tekrar_mi(aday_hedefi, secilmis_izler):
+                    if yedek is None:
+                        yedek = (aday, aday_hedefi)
+                    failed_titles.add(aday["title"])
+                    continue
+                selected, destination = aday, aday_hedefi
                 break
         if (not selected or destination is None) and yedek is not None:
             # Butun adaylar tekrar cikti — yine de bir gorsel koymak, sahneyi
