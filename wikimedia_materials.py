@@ -272,6 +272,19 @@ def delivery_url(source_url: str) -> str:
     return f"{DELIVERY_PROXY_URL}?{query}"
 
 
+def dogrudan_url(source_url: str) -> str:
+    """Wikimedia'nin kendi sunucusundaki URL — teslim proxy'si atlanarak.
+
+    `delivery_url` ile AYNI izin listesi uygulaniyor: yalnizca
+    `upload.wikimedia.org`. Commons bugun URL'lere izleme parametreleri
+    ekliyor (`?utm_source=...`); bunlar atiliyor.
+    """
+    parsed = urllib.parse.urlsplit(source_url)
+    if parsed.scheme != "https" or parsed.hostname != "upload.wikimedia.org":
+        raise ValueError("Commons media URL must use https://upload.wikimedia.org")
+    return urllib.parse.urlunsplit(("https", parsed.hostname, parsed.path, "", ""))
+
+
 def build_search_queries(topic: str, term: str) -> list[str]:
     words = re.findall(r"[A-Za-z0-9'-]+", term)
     meaningful = [word for word in words if word.lower() not in GENERIC_SEARCH_WORDS]
@@ -536,7 +549,24 @@ def _download(
     *,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> None:
-    response = _get_with_retry(delivery_url(url), timeout=60, sleep_fn=sleep_fn)
+    try:
+        response = _get_with_retry(delivery_url(url), timeout=60, sleep_fn=sleep_fn)
+    except requests.HTTPError as exc:
+        # ⚠️ Teslim proxy'si (weserv) BELLI dosyalarda kalici 404 donuyor,
+        # gecici degil. Olculdu (2026-08-10): 15 arsiv dosyasinin 13'u
+        # proxy'den geldi, 2'si israrla 404 verdi — ve o ikisi Wikimedia'nin
+        # kendi sunucusunda 200 ve 652 KB olarak duruyordu.
+        #
+        # Bedeli dogrudan "AI gorsel cok" sikayetine yaziliyor: proxy
+        # dusunce gecerli bir arsiv gorseli atiliyor ve sahne AI'ya gidiyor.
+        # Kaynak yerinde dururken bunu yapmanin sebebi yok.
+        #
+        # 5xx BURAYA GIRMIYOR: `_get_with_retry` onlari zaten geri cekilmeyle
+        # 5 kez deniyor ve gecici olduklari icin proxy'yi atlamaya gerek yok.
+        durum = exc.response.status_code if exc.response is not None else 0
+        if durum not in {403, 404}:
+            raise
+        response = _get_with_retry(dogrudan_url(url), timeout=60, sleep_fn=sleep_fn)
     destination.write_bytes(response.content)
     if destination.stat().st_size < 10_000:
         destination.unlink(missing_ok=True)
