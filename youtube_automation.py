@@ -188,7 +188,9 @@ EDITORYAL_YONERGE = """
 Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
-Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, or invention in 1-4 words. Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME — never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
+Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
@@ -528,6 +530,112 @@ def konu_slug(konu: str) -> str:
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug[:40] or "konu"
+
+
+# ⚠️ Ozel adin gorsel modeline GITMEMESI icin (DW-116). Ayrintili gerekce
+# `adsiz_gorsel_ifadesi` docstring'inde.
+_TUR_SOZLUGU = {
+    "academy": "military academy building",
+    "college": "college campus building",
+    "university": "university campus building",
+    "school": "school building",
+    "palazzo": "renaissance palace",
+    "palace": "palace",
+    "castle": "castle",
+    "cathedral": "cathedral",
+    "church": "church",
+    "abbey": "abbey",
+    "temple": "temple",
+    "monastery": "monastery",
+    "fortress": "fortress",
+    "fort": "fort",
+    "tower": "tower",
+    "bridge": "bridge",
+    "canyon": "canyon landscape",
+    "valley": "valley landscape",
+    "island": "island landscape",
+    "mountain": "mountain landscape",
+    "river": "river landscape",
+    "cross": "military gallantry medal",
+    "medal": "military medal",
+    "ship": "sailing ship",
+    "vessel": "sailing ship",
+    "wreck": "shipwreck",
+    "tomb": "tomb",
+    "pyramid": "pyramid",
+    "ruins": "stone ruins",
+    "museum": "museum interior",
+    "library": "library interior",
+    "hospital": "hospital building",
+    "prison": "prison building",
+    "theatre": "theatre building",
+    "theater": "theatre building",
+    "observatory": "observatory building",
+    "manuscript": "illuminated manuscript",
+    "codex": "illuminated manuscript",
+}
+
+
+def adsiz_gorsel_ifadesi(capa: str) -> str:
+    """Gorsel capasini OZEL AD ICERMEYEN bir tarife cevirir (DW-116).
+
+    ⚠️ Olculdu (2026-08-10, Franziska Scanagatta): gorsel istemine
+    `Visual anchor: Theresian Military Academy` yaziyordu ve model 2. sahneye
+    kadraji kaplayan kazili bir tas koydu: "THERESIANISCHES MILITÄRAKADEMIE
+    WIENER NEUSTADT".
+
+    DW-112 bu nesneleri ("inscribed slabs, plaques") ZATEN yasakliyordu ve
+    yasak tutmadi. Sebep yasagin zayifligi degil: model gordugu adi yaziyor.
+    Gercek dunyada askeri akademilerin adi kapisinda kazilidir, yani model
+    HATA yapmiyor — istenen seyi yapiyor. Ustelik iki kez soyleniyordu,
+    cunku her sahnenin arama terimi de capayi icermek zorunda.
+
+    Bu yuzden cozum daha sert bir yasak degil: adi HIC GONDERMEMEK. Model
+    goremedigi bir adi yazamaz.
+
+    Ad yalnizca GORSEL URETIMDEN cikariliyor. Arsiv aramasi (Commons, Met)
+    adi olduğu gibi kullanmaya devam ediyor — orada ad tam olarak dogru
+    fotografi bulmanin yolu.
+
+    Donen ifade kasitli olarak GENEL: "Theresian Military Academy" →
+    "military academy building". Sahnenin kim/ne oldugunu anlatim ve arama
+    terimi zaten tasiyor; capanin isi turu ve donemi sabitlemek.
+    """
+    kelimeler = re.findall(r"[A-Za-z]+", capa.lower())
+    for kelime in reversed(kelimeler):
+        if kelime in _TUR_SOZLUGU:
+            return _TUR_SOZLUGU[kelime]
+    # ⚠️ Tur sozlugunde yoksa capa muhtemelen bir KISI ya da uygarlik adi.
+    # Bos donmek dogru: cumle tamamen dusuyor ve sahne tarifi anlatimla
+    # arama teriminden geliyor. Uydurma bir tur vermek yanlis donemde bir
+    # bina cizdirmekten daha kotu.
+    return ""
+
+
+def adsiz_sahne_tarifi(terim: str, capa: str) -> str:
+    """Arama teriminden capanin ozel adini ayiklar (DW-116).
+
+    ⚠️ Adi yalnizca `Visual anchor:` cumlesinden cikarmak YETMEZ. Ad gorsel
+    istemine IKI yerden giriyor: o cumleden ve `Required visible detail`
+    olarak gelen arama teriminden. Arama terimi de capayi icermek ZORUNDA
+    (`_ensure_visual_anchor`), yani ad orada garantili duruyor.
+
+    Tek kanali kapatip digerini acik birakmak kusuru duzeltmez, yalnizca
+    hangi cumlenin suclu oldugunu belirsizlestirir.
+
+    Geriye anlamli bir sey kalmazsa terim OLDUGU GIBI donuyor: bos bir
+    "gorunmesi gereken detay" modele hicbir sey soylemez ve sahne tamamen
+    modelin insafina kalir.
+    """
+    capa_kelimeleri = _normalize_topic(capa)
+    if not capa_kelimeleri:
+        return terim
+    kalan = [
+        kelime
+        for kelime in terim.split()
+        if not (_normalize_topic(kelime) & capa_kelimeleri)
+    ]
+    return " ".join(kalan) if kalan else terim
 
 
 MUZIK_UZANTILARI = (".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma")
@@ -1093,6 +1201,28 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
             "Each numbered image must directly match the corresponding scene, visual anchor, and historical period. "
             "Historically grounded AI illustrations are acceptable; do not reject an image merely because it is an illustration, but reject misleading or historically inconsistent details. "
             "Reject generic modern people, vehicles, factories, schools, unrelated maps or plans, single-word coincidences, and misleading period substitutions. "
+            # ⚠️ Iki soru 2026-08-10'da EKLENDI (DW-117). Ikisi de o gecenin
+            # kusurlarini hakemin KACIRMASINDAN geliyor:
+            #
+            #   * Scanagatta'nin 2. karesinde kadraji kaplayan kazili levha
+            #     ("THERESIANISCHES MILITÄRAKADEMIE...") vardi; hakem gormedi
+            #     ve videoyu GECIRDI.
+            #   * Hardham videosunda ekranda baska adamlarin adli portreleri
+            #     vardi ("Temp. 2nd-Lieut. H. KELLY, V.C."); hakem videoyu
+            #     dusurdu ama "modern goruntu" diyerek — yanlis ozneyi hic
+            #     fark etmedi. Yani yakalamasi SANS eseriydi.
+            #
+            # Sorular ayri ayri soruluyor cunku "gorsel konuya uyuyor mu"
+            # sorusu ikisini de kapsamiyor: yanlis kisinin portresi konuya
+            # gayet uyuyor gorunur.
+            "Read the frames, do not only glance at them. For each image answer two "
+            "specific questions and report any failure in issues and problem_scene_numbers. "
+            "First: is there readable lettering anywhere inside the picture — on a sign, "
+            "plaque, carved stone, book, paper, caption strip or nameplate? If yes, quote "
+            "the words you can read. Second: when the topic is a named person, is the human "
+            "shown actually that person, or is it somebody else who merely shares the same "
+            "medal, uniform, institution or era? A portrait captioned with a different "
+            "person's name is always a problem scene. "
             "Return JSON with visual_alignment_score (0-100), issues (array), revised_search_terms, and problem_scene_numbers (1-based scene numbers that need replacement; empty only when no scene is problematic). "
             # ⚠️ Buraya bir gecme esigi YAZILMAZ — bkz. `yayina_uygun`. Esik
             # anilinca model olcmeyi birakip esigin bir tik altina oy yaziyor.
@@ -1504,6 +1634,11 @@ def generate_ai_scene_materials(
         visual_detail = scene.get("search_term", "")
         if index in revised_by_scene:
             visual_detail = revised_by_scene[index]
+        # ⚠️ Ozel ad buradan SONRA gorsel modeline gitmiyor (DW-116).
+        # Arsiv aramasi adi kullanmaya devam ediyor; kesilen yalnizca
+        # GORSEL URETIM kanali. Gerekce `adsiz_gorsel_ifadesi`de.
+        visual_detail = adsiz_sahne_tarifi(visual_detail, plan.visual_anchor)
+        capa_ifadesi = adsiz_gorsel_ifadesi(plan.visual_anchor)
         prompt = (
             # ⚠️ Olculdu (2026-08-09, DW-112): bu cumle eskiden "Create a vertical
             # image for a YouTube Short about history" idi ve model 7 gorselin
@@ -1523,7 +1658,11 @@ def generate_ai_scene_materials(
             "Create a single vertical documentary photograph, 2:3 portrait framing. "
             "This is one frame of footage inside a film, never a poster, never a "
             "thumbnail, never a title card, never a book or album cover. "
-            f"Visual anchor: {plan.visual_anchor}. Scene {index}: {scene.get('narration', '')}. "
+            # ⚠️ Buraya OZEL AD YAZILMAZ (DW-116). Eskiden
+            # `Visual anchor: {plan.visual_anchor}` idi ve model adi kadrajin
+            # icine kazidi. Gerekce `adsiz_gorsel_ifadesi` docstring'inde.
+            + (f"Setting: {capa_ifadesi}. " if capa_ifadesi else "")
+            + f"Scene {index}: {scene.get('narration', '')}. "
             f"Required visible detail: {visual_detail}. "
             # ⚠️ Gorsel dil sahnenin KONUSUNA gore secilir, tek bir estetige
             # sabitlenmez — bkz. `GORSEL_DIL`.
@@ -1578,7 +1717,19 @@ def generate_ai_scene_materials(
             "signs, placards, plaques, inscribed slabs, banners, posters, labels, open books "
             "or sheets of paper turned towards the camera — anything that could carry the "
             "video's title as an object. Ancient carved symbols and petroglyphs that genuinely "
-            "belong to the monument are welcome, but they must never spell out modern words."
+            "belong to the monument are welcome, but they must never spell out modern words. "
+            # ⚠️ Kalan tek sizinti kanali (DW-116). Ozel ad artik `Setting:`
+            # cumlesinden ve arama teriminden CIKARILDI, ama ANLATIM
+            # cumlesinin icinde hala gecebiliyor ("she enrolled in the
+            # Theresian Military Academy") ve anlatim kaldirilamaz — sahnenin
+            # ne oldugunu soyleyen tek sey o.
+            #
+            # Bu yuzden kalan kanal icin kural ADI ISARET EDIYOR: ad senin
+            # icin baglam, cizilecek icerik degil. Onceki yasaklar nesne
+            # turlerini sayiyordu; bu, adin kendisini hedefliyor.
+            "Any proper name that appears in this description is context for you, never "
+            "content for the picture: no personal name, institution name, place name or "
+            "date may be rendered as letters or numerals on any surface in the frame."
         )
         request = {
             "model": model,
@@ -1599,7 +1750,10 @@ def generate_ai_scene_materials(
                 raise
             safe_prompt = (
                 "Create a non-violent museum-safe historical reconstruction for a vertical documentary. "
-                f"Show only this neutral subject: {plan.visual_anchor}; {visual_detail}. "
+                # ⚠️ Burada da ozel ad YOK (DW-116). Moderasyon yedegi nadiren
+                # calisiyor ama calistiginda ayni kusuru uretebilir; iki
+                # istemin ayni kurala uymamasi kusurun geri donus yolu olur.
+                f"Show only this neutral subject: {capa_ifadesi or visual_detail}; {visual_detail}. "
                 "Focus on architecture, artifact, landscape, materials, or peaceful daily activity. "
                 "No battle, injury, death, weapons, threat, distressed people, modern objects, text, logo, or watermark."
             )
@@ -2034,7 +2188,17 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
             # ⚠️ Kaynak incelemesiyle ayni kural: esik burada da ANILMAZ.
             "Both scores are measurements of this montage, not verdicts. visual_alignment_score: 0 means nothing matches the narration, 50 means about half the frames match, 100 means every frame matches cleanly. subtitle_readability_score: 0 means captions are unreadable, 100 means every caption is comfortably legible. Score what you actually see. "
-            "Report modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds as issues."
+            "Report modern or unrelated footage, heavy repetition, unreadable captions, or a weak/missing curiosity hook in the first 2-3 seconds as issues. "
+            # ⚠️ Ayni iki soru burada da soruluyor (DW-117). Kaynak kapisi
+            # ile video kapisi FARKLI goruntuler goruyor: kaynak kapisi ham
+            # gorseli, bu kapi kirpilmis ve altyazili nihai kareyi. Yalnizca
+            # birine koymak digerini acik birakir.
+            "Also answer two specific questions for every frame. First: is there readable "
+            "lettering inside the picture itself — not the subtitle burned along the bottom, "
+            "which is intended — but words on a sign, plaque, carved stone, book, paper or "
+            "nameplate? Quote what you can read. Second: when the narration is about a named "
+            "person, is the human on screen actually that person, or somebody else sharing "
+            "the same medal, uniform, institution or era? Report either as an issue."
         ),
     }
     data = _vision_json(prompt, montage)
