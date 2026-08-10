@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -527,6 +528,86 @@ def konu_slug(konu: str) -> str:
     while "--" in slug:
         slug = slug.replace("--", "-")
     return slug[:40] or "konu"
+
+
+MUZIK_UZANTILARI = (".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma")
+MUZIK_GECMISI = ROOT / "storage" / "youtube_automation" / "muzik_gecmisi.json"
+
+
+def muzik_secenekleri() -> list[str]:
+    """Kullanilabilir parca ADLARI — yol degil.
+
+    CLI `--bgm-file`'i `storage/bgm` ve `resource/songs` beyaz listesinde
+    cozuyor, dolayisiyla ciplak dosya adi yeterli ve daha guvenli: yol
+    kacisi diye bir sey kalmiyor.
+    """
+    adlar: set[str] = set()
+    for dizin in (ROOT / "storage" / "bgm", ROOT / "resource" / "songs"):
+        if not dizin.is_dir():
+            continue
+        for parca in dizin.iterdir():
+            if parca.is_file() and parca.suffix.lower() in MUZIK_UZANTILARI:
+                adlar.add(parca.name)
+    return sorted(adlar)
+
+
+def muzik_sec(
+    secenekler: list[str] | None = None, gecmis_yolu: Path | None = None
+) -> str:
+    """Bu video icin bir parca sec ve secimi KAYDA GECIR (DW-120).
+
+    ⚠️ Eskiden secim `--bgm-type random` ile MPT'nin icinde yapiliyordu:
+    `random.choice(29 parca)`, iadeli ve hicbir yere yazilmadan. Iki sonucu
+    vardi.
+
+    Birincisi: hangi videoda hangi parcanin caldigi HIC BILINMIYORDU.
+    Kullanici "hepsinde ayni muzik var" dediginde iddiayi sinamak icin
+    nihai sesten anlatimi cikarip 29 parcayla korelasyon olcmek gerekti
+    (2026-08-10). Olcum iddiayi cürüttü — 4 video 4 farkli parca kullanmisti,
+    benzerlik 0,99'a karsi ikinci sira 0,04 — ama bunu ogrenmenin baska yolu
+    yoktu. Kayit tutulsaydi tek satirlik bir bakis yetecekti.
+
+    Ikincisi: iadeli secim oldugu icin bir sonraki kosumda ayni parcanin
+    ust uste cikmasi mumkundu. 29 parcadan 5 video icin cakisma olasiligi
+    ~%35; yani "sansa" birakilmis bir sey degil, beklenen bir olay.
+
+    Cozum: son yarinin disindan sec ve secimi diske yaz. Boylece tekrar
+    yalnizca parca havuzu tukendiginde mumkun olur.
+
+    Parca yoksa BOS DONER; cagiran taraf muziksiz devam eder — muzik
+    ugruna video uretimi dusmemeli.
+    """
+    havuz = secenekler if secenekler is not None else muzik_secenekleri()
+    if not havuz:
+        return ""
+
+    yol = gecmis_yolu if gecmis_yolu is not None else MUZIK_GECMISI
+    try:
+        gecmis = [str(ad) for ad in json.loads(yol.read_text(encoding="utf-8"))]
+    except (OSError, ValueError):
+        # Bozuk veya olmayan gecmis muzigi engellememeli — en kotu ihtimalle
+        # bir tekrar olur, ki zaten duzeltmeye calistigimiz sey o kadar.
+        gecmis = []
+
+    # Havuzun yarisi kadar geriye bakiliyor: tamamina bakmak son parca
+    # kalana kadar secimi tek secenege dusurur ve "rastgele" anlamsizlasir.
+    pencere = max(1, len(havuz) // 2)
+    yakinda_kullanilan = set(gecmis[-pencere:])
+    uygun = [ad for ad in havuz if ad not in yakinda_kullanilan] or list(havuz)
+    secilen = random.choice(uygun)
+
+    gecmis.append(secilen)
+    try:
+        yol.parent.mkdir(parents=True, exist_ok=True)
+        yol.write_text(
+            json.dumps(gecmis[-len(havuz):], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as hata:
+        # Yazamadiysak secim yine gecerli; yalnizca bir sonraki kosum bu
+        # parcayi tekrar secebilir. Sessiz kalmiyoruz ki fark edilsin.
+        print(f"⚠️ muzik gecmisi yazilamadi ({hata}); tekrar korumasi bu kosumda yok")
+    return secilen
 
 
 def _openai_client() -> tuple[OpenAI, str]:
@@ -1759,6 +1840,11 @@ def run_generator(
         flush=True,
     )
 
+    # ⚠️ Secim LOGA basiliyor (DW-120). Bu satir olmadigi icin hangi videoda
+    # hangi parcanin caldigini ogrenmek ses korelasyonu olcmeyi gerektirdi.
+    secilen_muzik = muzik_sec()
+    print(f"muzik: {secilen_muzik or 'yok (parca bulunamadi)'}", flush=True)
+
     command = [
         sys.executable,
         "cli.py",
@@ -1801,11 +1887,17 @@ def run_generator(
         # devam etme karari verdi. Karar burada yaziyor ki telif talebi gelirse
         # sebep aranmasin: donus yolu tek satir, `"random"` → `"none"`.
         #
-        # Telifsiz bir parcaya gecilirse dogru yol `--bgm-file` ile tek bir
-        # dogrulanmis dosyayi sabitlemek; "random" 29 parca arasindan seciyor
-        # ve hangi videoda hangisinin cikacagi onceden bilinmiyor.
-        "--bgm-type",
-        "random",
+        # ⚠️ Parca ARTIK BURADA seciliyor, MPT'nin icinde degil (DW-120).
+        # Eskiden `--bgm-type random` idi: secim iadeli yapiliyor ve hicbir
+        # yere yazilmiyordu — gerekce `muzik_sec` docstring'inde.
+        #
+        # Telifsiz bir parcaya gecilirse dogru yol yine burasi: `muzik_sec`
+        # yerine tek bir dogrulanmis dosya adi konur.
+        *(
+            ["--bgm-type", "custom", "--bgm-file", secilen_muzik]
+            if secilen_muzik
+            else ["--bgm-type", "none"]
+        ),
         # Anlatim onde kalmali: 0.2 CLI varsayilani ve konusma uzerinde muzigi
         # duyulur ama bastirmaz seviyede tutuyor.
         "--bgm-volume",
