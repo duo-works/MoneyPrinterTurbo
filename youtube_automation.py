@@ -509,6 +509,26 @@ def publication_slot_key(moment: datetime | None = None) -> str:
     return moment.astimezone(ZoneInfo(TIMEZONE_NAME)).strftime("%Y-%m-%d-%H")
 
 
+def konu_slug(konu: str) -> str:
+    """Konuyu klasor adinda kullanilabilir kisa bir parcaya cevirir (DW-119).
+
+    ⚠️ Aksanli harfler ASCII'ye DUSURULMEZ, atilir: "Jacopo de' Pazzi" →
+    "jacopo-de-pazzi". Amac okunabilir bir ayirt edici, kayipsiz bir kimlik
+    degil. Iki konu ayni slug'a duserse saat anahtari yine ayiriyor.
+
+    Bos slug mumkun (ornegin konu tamamen Latin disi bir alfabedeyse); o
+    durumda "konu" donuyor ki yol parcasi hicbir zaman bos kalmasin.
+    """
+    harfler = [
+        karakter.lower() if (karakter.isascii() and karakter.isalnum()) else "-"
+        for karakter in konu.strip()
+    ]
+    slug = "".join(harfler).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:40] or "konu"
+
+
 def _openai_client() -> tuple[OpenAI, str]:
     api_key = str(config.app.get("openai_api_key", "")).strip()
     if not api_key:
@@ -948,7 +968,13 @@ def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
     ]
 
 
-def create_source_montage(material_files: list[Path], attempt: int) -> Path:
+def create_source_montage(
+    material_files: list[Path], attempt: int, konu: str = ""
+) -> Path:
+    # ⚠️ `konu` isteğe bagli ama uretimde HER ZAMAN veriliyor (DW-119):
+    # materyal klasoru gibi bu dosya adi da saat anahtarliydi ve ayni saatte
+    # uretilen ikinci video birincinin kontak sayfasini eziyordu. Hakemin ne
+    # gorup ne onayladigi geriye donuk incelenemiyordu.
     if not material_files:
         raise ValueError("source montage requires at least one image")
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
@@ -967,7 +993,11 @@ def create_source_montage(material_files: list[Path], attempt: int) -> Path:
         draw.rectangle((0, 0, 54, 34), fill="black")
         draw.text((12, 8), str(index), fill="white")
         canvas.paste(tile, (((index - 1) % columns) * cell_width, ((index - 1) // columns) * cell_height))
-    montage = REVIEW_DIR / f"source-{publication_slot_key()}-attempt-{attempt}.jpg"
+    ayirt_edici = f"-{konu_slug(konu)}" if konu else ""
+    montage = (
+        REVIEW_DIR
+        / f"source-{publication_slot_key()}{ayirt_edici}-attempt-{attempt}.jpg"
+    )
     canvas.save(montage, format="JPEG", quality=90)
     return montage
 
@@ -1568,12 +1598,26 @@ def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
 def run_generator(
     plan: ContentPlan, attempt: int
 ) -> tuple[str, Path, Path, list[dict[str, Any]]]:
+    # ⚠️ Klasor adinda KONU da var (DW-119). Eskiden yalnizca
+    # `publication_slot_key()`-`attempt` idi, yani YYYY-MM-DD-HH: ayni saat
+    # icinde uretilen iki video AYNI klasoru paylasiyordu.
+    #
+    # Olculdu (2026-08-10): 4 video uretildi, geriye 2 klasor kaldi.
+    # `2026-08-10-10-attempt-1` icinde Anita'nin `credits.json`'u duruyor ama
+    # klasorde credits'te gecmeyen `scene-01.jpg` ve `scene-07.jpg` de var —
+    # Jacopo'dan kalanlar.
+    #
+    # Render bugun karismiyor cunku `dikeye_uydur_hepsi` acik listeyle
+    # calisiyor, klasoru taramiyor. Zarar baska yerde: (a) adli iz siliniyor,
+    # Scanagatta'daki levha kusurunun materyalleri incelenemedi; (b) tek
+    # satirlik bir degisiklik downstream'i klasor taramaya cevirirse hat
+    # sessizce YANLIS videoyu uretir. Ad ayrildi ki bu ikisi de imkansiz olsun.
     material_dir = (
         ROOT
         / "storage"
         / "youtube_automation"
         / "commons_materials"
-        / f"{publication_slot_key()}-attempt-{attempt}"
+        / f"{publication_slot_key()}-{konu_slug(plan.topic)}-attempt-{attempt}"
     )
     try:
         material_files, credits = download_scene_materials(
@@ -1596,7 +1640,7 @@ def run_generator(
     else:
         material_files = _delikleri_doldur(plan, material_files, material_dir)
     _benzerligi_kaydet(material_files, material_dir)
-    source_montage = create_source_montage(material_files, attempt)
+    source_montage = create_source_montage(material_files, attempt, plan.topic)
     source_review = review_source_materials(plan, source_montage)
     if not AI_VISUAL_FALLBACK_ENABLED and (
         not source_review.publishable
@@ -1663,7 +1707,7 @@ def run_generator(
                 ):
                     credits.append({**credit, "scene": scene_number})
                 credits.sort(key=lambda credit: int(credit.get("scene", 0)))
-                source_montage = create_source_montage(material_files, attempt)
+                source_montage = create_source_montage(material_files, attempt, plan.topic)
                 source_review = review_source_materials(plan, source_montage)
     if AI_VISUAL_FALLBACK_ENABLED and (
         not source_review.publishable
@@ -1690,7 +1734,7 @@ def run_generator(
         for scene_number, replacement in zip(problem_scenes, replacements, strict=True):
             refined_materials[scene_number - 1] = replacement
         material_files = refined_materials
-        source_montage = create_source_montage(material_files, attempt)
+        source_montage = create_source_montage(material_files, attempt, plan.topic)
         source_review = review_source_materials(plan, source_montage)
     if (
         not source_review.publishable
