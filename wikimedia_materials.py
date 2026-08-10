@@ -225,21 +225,48 @@ bunu yakalayamadi (85 verdi) cunku o "gorsel anlatimla uyumlu mu" diye
 soruyor, "bu bir belge mi" diye degil.
 """
 
-# Dikey karede gorselin doldurmasi gereken en az oran.
+SHORTS_ORANI = 1080 / 1920
+"""Dikey Shorts karesinin en/boy orani — `youtube_automation` ile ayni kare."""
+
+AZAMI_KIRPMA = 0.35
+"""Bu kadar kirpma tam ekran sayiliyor; fazlasi bulanik arka plan yoluna duser.
+
+⚠️ `youtube_automation.AZAMI_KIRPMA` ile AYNI sayi olmak ZORUNDA: orada
+render hangi yolu secegini bu esikle belirliyor. Burasi ayrisirsa retrieval
+yine kendi render'indan farkli dusunmeye baslar. Bir test ikisini
+karsilastiriyor.
+"""
+
+# Bulanik arka plan yoluna dusen gorselin net kisminin kaplamasi gereken en az
+# dikey oran.
 #
-# ⚠️ Olculdu (2026-08-06, DW-98): 1,20-1,30 oranindaki gravurler bulanik arka
-# plan yoluna dusuyor ve ekranin yalnizca **%43-47'sini** dolduruyor. Geri
-# kalani bulanik bant. Shorts'ta yarisi bulanik bir kare, tam ekran bir AI
-# gorselinden kotu — nitekim ayni videoda en iyi iki kare AI olanlardi.
+# ⚠️ Bu esik 2026-08-11'de 0,55'ten 0,28'e INDIRILDI — kanal sahibinin karari:
+# "bulanik bantli gercek fotograf" tam ekran AI gorseline tercih ediliyor.
 #
-# Esik olculen veriye gore secildi, yuvarlak sayiya gore degil:
+# Onceki 0,55, en/boy orani ~1,02'den genis HER gorseli eliyordu, yani
+# Commons'taki tarihi fotograflarin neredeyse tamamini. Olculdu (2026-08-10),
+# Wikidata ile cozulen 7 kategori: lisans ve cozunurluk bakimindan **80**
+# kullanilabilir gorsel vardi, oran filtresini gecen **24**. Elenen 56 gorselin
+# yerine AI uretiliyordu.
 #
-#     kare  (1,00) → %56 doluluk   kabul edilebilir, geciyor
-#     gravur(1,20) → %47 doluluk   olculdu: kotu, eleniyor
-#     gravur(1,30) → %43 doluluk   olculdu: kotu, eleniyor
+# ⚠️ Asil celiski suydu: `youtube_automation.dikeye_uydur` bu gorselleri ZATEN
+# basabiliyor — kirpma `AZAMI_KIRPMA`'yi gecince buyutulmus bulanik kopyayi
+# arka plana koyup neti ortada gosteriyor. Yani retrieval, kendi render'indan
+# kati davraniyordu: basabildigimiz gorseli aramada atiyorduk.
 #
-# Elenen sahne bos kalmiyor: AI dolgusu tam ekran bir goruntuyle dolduruyor.
-ASGARI_EKRAN_DOLULUGU = 0.55
+# Yeni esik render'in URETECEGI kareden turetildi. Bulanik yolda net gorselin
+# kapladigi dikey oran tam olarak `SHORTS_ORANI / oran`:
+#
+#     4:3   (1,33) → %42 doluluk   geciyor
+#     3:2   (1,50) → %38 doluluk   geciyor
+#     16:9  (1,78) → %32 doluluk   geciyor
+#     2,00           %28 doluluk   sinirda, geciyor
+#     panorama(2,22) → %25 doluluk  eleniyor
+#     panorama(5,00) → %11 doluluk  eleniyor
+#
+# Panoramalar disarida kaliyor cunku bulanik bir karenin ortasindaki ince bir
+# serit gercekten izlenebilir bir kare vermiyor; takas orada AI lehine donuyor.
+ASGARI_DIKEY_DOLULUK = 0.28
 
 
 def belge_taramasi(baslik: str) -> bool:
@@ -248,18 +275,38 @@ def belge_taramasi(baslik: str) -> bool:
     return any(isaret in normal for isaret in BELGE_ISARETLERI)
 
 
-def dikey_karede_yeterli(width: int, height: int) -> bool:
-    """Gorsel 9:16 karede ekranin yeterince buyuk bir kismini dolduruyor mu."""
+def tam_ekran_doluyor(width: int, height: int) -> bool:
+    """Render bu gorseli kirp-doldur ile TAM EKRAN basabilir mi.
+
+    Bulanik arka plan yoluna dusenler `False` doner. Aday puanlamasi bunu
+    kullaniyor: bulanik bantli gercek fotograf kabul ediliyor ama tam ekran
+    olan her zaman tercih ediliyor.
+    """
     if width <= 0 or height <= 0:
         return False
-    hedef = 1080 / 1920
     oran = width / height
-    if oran <= hedef:
+    if oran <= SHORTS_ORANI:
         return True  # dikey ya da kare — kirp-doldur tam ekran verir
-    kalan = (height * hedef) / width
-    if 1 - kalan <= 0.35:
-        return True  # hafif kirpma yeter, yine tam ekran
-    return (hedef / oran) >= ASGARI_EKRAN_DOLULUGU
+    return 1 - (SHORTS_ORANI / oran) <= AZAMI_KIRPMA
+
+
+def dikey_karede_yeterli(width: int, height: int) -> bool:
+    """Gorsel 9:16 karede kullanilabilir bir kare veriyor mu.
+
+    Iki yol var ve ikisi de kabul ediliyor:
+
+    - **Kirp-doldur** — tam ekran (`tam_ekran_doluyor`).
+    - **Bulanik arka plan** — net gorsel ortada, kalani bulanik bant. Net
+      kismin kapladigi dikey oran `ASGARI_DIKEY_DOLULUK`'un altina duserse
+      eleniyor.
+    """
+    if width <= 0 or height <= 0:
+        return False
+    if tam_ekran_doluyor(width, height):
+        return True
+    # Bulanik yolda net gorselin kapladigi dikey oran — `dikeye_uydur`
+    # `ImageOps.contain` ile ayni sonucu veriyor.
+    return SHORTS_ORANI / (width / height) >= ASGARI_DIKEY_DOLULUK
 
 
 def delivery_url(source_url: str) -> str:
@@ -400,7 +447,14 @@ def _puanli_adaylar(
             continue
         if not dikey_karede_yeterli(width, height):
             continue
+        # ⚠️ Bulanik bantli gorsel artik KABUL ediliyor (bkz.
+        # `ASGARI_DIKEY_DOLULUK`) ama tam ekran olan her zaman ONCE gelmeli.
+        # Bonus cozunurluk puaninin tavanindan (4,0) buyuk secildi: yoksa
+        # buyuk bir panorama, kucuk ama tam ekran bir dikey fotografi
+        # geceredi ve videolar bulanik bantla dolardi.
         orientation_score = 2.0 if height >= width else 1.0
+        if tam_ekran_doluyor(width, height):
+            orientation_score += 5.0
         resolution_score = min(width * height / 1_000_000, 4.0)
         search_order_score = max(0.0, 2.0 - order * 0.1)
         candidate = {
