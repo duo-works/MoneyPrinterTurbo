@@ -281,10 +281,16 @@ def test_gercek_gorseller_elenmiyor(baslik):
     assert not wm.belge_taramasi(baslik)
 
 
-def test_cok_genis_gorsel_eleniyor():
-    """1,20-1,30 oranindaki gravurler ekranin yalnizca %43-47'sini dolduruyor."""
-    assert not wm.dikey_karede_yeterli(1280, 984)  # oran 1,30 → %43
-    assert not wm.dikey_karede_yeterli(1280, 1062)  # oran 1,21 → %47
+def test_yatay_gorsel_artik_geciyor():
+    """⚠️ Karar 2026-08-11'de DEGISTI (DW-123).
+
+    Eskiden 1,20-1,30 oranindaki gravurler "ekranin yalnizca %43-47'sini
+    dolduruyor" diye eleniyordu. Kanal sahibi bulanik bantli GERCEK
+    fotografi tam ekran AI gorseline tercih etti; olculdu (2026-08-10) ki
+    eski esik 80 kullanilabilir arsiv gorselinden 56'sini atiyordu.
+    """
+    assert wm.dikey_karede_yeterli(1280, 984)  # oran 1,30 → %43
+    assert wm.dikey_karede_yeterli(1280, 1062)  # oran 1,21 → %47
 
 
 def test_dikey_ve_kare_gorseller_geciyor():

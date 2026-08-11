@@ -15,6 +15,8 @@ import gorsel_olcum
 from met_materials import download_met_scene_material
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
+VIKIPEDI_API_URL = "https://en.wikipedia.org/w/api.php"
+VIKIVERI_API_URL = "https://www.wikidata.org/w/api.php"
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
 SAFE_LICENSE_MARKERS = ("public domain", "pd-", "cc0")
 """Kosulsuz kullanilabilen lisanslar — atif bile gerekmiyor."""
@@ -223,21 +225,48 @@ bunu yakalayamadi (85 verdi) cunku o "gorsel anlatimla uyumlu mu" diye
 soruyor, "bu bir belge mi" diye degil.
 """
 
-# Dikey karede gorselin doldurmasi gereken en az oran.
+SHORTS_ORANI = 1080 / 1920
+"""Dikey Shorts karesinin en/boy orani — `youtube_automation` ile ayni kare."""
+
+AZAMI_KIRPMA = 0.35
+"""Bu kadar kirpma tam ekran sayiliyor; fazlasi bulanik arka plan yoluna duser.
+
+⚠️ `youtube_automation.AZAMI_KIRPMA` ile AYNI sayi olmak ZORUNDA: orada
+render hangi yolu secegini bu esikle belirliyor. Burasi ayrisirsa retrieval
+yine kendi render'indan farkli dusunmeye baslar. Bir test ikisini
+karsilastiriyor.
+"""
+
+# Bulanik arka plan yoluna dusen gorselin net kisminin kaplamasi gereken en az
+# dikey oran.
 #
-# ⚠️ Olculdu (2026-08-06, DW-98): 1,20-1,30 oranindaki gravurler bulanik arka
-# plan yoluna dusuyor ve ekranin yalnizca **%43-47'sini** dolduruyor. Geri
-# kalani bulanik bant. Shorts'ta yarisi bulanik bir kare, tam ekran bir AI
-# gorselinden kotu — nitekim ayni videoda en iyi iki kare AI olanlardi.
+# ⚠️ Bu esik 2026-08-11'de 0,55'ten 0,28'e INDIRILDI — kanal sahibinin karari:
+# "bulanik bantli gercek fotograf" tam ekran AI gorseline tercih ediliyor.
 #
-# Esik olculen veriye gore secildi, yuvarlak sayiya gore degil:
+# Onceki 0,55, en/boy orani ~1,02'den genis HER gorseli eliyordu, yani
+# Commons'taki tarihi fotograflarin neredeyse tamamini. Olculdu (2026-08-10),
+# Wikidata ile cozulen 7 kategori: lisans ve cozunurluk bakimindan **80**
+# kullanilabilir gorsel vardi, oran filtresini gecen **24**. Elenen 56 gorselin
+# yerine AI uretiliyordu.
 #
-#     kare  (1,00) → %56 doluluk   kabul edilebilir, geciyor
-#     gravur(1,20) → %47 doluluk   olculdu: kotu, eleniyor
-#     gravur(1,30) → %43 doluluk   olculdu: kotu, eleniyor
+# ⚠️ Asil celiski suydu: `youtube_automation.dikeye_uydur` bu gorselleri ZATEN
+# basabiliyor — kirpma `AZAMI_KIRPMA`'yi gecince buyutulmus bulanik kopyayi
+# arka plana koyup neti ortada gosteriyor. Yani retrieval, kendi render'indan
+# kati davraniyordu: basabildigimiz gorseli aramada atiyorduk.
 #
-# Elenen sahne bos kalmiyor: AI dolgusu tam ekran bir goruntuyle dolduruyor.
-ASGARI_EKRAN_DOLULUGU = 0.55
+# Yeni esik render'in URETECEGI kareden turetildi. Bulanik yolda net gorselin
+# kapladigi dikey oran tam olarak `SHORTS_ORANI / oran`:
+#
+#     4:3   (1,33) → %42 doluluk   geciyor
+#     3:2   (1,50) → %38 doluluk   geciyor
+#     16:9  (1,78) → %32 doluluk   geciyor
+#     2,00           %28 doluluk   sinirda, geciyor
+#     panorama(2,22) → %25 doluluk  eleniyor
+#     panorama(5,00) → %11 doluluk  eleniyor
+#
+# Panoramalar disarida kaliyor cunku bulanik bir karenin ortasindaki ince bir
+# serit gercekten izlenebilir bir kare vermiyor; takas orada AI lehine donuyor.
+ASGARI_DIKEY_DOLULUK = 0.28
 
 
 def belge_taramasi(baslik: str) -> bool:
@@ -246,18 +275,38 @@ def belge_taramasi(baslik: str) -> bool:
     return any(isaret in normal for isaret in BELGE_ISARETLERI)
 
 
-def dikey_karede_yeterli(width: int, height: int) -> bool:
-    """Gorsel 9:16 karede ekranin yeterince buyuk bir kismini dolduruyor mu."""
+def tam_ekran_doluyor(width: int, height: int) -> bool:
+    """Render bu gorseli kirp-doldur ile TAM EKRAN basabilir mi.
+
+    Bulanik arka plan yoluna dusenler `False` doner. Aday puanlamasi bunu
+    kullaniyor: bulanik bantli gercek fotograf kabul ediliyor ama tam ekran
+    olan her zaman tercih ediliyor.
+    """
     if width <= 0 or height <= 0:
         return False
-    hedef = 1080 / 1920
     oran = width / height
-    if oran <= hedef:
+    if oran <= SHORTS_ORANI:
         return True  # dikey ya da kare — kirp-doldur tam ekran verir
-    kalan = (height * hedef) / width
-    if 1 - kalan <= 0.35:
-        return True  # hafif kirpma yeter, yine tam ekran
-    return (hedef / oran) >= ASGARI_EKRAN_DOLULUGU
+    return 1 - (SHORTS_ORANI / oran) <= AZAMI_KIRPMA
+
+
+def dikey_karede_yeterli(width: int, height: int) -> bool:
+    """Gorsel 9:16 karede kullanilabilir bir kare veriyor mu.
+
+    Iki yol var ve ikisi de kabul ediliyor:
+
+    - **Kirp-doldur** — tam ekran (`tam_ekran_doluyor`).
+    - **Bulanik arka plan** — net gorsel ortada, kalani bulanik bant. Net
+      kismin kapladigi dikey oran `ASGARI_DIKEY_DOLULUK`'un altina duserse
+      eleniyor.
+    """
+    if width <= 0 or height <= 0:
+        return False
+    if tam_ekran_doluyor(width, height):
+        return True
+    # Bulanik yolda net gorselin kapladigi dikey oran — `dikeye_uydur`
+    # `ImageOps.contain` ile ayni sonucu veriyor.
+    return SHORTS_ORANI / (width / height) >= ASGARI_DIKEY_DOLULUK
 
 
 def delivery_url(source_url: str) -> str:
@@ -268,6 +317,19 @@ def delivery_url(source_url: str) -> str:
     host_and_path = f"{parsed.hostname}{parsed.path}"
     query = urllib.parse.urlencode({"url": host_and_path, "w": "1280", "fit": "inside"})
     return f"{DELIVERY_PROXY_URL}?{query}"
+
+
+def dogrudan_url(source_url: str) -> str:
+    """Wikimedia'nin kendi sunucusundaki URL — teslim proxy'si atlanarak.
+
+    `delivery_url` ile AYNI izin listesi uygulaniyor: yalnizca
+    `upload.wikimedia.org`. Commons bugun URL'lere izleme parametreleri
+    ekliyor (`?utm_source=...`); bunlar atiliyor.
+    """
+    parsed = urllib.parse.urlsplit(source_url)
+    if parsed.scheme != "https" or parsed.hostname != "upload.wikimedia.org":
+        raise ValueError("Commons media URL must use https://upload.wikimedia.org")
+    return urllib.parse.urlunsplit(("https", parsed.hostname, parsed.path, "", ""))
 
 
 def build_search_queries(topic: str, term: str) -> list[str]:
@@ -317,6 +379,28 @@ def select_candidate(
     query: str = "",
     required_anchor: str = "",
 ) -> dict[str, Any] | None:
+    adaylar = _puanli_adaylar(pages, used_titles, query, required_anchor)
+    return adaylar[0] if adaylar else None
+
+
+def _kategori_adaylari(
+    pages: list[dict[str, Any]], used_titles: set[str]
+) -> list[dict[str, Any]]:
+    """Kategori havuzunu puana gore siralar — capa ve sorgu kontrolu olmadan.
+
+    Cagiran taraf listeyi bastan gezebilsin diye TEK aday degil LISTE
+    donuyor: indirme dusebilir ya da aday tekrar cikabilir, o zaman
+    sonrakine gecilmeli.
+    """
+    return _puanli_adaylar(pages, used_titles, "", "")
+
+
+def _puanli_adaylar(
+    pages: list[dict[str, Any]],
+    used_titles: set[str],
+    query: str = "",
+    required_anchor: str = "",
+) -> list[dict[str, Any]]:
     candidates: list[tuple[float, dict[str, Any]]] = []
     query_terms = _relevance_terms(query)
     anchor_terms = _relevance_terms(required_anchor)
@@ -363,7 +447,14 @@ def select_candidate(
             continue
         if not dikey_karede_yeterli(width, height):
             continue
+        # ⚠️ Bulanik bantli gorsel artik KABUL ediliyor (bkz.
+        # `ASGARI_DIKEY_DOLULUK`) ama tam ekran olan her zaman ONCE gelmeli.
+        # Bonus cozunurluk puaninin tavanindan (4,0) buyuk secildi: yoksa
+        # buyuk bir panorama, kucuk ama tam ekran bir dikey fotografi
+        # geceredi ve videolar bulanik bantla dolardi.
         orientation_score = 2.0 if height >= width else 1.0
+        if tam_ekran_doluyor(width, height):
+            orientation_score += 5.0
         resolution_score = min(width * height / 1_000_000, 4.0)
         search_order_score = max(0.0, 2.0 - order * 0.1)
         candidate = {
@@ -387,10 +478,100 @@ def select_candidate(
                 candidate,
             )
         )
-    if not candidates:
-        return None
     candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1]
+    return [aday for _, aday in candidates]
+
+
+_KATEGORI_ONBELLEGI: dict[str, str | None] = {}
+
+
+def commons_kategorisi(konu: str) -> str | None:
+    """Konunun Commons KATEGORISINI Wikidata uzerinden cozer (DW-122).
+
+    Wikipedia basligi → Wikidata ogesi (QID) → P373 (Commons kategorisi).
+
+    ⚠️ Neden tahmin degil de Wikidata: arsiv konuyu bizim yazdigimiz adla
+    saklamiyor. Olculdu (2026-08-10):
+
+        "Franziska Scanagatta"       → Category:Francesca Scanagatta
+        "Theresian Military Academy" → Category:Theresianische Militärakademie
+        "Chaco Canyon"               → Category:Chaco Culture National Historical Park
+
+    Ilk satir Scanagatta videosunun 6/6 sahnesinin neden AI ile uretildigini
+    tek basina acikliyor: gorsel arsivde VARDI, biz **Franziska** diye
+    aradik, Commons **Francesca** diye sakliyor. Yazim ve dil farkini
+    normalize eden sey Wikidata'nin kendisi; `Category:{konu}` tahmini bunu
+    yapamaz.
+
+    Bulunamazsa `None` doner — cagiran taraf tam metin aramasiyla devam eder.
+    """
+    anahtar = konu.strip().casefold()
+    if anahtar in _KATEGORI_ONBELLEGI:
+        return _KATEGORI_ONBELLEGI[anahtar]
+    sonuc: str | None = None
+    try:
+        yanit = _get_with_retry(
+            VIKIPEDI_API_URL,
+            params={
+                "action": "query",
+                "titles": konu.strip(),
+                "prop": "pageprops",
+                "redirects": "1",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=15,
+        )
+        sayfalar = yanit.json().get("query", {}).get("pages", [])
+        kimlik = ""
+        if sayfalar:
+            kimlik = str(sayfalar[0].get("pageprops", {}).get("wikibase_item", ""))
+        if kimlik:
+            iddia = _get_with_retry(
+                VIKIVERI_API_URL,
+                params={
+                    "action": "wbgetclaims",
+                    "entity": kimlik,
+                    "property": "P373",
+                    "format": "json",
+                },
+                timeout=15,
+            )
+            kayitlar = iddia.json().get("claims", {}).get("P373", [])
+            if kayitlar:
+                deger = kayitlar[0].get("mainsnak", {}).get("datavalue", {}).get("value")
+                if isinstance(deger, str) and deger.strip():
+                    sonuc = deger.strip()
+    except (requests.RequestException, ValueError, KeyError, IndexError):
+        # ⚠️ Kategori cozumu bir IYILESTIRME; basarisiz olursa uretim
+        # durmamali. Tam metin aramasi zaten calisiyor.
+        sonuc = None
+    _KATEGORI_ONBELLEGI[anahtar] = sonuc
+    return sonuc
+
+
+def kategori_gorselleri(kategori: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Bir Commons kategorisindeki dosyalari `search_commons` bicimiyle dondurur."""
+    try:
+        yanit = _get_with_retry(
+            API_URL,
+            params={
+                "action": "query",
+                "generator": "categorymembers",
+                "gcmtitle": f"Category:{kategori}",
+                "gcmtype": "file",
+                "gcmlimit": str(limit),
+                "prop": "imageinfo",
+                "iiprop": "url|size|mime|extmetadata",
+                "iiurlwidth": "1080",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=30,
+        )
+        return yanit.json().get("query", {}).get("pages", [])
+    except (requests.RequestException, ValueError):
+        return []
 
 
 def search_commons(query: str, limit: int = 20) -> list[dict[str, Any]]:
@@ -422,7 +603,24 @@ def _download(
     *,
     sleep_fn: Callable[[float], None] = time.sleep,
 ) -> None:
-    response = _get_with_retry(delivery_url(url), timeout=60, sleep_fn=sleep_fn)
+    try:
+        response = _get_with_retry(delivery_url(url), timeout=60, sleep_fn=sleep_fn)
+    except requests.HTTPError as exc:
+        # ⚠️ Teslim proxy'si (weserv) BELLI dosyalarda kalici 404 donuyor,
+        # gecici degil. Olculdu (2026-08-10): 15 arsiv dosyasinin 13'u
+        # proxy'den geldi, 2'si israrla 404 verdi — ve o ikisi Wikimedia'nin
+        # kendi sunucusunda 200 ve 652 KB olarak duruyordu.
+        #
+        # Bedeli dogrudan "AI gorsel cok" sikayetine yaziliyor: proxy
+        # dusunce gecerli bir arsiv gorseli atiliyor ve sahne AI'ya gidiyor.
+        # Kaynak yerinde dururken bunu yapmanin sebebi yok.
+        #
+        # 5xx BURAYA GIRMIYOR: `_get_with_retry` onlari zaten geri cekilmeyle
+        # 5 kez deniyor ve gecici olduklari icin proxy'yi atlamaya gerek yok.
+        durum = exc.response.status_code if exc.response is not None else 0
+        if durum not in {403, 404}:
+            raise
+        response = _get_with_retry(dogrudan_url(url), timeout=60, sleep_fn=sleep_fn)
     destination.write_bytes(response.content)
     if destination.stat().st_size < 10_000:
         destination.unlink(missing_ok=True)
@@ -498,6 +696,24 @@ def download_scene_materials(
     # ama dosya adlari tamamen farkli. Kullanici sikayeti birebir buydu:
     # "bir resmi birden fazla kez kullanmissin".
     secilmis_izler: list[Any] = []
+    # Konunun Commons KATEGORISI — tam metin aramasi bir sahneyi bulamayinca
+    # AI'ya gitmeden once buraya bakiliyor (DW-122). Kategori bir kez
+    # cozuluyor; sahne basina istek yok.
+    kategori_havuzu: list[dict[str, Any]] = []
+    for aday_konu in (visual_anchor.strip(), topic.strip()):
+        if not aday_konu:
+            continue
+        kategori = commons_kategorisi(aday_konu)
+        if not kategori:
+            continue
+        kategori_havuzu = kategori_gorselleri(kategori)
+        if kategori_havuzu:
+            print(
+                f"ℹ️ Commons kategorisi: {kategori} "
+                f"({len(kategori_havuzu)} dosya) — {aday_konu}",
+                flush=True,
+            )
+            break
     for index, scene in enumerate(scenes, 1):
         term = scene.get("search_term", "").strip()
         queries = build_search_queries(topic, term)
@@ -554,6 +770,39 @@ def download_scene_materials(
                 destination = candidate_destination
                 break
             if selected:
+                break
+        if (not selected or destination is None) and kategori_havuzu:
+            # ⚠️ Kategori havuzunda capa ve sorgu kontrolu KAPALI (`query=""`,
+            # `required_anchor=""`) ve bu kasitli: kategoriye uyeligi
+            # Commons'in kendi kuratoryasi belirliyor, yani ozne zaten
+            # garantili. Dosya adinda capa kelimelerini aramak tam da
+            # duzeltmeye calistigimiz kusuru geri getirirdi —
+            # `Category:Francesca Scanagatta` icindeki dosyalar "Franziska"
+            # yazmiyor.
+            #
+            # ⚠️ Gevsetme YALNIZCA burada. Ayni gevsetmeyi tam metin
+            # aramasinda yapmak isabeti bozuyor: olculdu (2026-08-10), capa
+            # "Victoria Cross" iken "herhangi bir capa kelimesi" kurali
+            # "Medal, campaign", "Medal, miniature" gibi 13 adsiz madalyayi
+            # iceri aliyordu — DW-116'daki yanlis ozne kusurunun ta kendisi.
+            for aday in _kategori_adaylari(kategori_havuzu, used_titles | failed_titles):
+                suffix = {
+                    "image/jpeg": ".jpg",
+                    "image/png": ".png",
+                    "image/webp": ".webp",
+                }[aday["mime"]]
+                aday_hedefi = target_dir / f"scene-{index:02d}{suffix}"
+                try:
+                    _download(aday["url"], aday_hedefi)
+                except requests.HTTPError:
+                    failed_titles.add(aday["title"])
+                    continue
+                if _tekrar_mi(aday_hedefi, secilmis_izler):
+                    if yedek is None:
+                        yedek = (aday, aday_hedefi)
+                    failed_titles.add(aday["title"])
+                    continue
+                selected, destination = aday, aday_hedefi
                 break
         if (not selected or destination is None) and yedek is not None:
             # Butun adaylar tekrar cikti — yine de bir gorsel koymak, sahneyi
