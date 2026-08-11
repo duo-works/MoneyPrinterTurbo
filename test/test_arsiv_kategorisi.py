@@ -15,7 +15,6 @@ aramasi ayni madalyayi paylasan baska adamlarin portrelerini getirmisti,
 `Category:William Hardham` ise 8 dosyanin 8'inde dogru adami veriyor.
 """
 
-import json
 import sys
 from pathlib import Path
 
