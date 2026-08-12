@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import itertools
 import json
+import os
 import re
 import time
 import urllib.parse
@@ -21,7 +22,35 @@ VIKIVERI_API_URL = "https://www.wikidata.org/w/api.php"
 VIKIPEDI_OZET_URL = "https://en.wikipedia.org/api/rest_v1/page/summary/"
 """Ingilizce Vikipedi ozet ucu — anahtarsiz, kotasiz."""
 
-USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
+_VARSAYILAN_UA = (
+    "MoneyPrinterTurbo-YouTubeAutomation/1.0 "
+    "(+https://github.com/harry0703/MoneyPrinterTurbo)"
+)
+USER_AGENT = os.environ.get("WIKIMEDIA_USER_AGENT", "").strip() or _VARSAYILAN_UA
+"""Wikimedia'nin User-Agent politikasina uyan tanitici dize.
+
+⚠️ ILETISIM BILGISI SUS DEGIL, ZORUNLU (olculdu 2026-08-12). Dize eskiden
+"MoneyPrinterTurbo-YouTubeAutomation/1.0" idi ve upload.wikimedia.org gorsel
+indirmelerine 429 doneyip iki uretim kosumunu ust uste dusurdu.
+
+Once sebebi kendi yukume bagladim (ayni anda arsiv arzi taramasi
+yapiyordum) — YANLISTI. Kontrol olcumu, ayni URL, saniyeler arayla, tek
+degisken UA:
+
+    ShemzHistoryShorts/1.0                                    → 429
+    MoneyPrinterTurbo/1.0 (https://example.org; bot@x)        → 200
+    MoneyPrinterTurbo-YouTubeAutomation/1.0                   → 429
+
+Yani engellenen sey ne IP'miz ne de "MoneyPrinterTurbo" adi: ILETISIM
+BILGISI TASIMAYAN ciplak "Ad/Surum" bicimi. Isim iletisim bilgisiyle
+birlikte gecince 200 donuyor. Sira ters cevrilerek de dogrulandi
+(200/429/200), yani kova zamanlamasi degil.
+
+`WIKIMEDIA_USER_AGENT` ile ezilebiliyor: politika "size ulasabilelim" diyor
+ve buradaki adres yalnizca yazilimi tanitiyor, isleticiye ulastirmiyor.
+Kanal sahibinin kendi e-postasini ya da kanal adresini disaridan koyabilmesi
+icin — kimsenin kisisel adresi koda gomulmedi.
+"""
 SAFE_LICENSE_MARKERS = ("public domain", "pd-", "cc0")
 """Kosulsuz kullanilabilen lisanslar — atif bile gerekmiyor."""
 
