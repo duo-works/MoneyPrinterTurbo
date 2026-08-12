@@ -111,20 +111,38 @@ ANCHOR_GENERIC_WORDS = {
 }
 
 
+_ANAHTAR_UYARISI_VERILDI = False
+
+
 class EuropeanaKapali(RuntimeError):
-    """Anahtar tanimli degil — kaynak sessizce devre disi."""
+    """Anahtar tanimli degil — kaynak devre disi."""
 
 
 def _anahtar() -> str:
-    """Anahtari ortamdan okur. DEGERI HICBIR YERE YAZDIRILMAZ.
+    """Anahtari config.toml'dan, yoksa ortamdan okur. DEGER ASLA YAZDIRILMAZ.
+
+    ⚠️ Once config.toml'a bakiliyor cunku deponun BUTUN anahtarlari orada
+    (`config.app.get(...)`). Yalnizca ortama bakan bir okuma, uretim
+    kosumunda anahtari BULAMAZ ve kaynak sessizce devre disi kalirdi —
+    hic hata vermeden, yalnizca "aday yok" diyerek.
 
     ⚠️ .env'deki ad `EUROPEAN_API_KEY` (yazim eksik, dogrusu EUROPEANA).
-    Duzgun ad once deneniyor ki ileride .env duzeltilince kod degismesin.
+    Duzgun ad once deneniyor ki ad duzeltilince kod degismesin.
     """
+    try:
+        from app.config import config
+
+        for ad in ("europeana_api_key", "european_api_key"):
+            if deger := str(config.app.get(ad, "") or "").strip():
+                return deger
+    except Exception:  # noqa: BLE001 - config yoksa ortam denenir
+        pass
     for ad in ("EUROPEANA_API_KEY", "EUROPEAN_API_KEY"):
         if deger := (os.environ.get(ad) or "").strip():
             return deger
-    raise EuropeanaKapali("EUROPEANA_API_KEY tanimli degil")
+    raise EuropeanaKapali(
+        "europeana_api_key ne config.toml'da ne ortamda tanimli"
+    )
 
 
 def _terms(value: str) -> set[str]:
@@ -409,6 +427,18 @@ def download_europeana_scene_material(
     try:
         _anahtar()
     except EuropeanaKapali:
+        # ⚠️ Sessiz devre disilik, calisan bir hattan ayirt edilemiyor:
+        # kaynak yokmus gibi degil, "aday bulunamadi" gibi gorunur. Bu
+        # yuzden kosum basina BIR KEZ soyleniyor — sahne basina tekrar
+        # etmesi gunlugu doldururdu.
+        global _ANAHTAR_UYARISI_VERILDI
+        if not _ANAHTAR_UYARISI_VERILDI:
+            _ANAHTAR_UYARISI_VERILDI = True
+            print(
+                "ℹ️ Europeana devre disi: europeana_api_key tanimli degil "
+                "(config.toml ya da ortam degiskeni).",
+                flush=True,
+            )
         return None
 
     for query in queries[:2]:

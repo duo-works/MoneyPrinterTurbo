@@ -46,6 +46,15 @@ pexels_api_keys = []
 # Register at https://pixabay.com/api/docs/
 pixabay_api_keys = []
 
+# Europeana — arsiv gorseli icin UCUNCU kaynak (Commons ve Met bos donunce).
+# Yuzlerce Avrupa kurumunu tek arama ucunda birlestiriyor (DW-130).
+# Anahtar: https://pro.europeana.eu/pages/get-api
+#
+# ⚠️ BOS BIRAKILIRSA kaynak SESSIZCE devre disi kalir — uretim duSMEZ, hata
+# da vermez, yalnizca o sahneler icin "aday yok" der. Yani bos bir deger
+# calisan bir hattan ayirt edilemiyor; anahtari koydugunuzdan emin olun.
+europeana_api_key = ""
+
 # Register at https://coverr.co/developers?ctx=header_navigation
 coverr_api_keys = []
 
