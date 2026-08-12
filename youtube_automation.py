@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import time
+import unicodedata
 import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -110,9 +111,44 @@ class DistinctTopicUnavailableError(RuntimeError):
     pass
 
 
+# NFKD'nin AYRISTIRMADIGI harfler. Ayrismayan bir harf `[a-z0-9]+` suzgecinde
+# kelimeyi ikiye boluyor, o yuzden tek tek karsiliklari yaziliyor.
+_AYRISMAYAN_HARFLER = str.maketrans(
+    {"ß": "ss", "ø": "o", "ł": "l", "æ": "ae", "œ": "oe", "đ": "d", "ı": "i", "ħ": "h"}
+)
+
+
+def _sade_harfler(value: str) -> str:
+    """Aksanlari dusurur: "Weizsäcker" → "weizsacker"."""
+    kucuk = value.lower().translate(_AYRISMAYAN_HARFLER)
+    return "".join(
+        k for k in unicodedata.normalize("NFKD", kucuk) if not unicodedata.combining(k)
+    )
+
+
 def _normalize_topic(value: str) -> set[str]:
+    """Konuyu karsilastirilabilir belirteclere ayirir.
+
+    ⚠️ ASKI DEGIL, KILITTI (olculdu 2026-08-12). `[a-z0-9]+` suzgeci aksanli
+    harfi kelime siniri sayiyordu:
+
+        "Carl Friedrich von Weizsäcker" → {carl, friedrich, von, weizs, cker}
+
+    Dort kelimelik ad BES belirtec veriyordu ve `validate_content_plan`'in
+    "gorsel capa 1-4 kelime" kurali hicbir zaman gecilemiyordu. Model uc kez
+    "capayi kisalt" uyarisi alip ayni adi yeniden yaziyor, dorduncu denemede
+    hermes zaman asimina ugrayip kosum COKUYORDU. Yani aksanli ve uc
+    kelimeden uzun her ozel ad — huninin Alman, Turk, Ispanyol adaylarinin
+    buyuk kismi — deterministik olarak uretilemezdi.
+
+    Ikinci ve daha sinsi zarar: adin AYIRT EDICI belirteci ("weizsacker") hic
+    olusmuyordu. `is_duplicate_topic` ve `_ensure_visual_anchor` o belirtec
+    uzerinden eslesiyor; ikisi de sessizce zayifliyordu. "Götz von
+    Berlichingen" kilidi tam sinirda (4) tesadufen geciyordu ve belirtecleri
+    {g, tz, von, berlichingen} idi.
+    """
     stopwords = {"a", "an", "and", "of", "the", "that", "to", "short", "shorts"}
-    words = re.findall(r"[a-z0-9]+", value.lower())
+    words = re.findall(r"[a-z0-9]+", _sade_harfler(value))
     return {word for word in words if word not in stopwords}
 
 
@@ -346,7 +382,15 @@ def validate_content_plan(plan: ContentPlan) -> None:
         raise ValueError("topic and title are required")
     anchor_words = _normalize_topic(plan.visual_anchor)
     if not 1 <= len(anchor_words) <= 4:
-        raise ValueError("visual anchor must contain 1-4 concrete words")
+        # ⚠️ Mesaj eskiden yalnizca kurali soyluyordu ve model uc denemede de
+        # AYNI adi geri yaziyordu; dorduncude cikarim zaman asimina ugrayip
+        # kosum cokuyordu. Dogrulama hatasi modele geri besleniyor, yani
+        # mesaj NE YAPILACAGINI soylemezse dongu kirilmiyor.
+        raise ValueError(
+            f"visual anchor {plan.visual_anchor!r} resolves to {len(anchor_words)} "
+            "words; use at most 4. Drop honorifics and middle names and keep the "
+            "shortest form a viewer would recognise"
+        )
     if len(plan.title) > 100:
         raise ValueError("YouTube title must be at most 100 characters")
     if len(plan.tags) < 3:
