@@ -45,7 +45,15 @@ LOG_DIR = ROOT / "storage" / "youtube_automation" / "logs"
 REVIEW_DIR = ROOT / "storage" / "youtube_automation" / "reviews"
 ANALYSIS_FILE = ROOT / "storage" / "channel_analysis" / "latest.json"
 TIMEZONE_NAME = "Europe/Istanbul"
-MIN_VISUAL_SCORE = 50
+# ⚠️ 50'den 80'e cikarildi (2026-08-12). Yayinlanmis 10 videonun kayitli
+# `quality` skorlariyla olculdu: 68-78 arasi skor alan 6 videonun HER
+# BIRINDE 9-11 kayitli `issues` vardi (yanlis kisi/sahne uyumsuzlugu, orn.
+# Berlichingen 72 puanla "cannot be confidently identified as Götz von
+# Berlichingen"); 85-90 alan 4 videoda issues SIFIRDI. Iki kume arasinda
+# net bir bosluk var (78 → 85), 50 esigi ise "issues dolu" kumeyi bastan
+# sona geciriyordu — kullanicinin "anlatimla resimler uyusmuyor" sikayeti
+# tam bu araligin yayinlanmis urunuydu. 80 bu bosluga oturuyor.
+MIN_VISUAL_SCORE = 80
 MIN_SUBTITLE_SCORE = 80
 AI_VISUAL_FALLBACK_ENABLED = str(
     config.app.get("enable_ai_visual_fallback", "false")

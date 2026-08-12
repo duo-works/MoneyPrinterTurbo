@@ -386,8 +386,8 @@ def test_commons_credits_are_added_to_description_without_duplicate_links():
 
 
 def test_should_publish_requires_visual_and_subtitle_quality_thresholds():
-    good = QualityReview(True, 50, 80, [])
-    bad_visuals = QualityReview(True, 49, 95, ["Modern footage conflicts with narration"])
+    good = QualityReview(True, 80, 80, [])
+    bad_visuals = QualityReview(True, 79, 95, ["Modern footage conflicts with narration"])
 
     assert should_publish(good)
     assert not should_publish(bad_visuals)
@@ -399,15 +399,15 @@ def test_very_low_or_blocking_visual_review_abandons_topic():
     Bu test eskiden tersini kilitliyordu: `publishable=False` gelen bir
     inceleme, skorlari esigin USTUNDE olsa bile konuyu terk ettiriyordu.
     DW-87 o kurali kaldirdi cunku bayrak artik skorlardan turetiliyor; modelin
-    "hayir" demesi tek basina bir kanit degil. Skoru 68 olan bir kagit
+    "hayir" demesi tek basina bir kanit degil. Skoru 85 olan bir kagit
     iyilestirilecek bir kagittir, cope atilacak bir konu degil.
     """
     badly_mismatched = QualityReview(False, 40, 90, ["Modern footage conflicts with narration"])
     modern_footage_above_threshold = QualityReview(
         False, 90, 90, ["Contains modern footage of a highway"]
     )
-    fixable_above_threshold = QualityReview(False, 68, 90, ["One scene needs replacement"])
-    unexplained_rejection = QualityReview(False, 80, 85, [])
+    fixable_above_threshold = QualityReview(False, 85, 90, ["One scene needs replacement"])
+    unexplained_rejection = QualityReview(False, 85, 85, [])
 
     assert should_abandon_topic(badly_mismatched)
     # "modern footage" esikten bagimsiz bir engel — korunuyor.

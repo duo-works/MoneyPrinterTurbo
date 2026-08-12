@@ -98,12 +98,12 @@ def test_yayin_karari_modelin_bayragina_bakmiyor():
 def test_yuksek_skor_bayrak_false_olsa_da_geciyor():
     """Bunun tersi de gecerli — asil kusur buydu.
 
-    Model 73 gibi gercek bir skor verip yine de "publishable: false" derse
+    Model 85 gibi gercek bir skor verip yine de "publishable: false" derse
     video yayindan dusmemeli; karar skorlarin.
     """
     kararsiz = QualityReview(
         publishable=False,
-        visual_alignment_score=73,
+        visual_alignment_score=85,
         subtitle_readability_score=100,
     )
 
@@ -111,7 +111,7 @@ def test_yuksek_skor_bayrak_false_olsa_da_geciyor():
 
 
 def test_esigi_gecen_konu_terk_edilmiyor():
-    olculen = QualityReview(True, 73, 100, ["Scene 3 is a little generic."], [], [3])
+    olculen = QualityReview(True, 85, 100, ["Scene 3 is a little generic."], [], [3])
 
     assert should_abandon_topic(olculen) is False
 
@@ -129,7 +129,7 @@ def test_kaynak_incelemesi_skoru_koddan_turetiyor(monkeypatch):
         ya,
         "_vision_json",
         lambda prompt, gorsel: {
-            "visual_alignment_score": 73,
+            "visual_alignment_score": 85,
             "issues": ["Scene 3 is generic."],
             "revised_search_terms": ["Hadrian's Wall construction"],
             "problem_scene_numbers": [3],
@@ -147,6 +147,6 @@ def test_kaynak_incelemesi_skoru_koddan_turetiyor(monkeypatch):
 
     review = ya.review_source_materials(plan, Path("montaj.jpg"))
 
-    assert review.visual_alignment_score == 73
+    assert review.visual_alignment_score == 85
     assert review.publishable is True
     assert review.problem_scene_numbers == [3]
