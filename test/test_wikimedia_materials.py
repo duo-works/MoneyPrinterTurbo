@@ -525,6 +525,9 @@ def test_scene_download_kalici_5xx_sonrasi_sonraki_adaya_geciyor(monkeypatch, tm
         page("Sphinx of Tanis alternate", 1800, 2400),
     ]
     monkeypatch.setattr("wikimedia_materials.search_commons", lambda *_: pages)
+    monkeypatch.setattr(
+        "wikimedia_materials.download_met_scene_material", lambda *_a, **_k: None
+    )
     attempts: list[str] = []
 
     def fake_download(url, destination):

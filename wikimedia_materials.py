@@ -803,6 +803,31 @@ def download_scene_materials(
         selected = None
         destination = None
         failed_titles: set[str] = set()
+
+        # ⚠️ ONCE MET denendi (2026-08-12'ye kadar Commons ilkti). Canli
+        # olculdu: Commons'in 720px tabani gecen adaylari bile konuya gore
+        # 720-4000px arasi dalgalaniyor (orn. "Ferdinand Magellan" 494-1045px
+        # ham, tabandan sonra hala dusuk), Met ise 720px tabaniyla BIRLIKTE
+        # tutarli 2400-4000px veriyor (Magellan 2458-3999, Cleopatra
+        # 2778-4000). Bedeli Met'in kucuk katalogu: ayni olcumde "Tycho
+        # Brahe" icin 0 aday dondu. Bu yuzden sirada KALDI — Met bulamazsa
+        # asagidaki Commons mantigi degismeden calisir, kapsam kaybolmuyor,
+        # yalnizca Met'in kapsadigi sahnelerde kalite yukseliyor.
+        met_result = download_met_scene_material(
+            queries,
+            scene_number=index,
+            target_dir=target_dir,
+            used_ids=used_met_ids,
+            required_anchor=visual_anchor,
+        )
+        if met_result is not None:
+            met_path, met_credit = met_result
+            used_met_ids.add(int(met_credit["object_id"]))
+            _izi_ekle(met_path, secilmis_izler)
+            files.append(met_path)
+            credits.append(met_credit)
+            continue
+
         # Tekrar diye elenen ilk aday: baska hicbir sey bulunamazsa buna
         # donulur. Delik birakmaktansa benzer bir gorsel iyidir.
         yedek: tuple[dict[str, Any], Path] | None = None
@@ -892,53 +917,42 @@ def download_scene_materials(
             # bos birakmaktan iyi.
             selected, destination = yedek
         if not selected or destination is None:
-            met_result = download_met_scene_material(
+            # ⚠️ IKINCI KAPI: Met (yukarida) ve Commons bos dondu. AI'ya
+            # gitmeden ya da sahneyi bos birakmadan once Europeana'ya
+            # bakiliyor — yuzlerce Avrupa kurumunu tek uctan tariyor
+            # (DW-130). Met burada TEKRAR denenmiyor: sahne basina zaten
+            # yukarida bir kez denendi, ayni queries ile ikinci deneme ayni
+            # sonucu verir.
+            #
+            # Olculdu (2026-08-12): capa ve lisans kapilarindan gecen
+            # aday sayisi Tycho Brahe 38, Hayek 39, Augustus 10,
+            # Anglo-Dutch 7. Ama Harald Rose'da 1 — kaynak eklemek her
+            # konuyu kurtarmiyor.
+            #
+            # Anahtar yoksa modul sessizce None doner; kaynak bagli
+            # degilse hat eskisi gibi calisir.
+            europeana_result = download_europeana_scene_material(
                 queries,
                 scene_number=index,
                 target_dir=target_dir,
-                used_ids=used_met_ids,
+                used_ids=used_europeana_ids,
                 required_anchor=visual_anchor,
             )
-            if met_result is None:
-                # ⚠️ UCUNCU KAPI: Commons ve Met bos dondu. AI'ya gitmeden
-                # ya da sahneyi bos birakmadan once Europeana'ya bakiliyor —
-                # yuzlerce Avrupa kurumunu tek uctan tariyor (DW-130).
-                #
-                # Olculdu (2026-08-12): capa ve lisans kapilarindan gecen
-                # aday sayisi Tycho Brahe 38, Hayek 39, Augustus 10,
-                # Anglo-Dutch 7. Ama Harald Rose'da 1 — kaynak eklemek her
-                # konuyu kurtarmiyor.
-                #
-                # Anahtar yoksa modul sessizce None doner; kaynak bagli
-                # degilse hat eskisi gibi calisir.
-                europeana_result = download_europeana_scene_material(
-                    queries,
-                    scene_number=index,
-                    target_dir=target_dir,
-                    used_ids=used_europeana_ids,
-                    required_anchor=visual_anchor,
-                )
-                if europeana_result is not None:
-                    eu_path, eu_credit = europeana_result
-                    used_europeana_ids.add(str(eu_credit["europeana_id"]))
-                    used_titles.add(str(eu_credit["title"]))
-                    _izi_ekle(eu_path, secilmis_izler)
-                    files.append(eu_path)
-                    credits.append(eu_credit)
-                    continue
-                if not kismi:
-                    raise MaterialsUnavailableError(
-                        f"no public-domain or CC0 archive image found for scene {index}: {term}"
-                    )
-                # Kismi kip: bu sahne bos birakilir, bulunanlar korunur.
-                files.append(None)
-                eksik.append(index)
+            if europeana_result is not None:
+                eu_path, eu_credit = europeana_result
+                used_europeana_ids.add(str(eu_credit["europeana_id"]))
+                used_titles.add(str(eu_credit["title"]))
+                _izi_ekle(eu_path, secilmis_izler)
+                files.append(eu_path)
+                credits.append(eu_credit)
                 continue
-            met_path, met_credit = met_result
-            used_met_ids.add(int(met_credit["object_id"]))
-            _izi_ekle(met_path, secilmis_izler)
-            files.append(met_path)
-            credits.append(met_credit)
+            if not kismi:
+                raise MaterialsUnavailableError(
+                    f"no public-domain or CC0 archive image found for scene {index}: {term}"
+                )
+            # Kismi kip: bu sahne bos birakilir, bulunanlar korunur.
+            files.append(None)
+            eksik.append(index)
             continue
         used_titles.add(selected["title"])
         _izi_ekle(destination, secilmis_izler)
