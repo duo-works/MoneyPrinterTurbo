@@ -98,9 +98,6 @@ def test_yonlendirme_her_adimda_yeniden_dogrulaniyor(monkeypatch, tmp_path: Path
             pass
 
     monkeypatch.setattr(EM.requests, "get", lambda *a, **k: SahteYanit())
-    monkeypatch.setattr(
-        EM, "guvenli_url", EM.guvenli_url
-    )  # gercek muhafiz kullanilsin
     with pytest.raises(ValueError):
         EM._indir_goruntu("https://example.com/x.jpg", tmp_path / "x.jpg")
 
@@ -234,10 +231,22 @@ def test_kunye_object_id_TASIMIYOR(monkeypatch, tmp_path: Path):
     } == set()
 
 
-def test_anahtar_yoksa_kaynak_sessizce_devre_disi(monkeypatch, tmp_path: Path):
-    """Anahtar yoksa uretim DUSMEMELI — kaynak yardimci bir yol."""
+def test_anahtar_yoksa_kaynak_devre_disi_ve_uretim_dusmuyor(monkeypatch, tmp_path: Path):
+    """Anahtar yoksa uretim DUSMEMELI — kaynak yardimci bir yol.
+
+    ⚠️ Ortam degiskenlerini silmek YETMIYOR: `_anahtar()` once config.toml'a
+    bakiyor. Anahtar oraya eklendigi anda (ki eklenmesi gerekiyor) bu test
+    GERCEK AGA cikip gercek anahtarla arama yapardi — yani testi, tarif
+    ettigimiz kurulum adiminin kendisi kirardi. Bu yuzden config yolu da
+    kapatiliyor.
+    """
     monkeypatch.delenv("EUROPEANA_API_KEY", raising=False)
     monkeypatch.delenv("EUROPEAN_API_KEY", raising=False)
+    from app.config import config
+
+    for ad in ("europeana_api_key", "european_api_key"):
+        monkeypatch.setitem(config.app, ad, "")
+
     assert (
         EM.download_europeana_scene_material(
             ["Tycho Brahe"],
@@ -247,6 +256,17 @@ def test_anahtar_yoksa_kaynak_sessizce_devre_disi(monkeypatch, tmp_path: Path):
         )
         is None
     )
+
+
+def test_anahtar_config_tomldan_okunuyor(monkeypatch):
+    """⚠️ Modul once yalnizca ORTAMA bakiyordu; deponun butun anahtarlari ise
+    config.toml'da. Uretim kosumunda kaynak sessizce kapali kalirdi."""
+    monkeypatch.delenv("EUROPEANA_API_KEY", raising=False)
+    monkeypatch.delenv("EUROPEAN_API_KEY", raising=False)
+    from app.config import config
+
+    monkeypatch.setitem(config.app, "europeana_api_key", "config-anahtari")
+    assert EM._anahtar() == "config-anahtari"
 
 
 def test_ilk_aday_inmezse_sonrakine_geciliyor(monkeypatch, tmp_path: Path):
