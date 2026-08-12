@@ -103,7 +103,7 @@ def _kos(
 def kuyrugu_oku(
     *,
     ytoto_path: str | None = None,
-    format_adi: str | None = "shorts",
+    format_adi: str | None = None,
     limit: int = 5,
 ) -> list[Aday]:
     """`Secildi` kuyrugunu okur — insanin "bunu uret" dedigi adaylar.
@@ -119,6 +119,17 @@ def kuyrugu_oku(
     BOZUKKEN hat, insanin henuz secim yapmadigini soyluyordu — sessiz ve
     yanlis. Gercekten bos kuyruk stdout'a "[]" basiyor, yani ikisi
     ayirt EDILEBILIYOR; ayrimi yapmayan bizdik.
+
+    ⚠️ VARSAYILAN `format_adi` "shorts"tan `None`'a degisti (2026-08-13).
+    Huninin `Onerilen format` alani hangi formatta REKABET AZ demek, hangi
+    formatta URETILEBILIR demek degil: Mary Ritter Beard ve Vassar College
+    "Uzun" etiketliydi ama arsiv_arzi_olc.py ile olculdu, ikisi de zengin
+    PD/CC0 kaynagi var ve bu hat SADECE Shorts uretiyor (KANAL_SESI, 9:16
+    render, tek youtube_channel_id — ayri bir Uzun hatti yok). Eski
+    davranista bu adaylar `Seçildi`ye alinsa bile koprude asla gorunmuyordu,
+    "kuyruk bos" sanip Shorts kuyrugunu kurutuyordu. Format artik SECIM
+    ANINDA (Notion'da hangi aday `Seçildi`ye alinir) karar veriliyor, bu
+    fonksiyonda degil.
     """
     argumanlar = ["aday", "listele", "--durum", "Seçildi", "--json", "--limit", str(limit)]
     if format_adi:
