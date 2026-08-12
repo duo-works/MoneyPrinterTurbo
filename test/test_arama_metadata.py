@@ -76,7 +76,8 @@ def test_shorts_ve_uzunluk_kisiti_korunuyor():
 
     assert "#Shorts" in yonerge
     assert "65 characters" in yonerge
-    assert "3-5 hashtags" in yonerge
+    # Tire yasagindan sonra "3-5" yazimi kalktI; kural ayni, yazimi degisti.
+    assert "3 to 5 hashtags" in yonerge
     assert "6-10 concise strings" in yonerge
 
 

@@ -147,6 +147,10 @@ def test_kismi_kip_kapaliysa_eski_davranis_suruyor(tmp_path, monkeypatch):
     """AI yedegi yokken delikli video yapilamaz — sert hata dogru davranis."""
     monkeypatch.setattr(wm, "search_commons", lambda *_a, **_k: [])
     monkeypatch.setattr(wm, "download_met_scene_material", lambda *_a, **_k: None)
+    # ⚠️ Europeana ucuncu kaynak olarak baglaninca (adbca7a) bu test sessizce
+    # CANLI AGA cikmaya basladi: gercek gorsel donuyordu, beklenen hata
+    # atilmiyordu ve test "arsiv bos" senaryosunu artik kurmuyordu.
+    monkeypatch.setattr(wm, "download_europeana_scene_material", lambda *_a, **_k: None)
 
     with pytest.raises(wm.MaterialsUnavailableError, match="scene 1"):
         wm.download_scene_materials(
@@ -161,6 +165,7 @@ def test_kismi_kipte_hicbiri_bulunamazsa_yine_hata(tmp_path, monkeypatch):
     """Bos bir arsiv sonucu, "kismi" degil tam basarisizliktir."""
     monkeypatch.setattr(wm, "search_commons", lambda *_a, **_k: [])
     monkeypatch.setattr(wm, "download_met_scene_material", lambda *_a, **_k: None)
+    monkeypatch.setattr(wm, "download_europeana_scene_material", lambda *_a, **_k: None)
 
     with pytest.raises(wm.MaterialsUnavailableError, match="any of the"):
         wm.download_scene_materials(

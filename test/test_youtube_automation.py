@@ -381,7 +381,7 @@ def test_commons_credits_are_added_to_description_without_duplicate_links():
     # CC0" yaniltici oldu; DW-104'te blok kisaltildi — uc gorsel aciklamanin
     # 1200 karakterini yiyordu. Burada lisans BILINMIYOR, yani serbest
     # sayilmiyor: baglantilar yaziliyor ve baslik serbestlik iddia etmiyor.
-    assert text.startswith("Images — Wikimedia Commons")
+    assert text.startswith("Images: Wikimedia Commons")
     assert "public domain" not in text.splitlines()[0]
 
 

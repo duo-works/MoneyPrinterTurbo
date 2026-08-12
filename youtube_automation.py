@@ -162,10 +162,10 @@ def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
 
 KANAL_SESI = """You are the editorial producer of an English global-history YouTube Shorts channel.
 
-THE CHANNEL HAS ONE FIXED EDITORIAL ANGLE, AND EVERY SCRIPT MUST HAVE IT: the gap between what people assume happened and what the surviving evidence actually shows. Not "here are facts about a place" — but "here is what the record says, and it is not what you were told."
+THE CHANNEL HAS ONE FIXED EDITORIAL ANGLE, AND EVERY SCRIPT MUST HAVE IT: the gap between what people assume happened and what the surviving evidence actually shows. Not "here are facts about a place", but "here is what the record says, and it is not what you were told."
 Build each script on one of these moves: a widely believed story the evidence contradicts, a mystery where you name what is actually known and where the knowledge stops, a detail so specific it could only come from someone who read the source, or a consequence that outlived the event.
 Say what is NOT known, out loud, at least once. "No one has found..." / "The record stops here." Certainty about everything is the signature of a shallow script; naming the edge of the evidence is what a real researcher does and what makes a viewer trust the channel.
-Take a position in the final line. Not a summary of what was just said — a judgement, an implication, or a question the evidence leaves open. A script that ends by restating its own middle has no author.
+Take a position in the final line. Not a summary of what was just said, but a judgement, an implication, or a question the evidence leaves open. A script that ends by restating its own middle has no author.
 Vary the structure between videos. If the last scripts opened on an object, open on a person or a moment of discovery instead. A recognisable channel is one where the VOICE is constant and the SHAPE is not."""
 """Kanalin sabit editoryal kimligi — ses ve arastirma acisi (DW-105).
 
@@ -187,19 +187,20 @@ Uc unsur seciliyor cunku ucu de olculebilir bicimde jenerik uretimden ayrisiyor:
 EDITORYAL_YONERGE = """
 Return valid JSON only. Create a factual, emotionally compelling, evergreen true story.
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
-NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject — a number, an object, a contradiction, or an unfinished action — so the first six words could belong to no other video.
-Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME — never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
+NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject (a number, an object, a contradiction, or an unfinished action) so the first six words could belong to no other video.
+Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME, never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
 Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
-Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access — photographs of any era, engravings, archaeological plates, museum scans — but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
+Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
-When a legend or myth is used, say plainly that it is a legend — "the Inca told of...", "locals still claim..." — and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
+When a legend or myth is used, say plainly that it is a legend ("the Inca told of...", "locals still claim...") and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
 The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
 WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
-The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised — never leave the question unanswered in the description. Then 3-5 hashtags.
-Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary — never write a phrase nobody would type into a search box.
+The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised; never leave the question unanswered in the description. Then 3 to 5 hashtags.
+NEVER USE A DASH CHARACTER ANYWHERE IN THE SCRIPT OR THE SCENE NARRATION: no em dash, no en dash, no hyphen. Rephrase instead: write "single handedly", not "single-handedly"; use a comma or a full stop where you would reach for an em dash; write year ranges as "1652 to 1674". Titles and tags may keep an ordinary hyphen inside a proper name.
+Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary; never write a phrase nobody would type into a search box.
 JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
 """Sozlesmenin geri kalani — kanal kimliginden AYRI tutuluyor.
 
@@ -234,6 +235,70 @@ TARIHLE_ACILIS = re.compile(
     r"|(?:in|by|around|during)\s+the\s+\w+\s+century)",
     re.IGNORECASE,
 )
+
+
+UZUN_TIRELER = "—–―‒"
+TUM_TIRELER = "-" + UZUN_TIRELER
+
+
+def _noktalama_topla(metin: str) -> str:
+    """Tire cikarildiktan sonra geriye kalan bosluk/noktalama artigini toplar."""
+    metin = re.sub(rf"[ \t]*[{TUM_TIRELER}][ \t]*", " ", metin)
+    metin = re.sub(r"[ \t]+([,.;:!?])", r"\1", metin)
+    metin = re.sub(r",[ \t]*([,.;:!?])", r"\1", metin)
+    metin = re.sub(r"[ \t]{2,}", " ", metin)
+    return metin.strip()
+
+
+def tiresiz_anlatim(metin: str) -> str:
+    """Anlatim metnindeki HER tureden tireyi kaldirir (kanal sahibi, 2026-08-12).
+
+    Istek acikti: "alt yazi metinlerde '-' isareti bulunmasin". Alt yazi
+    seslendirme metninden uretiliyor, yani tireyi alt yazidan degil KAYNAKTAN
+    silmek gerekiyor — SRT'yi sonradan temizlemek zamanlamayi bozardi.
+
+    Olculdu (son 6 senaryo): 2'sinde uzun tire ("alone—and", "paper—not"),
+    4'unde kelime ici tire ("post-conspiracy", "single-handedly",
+    "pre-telescopic", "Anglo-Dutch"). Yani tek bir kural yetmiyor, uc ayri
+    kullanim var ve her biri farkli karsilik istiyor:
+
+      * Sayi araligi (1652–1674) → " to ". Bosluga cevirmek alt yazida iki
+        ayri sayi gibi okunur, seslendirme de oyle soyler.
+      * Uzun tire cumle kesmesi → virgul. Ayni duraklamayi veriyor; noktaya
+        cevirmek cumleyi ikiye bolup ritmi degistirirdi.
+      * Kelime ici tire → bosluk. "single handedly" seslendirmede AYNI,
+        alt yazida temiz.
+
+    ⚠️ Yonergeye "tire kullanma" yazmak tek basina YETMEZ: sistem yonergesinin
+    kendisi uzun tire kullaniyor (satir 165, 168, 190...), yani model kurali
+    okurken ornegini de goruyor. Kanca kusurunda olcusu alinan ders bu
+    (DW-87): modele kurali soylemek yetmiyor, KOD kontrol etmeli. Yonerge yine
+    de eklendi — duzeltilecek metin sayisini azaltiyor.
+    """
+    if not metin:
+        return metin
+    metin = re.sub(rf"(?<=\d)[ \t]*[{TUM_TIRELER}][ \t]*(?=\d)", " to ", metin)
+    for tire in UZUN_TIRELER:
+        metin = metin.replace(tire, ", ")
+    metin = re.sub(r"(?<=\w)-(?=\w)", " ", metin)
+    return _noktalama_topla(metin)
+
+
+def tiresiz_baslik(metin: str) -> str:
+    """Baslik/aciklama: uzun tire dusuyor, kelime ici tire KALIYOR.
+
+    Ayrimin sebebi: baslik ve aciklama alt yazi degil, ARAMA metni.
+    "Anglo-Dutch War" yazimini "Anglo Dutch" yapmak YouTube aramasinda tam
+    eslesmeyi kaybettirir — istegi karsilamayan bir gorunurluk bedeli. Uzun
+    tire ise aramaya hicbir sey katmiyor, yalnizca model tiki.
+    """
+    if not metin:
+        return metin
+    for tire in UZUN_TIRELER:
+        metin = metin.replace(tire, ", ")
+    metin = re.sub(r"[ \t]+([,.;:!?])", r"\1", metin)
+    metin = re.sub(r",[ \t]*([,.;:!?])", r"\1", metin)
+    return re.sub(r"[ \t]{2,}", " ", metin).strip()
 
 
 def kanca_kusuru(metin: str) -> str:
@@ -424,7 +489,10 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
             hepsi_serbest = False
             parcalar.append(lisans)
             parcalar.append(link)
-        satirlar.append("• " + " — ".join(p for p in parcalar if p))
+        # Ayirac uzun tireydi; aciklama da izleyicinin okudugu bir metin ve
+        # kanal sahibi metinlerde tire istemiyor (2026-08-12). Icerik ayni,
+        # yalnizca ayirac degisti — atifin hicbir parcasi dusmuyor.
+        satirlar.append("• " + " · ".join(p for p in parcalar if p))
     if not satirlar:
         return ""
     # ⚠️ Baslik SABIT "Wikimedia Commons" idi. Hat artik Met ve Europeana'dan
@@ -436,7 +504,7 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
         ad = str(credit.get("provider") or "Wikimedia Commons").strip()
         if ad and ad not in saglayicilar:
             saglayicilar.append(ad)
-    baslik = "Images — " + ", ".join(saglayicilar or ["Wikimedia Commons"])
+    baslik = "Images: " + ", ".join(saglayicilar or ["Wikimedia Commons"])
     if hepsi_serbest:
         baslik += " (public domain / CC0)"
     return baslik + "\n" + "\n".join(satirlar)
@@ -1009,17 +1077,21 @@ def generate_content_plan(
         plan = ContentPlan(
             topic=str(data.get("topic", "")).strip(),
             visual_anchor=str(data.get("visual_anchor", "")).strip(),
-            title=str(data.get("title", "")).strip(),
-            script=str(data.get("script", "")).strip(),
+            title=tiresiz_baslik(str(data.get("title", "")).strip()),
+            # ⚠️ Temizlik DOGRULAMADAN once: `validate_content_plan` kelime
+            # sayiyor ve tire kaldirinca "single-handedly" bir kelimeden ikiye
+            # cikiyor. Sonradan temizlemek, dogrulanan metinle uretilen metnin
+            # farkli olmasi demekti.
+            script=tiresiz_anlatim(str(data.get("script", "")).strip()),
             scenes=[
                 {
-                    "narration": str(scene.get("narration", "")).strip(),
+                    "narration": tiresiz_anlatim(str(scene.get("narration", "")).strip()),
                     "search_term": str(scene.get("search_term", "")).strip(),
                 }
                 for scene in data.get("scenes", [])
                 if isinstance(scene, dict)
             ],
-            description=str(data.get("description", "")).strip(),
+            description=tiresiz_baslik(str(data.get("description", "")).strip()),
             tags=[str(tag).strip() for tag in data.get("tags", []) if str(tag).strip()],
         )
         for scene in plan.scenes:
