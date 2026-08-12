@@ -197,3 +197,42 @@ def test_arama_ucunun_kendisi_duserse_hata_yutulmuyor(monkeypatch):
 
     with pytest.raises(requests.HTTPError):
         met_materials.search_met("roman vault")
+
+
+def test_arama_istegi_zaman_asimina_ugrarsa_bos_donuyor(monkeypatch):
+    """Arama istegi TIMEOUT olursa kosum COKMEMELI, bos liste donmeli.
+
+    Olculdu (2026-08-13): Met artik her sahnede ILK denenen kaynak
+    (bkz. wikimedia_materials.py sira degisikligi), yani bu istek eskisinden
+    cok daha sik atiliyor. collectionapi.metmuseum.org gecici read-timeout
+    verdi ve yakalanmamis istisna butun uretim kosumunu (LLM plani, o ana
+    kadar indirilen gorseller) coplulukle birlikte olduruyordu.
+    """
+    import met_materials
+
+    met_materials._OBJECT_CACHE.clear()
+
+    def sahte_get(url, **_kwargs):
+        raise requests.Timeout("zaman asimi")
+
+    monkeypatch.setattr(met_materials.requests, "get", sahte_get)
+
+    sonuc = met_materials.search_met("roman vault")
+
+    assert sonuc == []
+
+
+def test_arama_istegi_baglanti_hatasinda_bos_donuyor(monkeypatch):
+    """Ayni koruma ConnectionError icin de gecerli — DNS/ag kesintisi."""
+    import met_materials
+
+    met_materials._OBJECT_CACHE.clear()
+
+    def sahte_get(url, **_kwargs):
+        raise requests.ConnectionError("baglanti koptu")
+
+    monkeypatch.setattr(met_materials.requests, "get", sahte_get)
+
+    sonuc = met_materials.search_met("roman vault")
+
+    assert sonuc == []

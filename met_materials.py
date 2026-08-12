@@ -109,13 +109,27 @@ def select_met_candidate(
 
 
 def search_met(query: str, limit: int = 8) -> list[dict[str, Any]]:
-    response = requests.get(
-        SEARCH_URL,
-        params={"q": query, "hasImages": "true"},
-        headers={"User-Agent": USER_AGENT},
-        timeout=30,
-    )
-    response.raise_for_status()
+    try:
+        response = requests.get(
+            SEARCH_URL,
+            params={"q": query, "hasImages": "true"},
+            headers={"User-Agent": USER_AGENT},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except (requests.Timeout, requests.ConnectionError):
+        # ⚠️ Bu istek eskiden korumasizdi (2026-08-13'e kadar). Met artik
+        # HER sahnede ILK denenen kaynak (bkz. wikimedia_materials.py sira
+        # degisikligi), yani bu istek eskisinden COK daha sik atiliyor —
+        # olculdu: collectionapi.metmuseum.org gecici read-timeout verdi ve
+        # yakalanmamis istisna butun uretim kosumunu (LLM plani, o ana
+        # kadar indirilen gorseller) coplulikle birlikte olduruyordu. Nesne
+        # detay istekleri asagida zaten aynı sekilde korunuyor (DW-86'nin
+        # Wikimedia tarafindaki dersi); arama istegi o korumanin disinda
+        # kalmisti. Bos donmek dogru davranis: cagiran taraf (
+        # `download_met_scene_material`) bosu "aday yok" sayip Commons
+        # zincirine geciyor.
+        return []
     object_ids = (response.json().get("objectIDs") or [])[:limit]
     objects: list[dict[str, Any]] = []
     for object_id in object_ids:
