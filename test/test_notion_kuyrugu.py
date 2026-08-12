@@ -63,8 +63,13 @@ def test_kuyruk_secildi_durumunu_okuyor(sahte_kos):
 
 
 def test_bos_kuyruk_hata_degil(sahte_kos):
-    """`ytoto` bos listede 1 donuyor — bu basarisizlik sayilmamali."""
-    sahte_kos(cikti="", kod=1)
+    """`ytoto` bos listede 1 donuyor — bu basarisizlik sayilmamali.
+
+    ⚠️ Bos kuyrugun isareti cikis kodu DEGIL, stdout'a basilan "[]". Olculdu
+    (2026-08-12): `ytoto aday listele --json` bos sonucta cikis 1 + "[]"
+    veriyor.
+    """
+    sahte_kos(cikti="[]", kod=1)
 
     assert nk.kuyrugu_oku(ytoto_path="/sahte/ytoto") == []
 
@@ -72,7 +77,22 @@ def test_bos_kuyruk_hata_degil(sahte_kos):
 def test_gercek_hata_yutulmuyor(sahte_kos):
     sahte_kos(cikti="", hata="token yok", kod=2)
 
-    with pytest.raises(nk.KopruHatasi, match="aday listele basarisiz"):
+    with pytest.raises(nk.KopruHatasi, match="cikti vermedi"):
+        nk.kuyrugu_oku(ytoto_path="/sahte/ytoto")
+
+
+def test_eksik_token_BOS_KUYRUK_sanilmiyor(sahte_kos):
+    """⚠️ Uretimde yasandi (2026-08-12): NOTION_TOKEN cevrede yokken `ytoto`
+    cikis 1 + BOS stdout donuyor, hatayi stderr'e yaziyor. Eski kod bunu
+    "kuyruk bos" okuyordu ve hat "`Secildi` kuyrugu bos" diyerek duruyordu —
+    yani YAPILANDIRMA BOZUKKEN insanin secim yapmadigini soyluyordu.
+
+    Sessiz sifir: dogru davranan bir hattan ayirt edilemiyor. Kuyrukta dort
+    aday dururken hat "aday yok" dedi.
+    """
+    sahte_kos(cikti="", hata="HATA: NOTION_TOKEN tanımlı değil.", kod=1)
+
+    with pytest.raises(nk.KopruHatasi, match="NOTION_TOKEN"):
         nk.kuyrugu_oku(ytoto_path="/sahte/ytoto")
 
 

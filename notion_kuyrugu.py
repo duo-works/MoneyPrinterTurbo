@@ -111,6 +111,14 @@ def kuyrugu_oku(
     Bos kuyruk bir HATA DEGIL: insan henuz secim yapmamis olabilir. `ytoto`
     bu durumda 1 donuyor, o yuzden cikis kodu tek basina basarisizlik sayilmaz;
     ayirt edici olan cikti ayristirilabiliyor mu.
+
+    ⚠️ BOS CIKTI ARTIK BOS KUYRUK SAYILMIYOR (olculdu 2026-08-12). Cevrede
+    NOTION_TOKEN yokken `ytoto` cikis 1 + BOS stdout veriyor ve hatayi
+    stderr'e yaziyordu; burasi ikisini de "kuyruk bos" diye okuyup hat
+    "`Secildi` kuyrugu bos, konu uydurulmadi" diyordu. Yani YAPILANDIRMA
+    BOZUKKEN hat, insanin henuz secim yapmadigini soyluyordu — sessiz ve
+    yanlis. Gercekten bos kuyruk stdout'a "[]" basiyor, yani ikisi
+    ayirt EDILEBILIYOR; ayrimi yapmayan bizdik.
     """
     argumanlar = ["aday", "listele", "--durum", "Seçildi", "--json", "--limit", str(limit)]
     if format_adi:
@@ -118,12 +126,11 @@ def kuyrugu_oku(
     sonuc = _kos(argumanlar, ytoto_path=ytoto_path)
     metin = sonuc.stdout.strip()
     if not metin:
-        if sonuc.returncode not in (0, 1):
-            raise KopruHatasi(
-                f"ytoto aday listele basarisiz (cikis {sonuc.returncode}): "
-                f"{sonuc.stderr.strip()[-400:]}"
-            )
-        return []
+        raise KopruHatasi(
+            f"ytoto aday listele cikti vermedi (cikis {sonuc.returncode}). "
+            "Bos kuyruk '[]' basar; bos cikti kopru ya da yapilandirma "
+            f"hatasidir: {sonuc.stderr.strip()[-400:] or '(stderr bos)'}"
+        )
     try:
         ham = json.loads(metin)
     except json.JSONDecodeError as hata:
