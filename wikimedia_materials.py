@@ -12,6 +12,7 @@ from typing import Any, Callable
 import requests
 
 import gorsel_olcum
+from europeana_materials import download_europeana_scene_material
 from met_materials import download_met_scene_material
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
@@ -734,6 +735,12 @@ def download_scene_materials(
     eksik: list[int] = []
     used_titles: set[str] = set(excluded_titles or set())
     used_met_ids: set[int] = set(excluded_met_ids or set())
+    # ⚠️ Europeana kimlikleri METIN ("/2020903/KMS1"), Met'inkiler gibi sayi
+    # degil. Cagiran taraf `excluded_met_ids` gonderirken `int()` uyguluyor,
+    # bu yuzden Europeana kimligi oraya KARISTIRILMIYOR. Sahneler arasi
+    # tekrar yine engelleniyor: `used_titles` ve parmak izi kontrolu
+    # Europeana adaylarini da kapsiyor.
+    used_europeana_ids: set[str] = set()
     files: list[Path] = []
     credits: list[dict[str, Any]] = []
     # ⚠️ Secilmis sahnelerin parmak izleri — AYNI GORSELIN iki sahnede
@@ -864,6 +871,32 @@ def download_scene_materials(
                 required_anchor=visual_anchor,
             )
             if met_result is None:
+                # ⚠️ UCUNCU KAPI: Commons ve Met bos dondu. AI'ya gitmeden
+                # ya da sahneyi bos birakmadan once Europeana'ya bakiliyor —
+                # yuzlerce Avrupa kurumunu tek uctan tariyor (DW-130).
+                #
+                # Olculdu (2026-08-12): capa ve lisans kapilarindan gecen
+                # aday sayisi Tycho Brahe 38, Hayek 39, Augustus 10,
+                # Anglo-Dutch 7. Ama Harald Rose'da 1 — kaynak eklemek her
+                # konuyu kurtarmiyor.
+                #
+                # Anahtar yoksa modul sessizce None doner; kaynak bagli
+                # degilse hat eskisi gibi calisir.
+                europeana_result = download_europeana_scene_material(
+                    queries,
+                    scene_number=index,
+                    target_dir=target_dir,
+                    used_ids=used_europeana_ids,
+                    required_anchor=visual_anchor,
+                )
+                if europeana_result is not None:
+                    eu_path, eu_credit = europeana_result
+                    used_europeana_ids.add(str(eu_credit["europeana_id"]))
+                    used_titles.add(str(eu_credit["title"]))
+                    _izi_ekle(eu_path, secilmis_izler)
+                    files.append(eu_path)
+                    credits.append(eu_credit)
+                    continue
                 if not kismi:
                     raise MaterialsUnavailableError(
                         f"no public-domain or CC0 archive image found for scene {index}: {term}"

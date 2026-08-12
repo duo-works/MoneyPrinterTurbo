@@ -427,7 +427,16 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
         satirlar.append("• " + " — ".join(p for p in parcalar if p))
     if not satirlar:
         return ""
-    baslik = "Images — Wikimedia Commons"
+    # ⚠️ Baslik SABIT "Wikimedia Commons" idi. Hat artik Met ve Europeana'dan
+    # da gorsel aliyor (DW-130); sabit baslik, Europeana'dan gelen bir
+    # gravuru Commons'a mal ediyordu — aciklama kaynagi YANLIS gosteriyordu.
+    # Saglayici artik kunyelerden okunuyor.
+    saglayicilar: list[str] = []
+    for credit in credits:
+        ad = str(credit.get("provider") or "Wikimedia Commons").strip()
+        if ad and ad not in saglayicilar:
+            saglayicilar.append(ad)
+    baslik = "Images — " + ", ".join(saglayicilar or ["Wikimedia Commons"])
     if hepsi_serbest:
         baslik += " (public domain / CC0)"
     return baslik + "\n" + "\n".join(satirlar)
