@@ -75,16 +75,29 @@ def test_kaynak_kapisi_video_kapisindan_gevsek_KALMALI():
 
 # Gercek hakem cevabindan alinan kare olgulari.
 def test_gercek_yanlis_kisi_kaydi_agir_kusur_uretiyor():
-    """Franklin koşumu: sahne 1'de Franklin istendi, CROZIER geldi."""
+    """Franklin koşumu: sahne 1'de Franklin istendi, CROZIER geldi.
+
+    ⚠️ Bu vaka, kapinin GEVSETILMEMESI gerektiginin kaniti: baska bir
+    tanimlanabilir kisi gelmesi "secilemiyor" degil, YANLIS. Sahne 4'e de
+    MODERN TIBBI CADIR fotografi girmisti — konuyla ilgisiz modern goruntu,
+    gercek nesnenin bugunku fotografi degil (ayrimin gerekcesi
+    `agir_kusurlari_ayikla` icinde).
+    """
     kareler = [
-        {"n": 1, "person_ok": False, "period_ok": True, "modern": False},
-        {"n": 4, "person_ok": True, "period_ok": False, "modern": True},
+        {"n": 1, "person": "wrong", "period": "correct", "modern": False},
+        {
+            "n": 4,
+            "person": "none",
+            "period": "wrong",
+            "modern": True,
+            "authentic_subject": False,
+        },
     ]
 
     kusurlar = agir_kusurlari_ayikla(kareler)
 
     assert "kare 1: anlatilan kisi degil" in kusurlar
-    assert "kare 4: modern goruntu" in kusurlar
+    assert "kare 4: konuyla ilgisiz modern goruntu" in kusurlar
 
 
 def test_yuksek_skorlu_video_agir_kusurla_dusuyor():

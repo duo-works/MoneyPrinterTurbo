@@ -810,9 +810,24 @@ def agir_kusurlari_ayikla(kareler: Any) -> list[str]:
     soruluyor ve cevabin ne anlama geldigine KOD karar veriyor.
 
     ⚠️ EKSIK ALAN KUSUR SAYILMAZ. Alan hic gelmezse (eski hakem cevabi, kirik
-    JSON, modelin atladigi kare) `True` varsayiliyor. Tersi, cevap bicimi
+    JSON, modelin atladigi kare) kusur yazilmiyor. Tersi, cevap bicimi
     degistigi anda her videoyu yayindan dusururdu — sessiz ve tam bir
     duruş. Kapinin isi yanlisi yakalamak, belirsizligi cezalandirmak degil.
+
+    ⚠️ "YANLIS" ILE "SECILEMIYOR" AYRI (2026-08-14). Ilk surum ikili sordu
+    (`person_ok` true/false) ve hakem emin olamadigi her karede `false`
+    yazdi; kod bunu "yanlis kisi" sayiyordu. Olculdu: Kon-Tiki koşumunda
+    gorsel 86 ve 88 alan (kanalin en iyi yayinlanmis videosu 90) iki video
+    yalnizca bu yuzden dustu, hakemin kendi cumlesi ise "the small
+    illustrated figures CANNOT BE VERIFIED as Thor Heyerdahl" idi. Kapi
+    yanlisi degil belirsizligi ceza landiriyordu.
+
+    ⚠️ MODERN GORUNTU TEK BASINA AGIR KUSUR DEGIL. Ayni olcumde 33 agir
+    kusurun 22'si "modern goruntu" cikti ve hepsi GERCEK nesnenin bugunku
+    fotografiydi (Kon-Tiki salinin muzedeki hali). Istem bunu zaten acikca
+    serbest birakiyor: "Modern colour photographs of a surviving place or
+    object are welcome." Kusur, modern bir goruntunun konuyla ilgisiz
+    olmasi: `modern` VE `authentic_subject` degilse agir.
     """
     if not isinstance(kareler, list):
         return []
@@ -821,12 +836,12 @@ def agir_kusurlari_ayikla(kareler: Any) -> list[str]:
         if not isinstance(kare, dict):
             continue
         numara = kare.get("n", sira)
-        if kare.get("person_ok", True) is False:
+        if str(kare.get("person", "")).strip().lower() == "wrong":
             kusurlar.append(f"kare {numara}: anlatilan kisi degil")
-        if kare.get("period_ok", True) is False:
+        if str(kare.get("period", "")).strip().lower() == "wrong":
             kusurlar.append(f"kare {numara}: donem uyusmuyor")
-        if kare.get("modern") is True:
-            kusurlar.append(f"kare {numara}: modern goruntu")
+        if kare.get("modern") is True and kare.get("authentic_subject") is False:
+            kusurlar.append(f"kare {numara}: konuyla ilgisiz modern goruntu")
     return kusurlar
 
 
@@ -839,9 +854,18 @@ def should_publish(review: QualityReview) -> bool:
     # incelemede 10 kusur listelendi (olculdu 2026-08-13). Yanlis kisi
     # gostermek ortalamaya karisacak bir eksiklik degil.
     #
-    # Geriye donuk olculdu: yayinlanmis 12 videonun HICBIRINDE agir kusur
-    # yok, yani bu kapi gecmisteki tek bir basariyi bile engellemezdi —
-    # yalnizca zaten reddedilenleri daha erken ve daha net reddederdi.
+    # ⚠️ DUZELTME (2026-08-14). Burada eskiden su yaziyordu: "Geriye donuk
+    # olculdu: yayinlanmis 12 videonun HICBIRINDE agir kusur yok, yani bu
+    # kapi gecmisteki tek bir basariyi bile engellemezdi." O olcum BOSTU:
+    # `frames` alanini hakeme ayni oturumda bu kapiyla BIRLIKTE ekledim
+    # (3f48840), yani eski kayitlarda alan hic yoktu ve "kusur yok" sonucu
+    # liyakatten degil alanin yoklugundan geliyordu.
+    #
+    # Gercek veriyle ilk sinav (2026-08-14, Kon-Tiki): gorsel 86 ve 88,
+    # altyazi 91 ve 84 alan iki video — kanalin yayinlanmis en iyi videosu
+    # 90 — YALNIZCA bu kapida dustu. 33 agir kusurun 22'si gercek nesnenin
+    # muzedeki fotografiydi. Kapi kaldirilmadi, kusur TANIMI duzeltildi;
+    # gerekce `agir_kusurlari_ayikla` icinde.
     if review.agir_kusurlar:
         return False
     return yayina_uygun(
@@ -2937,11 +2961,21 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             # uygun mu" HALA sorulmuyor (DW-87) — yalnizca karede ne
             # goruldugu.
             " Additionally return a `frames` array with one object per frame: "
-            '{"n": <frame number>, "person_ok": <true when the montage is about a named '
-            "person and the human shown is that person; true when no specific person is "
-            'named>, "period_ok": <true when clothing, technology and setting fit the era '
-            'the narration describes>, "modern": <true when the frame shows present-day '
-            "footage, people or objects that cannot belong to the period>}."
+            '{"n": <frame number>, '
+            '"person": "correct" when the human shown is the person the narration names, '
+            '"wrong" when it is a DIFFERENT identifiable person, "unclear" when the '
+            'figures are too small, too stylised or too obscured to tell, "none" when the '
+            'narration names no person, '
+            '"period": "correct" when the thing shown belongs to the era the narration '
+            'describes, "wrong" when it belongs to a different era and is presented as '
+            'this one, "unclear" when you cannot tell, '
+            '"authentic_subject": <true when the thing shown IS the real subject, its '
+            "surviving remains, or a genuine historical depiction of it, even if the "
+            'photograph itself was taken recently>, '
+            '"modern": <true when the frame is a present-day photograph or footage>}. '
+            "Answer what you can actually see. A recent photograph of the genuine "
+            "surviving object is authentic_subject true and period correct; a recent "
+            "photograph of something else entirely is not."
         ),
     }
     data = _vision_json(prompt, montage)
