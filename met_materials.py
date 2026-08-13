@@ -10,6 +10,8 @@ from typing import Any
 import requests
 from PIL import Image
 
+import capa_eslesme
+
 SEARCH_URL = "https://collectionapi.metmuseum.org/public/collection/v1/search"
 OBJECT_URL = "https://collectionapi.metmuseum.org/public/collection/v1/objects/{object_id}"
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
@@ -55,6 +57,9 @@ def select_met_candidate(
     anchor_terms = _terms(required_anchor)
     distinctive_anchor_terms = anchor_terms - ANCHOR_GENERIC_WORDS
     required_anchor_terms = distinctive_anchor_terms or anchor_terms
+    # ⚠️ Sira sayilari AYRI — `_terms` 4 harften kisalari atiyor, yani
+    # "Murad III" yalnizca {"murad"} veriyordu. Gerekcesi `capa_eslesme`de.
+    gerekli_sira_sayilari = capa_eslesme.sira_sayilari(required_anchor)
     candidates: list[tuple[int, dict[str, Any]]] = []
     for obj in objects:
         object_id = int(obj.get("objectID") or 0)
@@ -88,6 +93,10 @@ def select_met_candidate(
         if required_anchor_terms and not all(
             any(required in term or term in required for term in evidence_terms)
             for required in required_anchor_terms
+        ):
+            continue
+        if not capa_eslesme.sira_sayisi_uyuyor(
+            set(re.findall(r"[a-z]+", evidence.lower())), gerekli_sira_sayilari
         ):
             continue
         matched = query_terms & evidence_terms

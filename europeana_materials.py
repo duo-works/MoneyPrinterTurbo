@@ -70,6 +70,8 @@ from typing import Any
 import requests
 from PIL import Image
 
+import capa_eslesme
+
 ARAMA_UCU = "https://api.europeana.eu/record/v2/search.json"
 KAYIT_SAYFASI = "https://www.europeana.eu/item"
 USER_AGENT = "MoneyPrinterTurbo-YouTubeAutomation/1.0"
@@ -330,6 +332,9 @@ def select_europeana_candidates(
     anchor_terms = _terms(required_anchor)
     distinctive_anchor_terms = anchor_terms - ANCHOR_GENERIC_WORDS
     required_anchor_terms = distinctive_anchor_terms or anchor_terms
+    # ⚠️ Sira sayilari AYRI — `_terms` 4 harften kisalari atiyor, yani
+    # "Murad III" yalnizca {"murad"} veriyordu. Gerekcesi `capa_eslesme`de.
+    gerekli_sira_sayilari = capa_eslesme.sira_sayilari(required_anchor)
 
     adaylar: list[tuple[int, dict[str, Any]]] = []
     for oge in items:
@@ -364,11 +369,16 @@ def select_europeana_candidates(
             "dataProvider", "edmConceptPrefLabel", "dcSubject",
         ):
             kanit_parcalari += _metin_parcalari(oge, alan)
-        kanit = _terms(" ".join(kanit_parcalari))
+        kanit_metni = " ".join(kanit_parcalari).lower()
+        kanit = _terms(kanit_metni)
 
         if required_anchor_terms and not all(
             any(gerekli in terim or terim in gerekli for terim in kanit)
             for gerekli in required_anchor_terms
+        ):
+            continue
+        if not capa_eslesme.sira_sayisi_uyuyor(
+            set(re.findall(r"[a-z]+", kanit_metni)), gerekli_sira_sayilari
         ):
             continue
         eslesen = query_terms & kanit

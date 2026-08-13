@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import requests
 
+import capa_eslesme
 import gorsel_olcum
 from europeana_materials import download_europeana_scene_material
 from met_materials import download_met_scene_material
@@ -483,6 +484,11 @@ def _puanli_adaylar(
     anchor_terms = _relevance_terms(required_anchor)
     distinctive_anchor_terms = anchor_terms - ANCHOR_GENERIC_WORDS
     required_anchor_terms = distinctive_anchor_terms or anchor_terms
+    # ⚠️ Sira sayilari AYRI: `_relevance_terms` 4 harften kisa kelimeleri
+    # atiyor, yani "Murad III" yalnizca {"murad"} veriyordu ve
+    # `File:Nadia Murad Nobel Peace Prize 2018.jpg` kapiyi GECIYORDU
+    # (olculdu 2026-08-13). Tam sozcuk eslesmesinin sebebi `capa_eslesme`de.
+    gerekli_sira_sayilari = capa_eslesme.sira_sayilari(required_anchor)
     for order, page in enumerate(pages):
         title = str(page.get("title", ""))
         if not title or title in used_titles:
@@ -496,6 +502,10 @@ def _puanli_adaylar(
         ).lower()
         if required_anchor_terms and not all(
             term in evidence for term in required_anchor_terms
+        ):
+            continue
+        if not capa_eslesme.sira_sayisi_uyuyor(
+            set(re.findall(r"[a-z]+", evidence)), gerekli_sira_sayilari
         ):
             continue
         matched_terms = {term for term in query_terms if term in evidence}

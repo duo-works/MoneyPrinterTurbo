@@ -325,7 +325,12 @@ def test_filtreler_secime_bagli():
     """
     kaynak = Path(wm.__file__).read_text(encoding="utf-8")
     i = kaynak.index("def select_candidate(")
-    govde = kaynak[i : i + 3000]
+    # ⚠️ Sinir KARAKTER sayisiyla olculuyordu (i + 3000), yani araya eklenen
+    # her yorum pencereyi daraltiyordu: capa sira-sayisi kapisi eklenince
+    # (2026-08-13) cagri 3000'in disinda kalip test dustu — oysa cagri
+    # yerinde duruyordu. Artik bir sonraki fonksiyona kadar okunuyor;
+    # testin konusu cagrinin VARLIGI, aradaki mesafe degil.
+    govde = kaynak[i : kaynak.index("def commons_kategorisi(", i)]
 
     assert "belge_taramasi(title)" in govde
     assert "dikey_karede_yeterli(width, height)" in govde
