@@ -53,7 +53,19 @@ TIMEZONE_NAME = "Europe/Istanbul"
 # net bir bosluk var (78 → 85), 50 esigi ise "issues dolu" kumeyi bastan
 # sona geciriyordu — kullanicinin "anlatimla resimler uyusmuyor" sikayeti
 # tam bu araligin yayinlanmis urunuydu. 80 bu bosluga oturuyor.
+#
+# Bu esik yalnizca VIDEO incelemesine (`review_video`, render'dan SONRA)
+# uygulanir. `MIN_SOURCE_VISUAL_SCORE` asagida kaynak-goruntu on-kapisi
+# icin AYRI bir sabit — ikisi eskiden ayni sabiti (80) paylasiyordu ve bu
+# yanlisti: kaynak kapisi hic kendi verisiyle kalibre edilmemisti, video
+# kapisinin verisiyle 80'e cikarilmisti. Olculdu (2026-08-13): kisi
+# biyografisi konulari (Ludendorff, Talaat Pasha) kaynak kapisinda 12+15
+# deneme boyunca 80'i hic gecemedi ama en iyi denemeleri (75, 78) hicbir
+# yanlis-kisi kusuru TASIMIYORDU — yalnizca tekrarlayan portre ve olay-
+# spesifik gorsel eksikligi. Kaynak arzi tarihi kisiler icin yapisal
+# olarak portre agirlikli; 80 bu konu sinifini sistemik olarak eliyordu.
 MIN_VISUAL_SCORE = 80
+MIN_SOURCE_VISUAL_SCORE = 70
 MIN_SUBTITLE_SCORE = 80
 AI_VISUAL_FALLBACK_ENABLED = str(
     config.app.get("enable_ai_visual_fallback", "false")
@@ -1366,7 +1378,11 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
     data = _vision_json(prompt, montage)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     return QualityReview(
-        publishable=yayina_uygun(gorsel_skor, 100),
+        # ⚠️ `yayina_uygun` DEGIL — o, render SONRASI video kapisinin esigini
+        # kullanir. Kaynak on-kapisi kendi (daha gevsek) sabitiyle karar
+        # verir; gerekcesi sabitin tanimindadir. Cagiran kod da bu alani
+        # degil skoru dogrudan karsilastirir, alan bilgi amaclidir.
+        publishable=gorsel_skor >= MIN_SOURCE_VISUAL_SCORE,
         visual_alignment_score=gorsel_skor,
         subtitle_readability_score=100,
         issues=[str(issue) for issue in data.get("issues", [])],
@@ -2075,7 +2091,7 @@ def run_generator(
     # fotograf. AI hala orada, ama artik ILK degil SON care.
     if (
         not source_review.publishable
-        or source_review.visual_alignment_score < MIN_VISUAL_SCORE
+        or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
     ):
         problem_scenes = source_review.problem_scene_numbers
         revised_terms = source_review.revised_search_terms
@@ -2165,7 +2181,7 @@ def run_generator(
                 source_review = review_source_materials(plan, source_montage)
     if AI_VISUAL_FALLBACK_ENABLED and (
         not source_review.publishable
-        or source_review.visual_alignment_score < MIN_VISUAL_SCORE
+        or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
     ):
         # ⚠️ `problem_scene_numbers`'a TEK BASINA guvenilmiyor — bkz.
         # `sorunlu_sahneler`. Olculdu: bildirilen liste ile `issues` metninin
@@ -2192,7 +2208,7 @@ def run_generator(
         source_review = review_source_materials(plan, source_montage)
     if (
         not source_review.publishable
-        or source_review.visual_alignment_score < MIN_VISUAL_SCORE
+        or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
     ):
         raise SourceMaterialRejected(source_review)
 

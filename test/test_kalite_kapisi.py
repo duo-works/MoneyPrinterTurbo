@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import youtube_automation as ya  # noqa: E402
 from youtube_automation import (  # noqa: E402
+    MIN_SOURCE_VISUAL_SCORE,
     MIN_SUBTITLE_SCORE,
     MIN_VISUAL_SCORE,
     QualityReview,
@@ -150,3 +151,62 @@ def test_kaynak_incelemesi_skoru_koddan_turetiyor(monkeypatch):
     assert review.visual_alignment_score == 85
     assert review.publishable is True
     assert review.problem_scene_numbers == [3]
+
+
+def test_kaynak_kapisi_kendi_esigini_kullaniyor():
+    """Kaynak on-kapisi ile video kapisi AYRI esikler.
+
+    ⚠️ Ikisi eskiden ayni sabiti paylasiyordu ve bu yanlisti: kaynak kapisi
+    hic kendi verisiyle kalibre edilmemisti, video kapisinin verisiyle 80'e
+    cikarilmisti. Olculdu (2026-08-13): kisi biyografisi konulari (Ludendorff
+    12 deneme, Talaat Pasha 15 deneme) kaynak kapisinda 80'i HIC gecemedi,
+    ama en iyi denemeleri (75, 78) yanlis-kisi kusuru TASIMIYORDU — yalnizca
+    tekrarlayan portre. Tarihi kisilerin arsiv arzi yapisal olarak portre
+    agirlikli; 80 bu konu sinifini sistemik olarak eliyordu.
+    """
+    assert MIN_SOURCE_VISUAL_SCORE < MIN_VISUAL_SCORE, (
+        "kaynak on-kapisi video kapisindan gevsek olmali; ikisi ayni olursa "
+        "kisi konulari render'a hic ulasamaz"
+    )
+
+
+def test_kaynak_kapisi_esigi_video_kapisindan_kopuk(monkeypatch):
+    """Kaynak esigini geçen ama video esigini geçmeyen skor DOGRU siniflanmali."""
+    ara_skor = (MIN_SOURCE_VISUAL_SCORE + MIN_VISUAL_SCORE) // 2
+    monkeypatch.setattr(
+        ya,
+        "_vision_json",
+        lambda prompt, gorsel: {
+            "visual_alignment_score": ara_skor,
+            "issues": [],
+            "revised_search_terms": [],
+            "problem_scene_numbers": [],
+        },
+    )
+    plan = ya.ContentPlan(
+        topic="t",
+        visual_anchor="a",
+        script="s",
+        description="d",
+        tags=[],
+        title="b",
+        scenes=[{"narration": "n", "search_term": "s"} for _ in range(8)],
+    )
+
+    review = ya.review_source_materials(plan, Path("montaj.jpg"))
+
+    # Kaynak kapisindan GECIYOR — render denenebilir.
+    assert review.publishable is True
+    # Ama ayni skor video kapisindan GECMEZ — yayin karari ayri.
+    assert should_publish(review) is False
+
+
+def test_kaynak_kapisi_cagrilarinda_video_esigi_kullanilmiyor():
+    """Uc cagrim yeri de kaynak sabitine bagli olmali, video sabitine degil."""
+    kaynak = KAYNAK.read_text(encoding="utf-8")
+
+    assert "source_review.visual_alignment_score < MIN_VISUAL_SCORE" not in kaynak
+    assert (
+        kaynak.count("source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE")
+        == 3
+    )
