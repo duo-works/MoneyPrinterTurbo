@@ -912,10 +912,6 @@ def download_scene_materials(
                     continue
                 selected, destination = aday, aday_hedefi
                 break
-        if (not selected or destination is None) and yedek is not None:
-            # Butun adaylar tekrar cikti — yine de bir gorsel koymak, sahneyi
-            # bos birakmaktan iyi.
-            selected, destination = yedek
         if not selected or destination is None:
             # ⚠️ IKINCI KAPI: Met (yukarida) ve Commons bos dondu. AI'ya
             # gitmeden ya da sahneyi bos birakmadan once Europeana'ya
@@ -946,6 +942,21 @@ def download_scene_materials(
                 files.append(eu_path)
                 credits.append(eu_credit)
                 continue
+        if (not selected or destination is None) and yedek is not None:
+            # SON CARE: butun adaylar tekrar cikti ve Europeana da bos dondu.
+            # Yine de bir gorsel koymak, sahneyi bos birakmaktan iyi.
+            #
+            # ⚠️ Bu blok 2026-08-13'e kadar Europeana'dan ONCE geliyordu ve
+            # bu yanlisti: `yedek` YALNIZCA `_tekrar_mi` dallarinda atanir,
+            # yani TANIMI GEREGI bilinen bir kopya. Once calistiginda
+            # `selected`i doldurup Europeana kapisini hic actirmiyordu —
+            # bilinen kopya, hic denenmemis kaynaga tercih ediliyordu.
+            #
+            # Olculdu (2026-08-13, Mehmed II): hakem "kare 2 ve 3 ayni, kare
+            # 6 ve 7 ayni" yazdi ve gorsel skoru 56'ya dustu; tekrar, o
+            # koşumda kalan tek baskin kusurdu.
+            selected, destination = yedek
+        if not selected or destination is None:
             if not kismi:
                 raise MaterialsUnavailableError(
                     f"no public-domain or CC0 archive image found for scene {index}: {term}"

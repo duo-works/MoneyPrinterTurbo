@@ -109,11 +109,22 @@ def test_ilk_sahne_her_zaman_geciyor(tmp_path):
 # --- Hatta baglanti -------------------------------------------------------
 
 
-def _sahte_arama(tmp_path, monkeypatch, adaylar: list[dict]) -> list[str]:
-    """`search_commons` ve `_download` yamanir; indirilen dosyalar uretilir."""
+def _sahte_arama(
+    tmp_path, monkeypatch, adaylar: list[dict], *, europeana=None
+) -> list[str]:
+    """`search_commons` ve `_download` yamanir; indirilen dosyalar uretilir.
+
+    ⚠️ Europeana da yamaniyor. Yamanmazsa bu testler CANLI AGA cikar: tekrar
+    yedegi artik Europeana'dan SONRA calisiyor (2026-08-13), yani butun
+    adaylar kopya cikinca kod once Europeana'ya gidiyor. Ayni tuzak
+    `test_gorsel_cesitliligi.py`'de de not edilmisti.
+    """
     indirilen: list[str] = []
 
     monkeypatch.setattr(wm, "search_commons", lambda *_a, **_k: list(adaylar))
+    monkeypatch.setattr(
+        wm, "download_europeana_scene_material", europeana or (lambda *_a, **_k: None)
+    )
 
     def sahte_secim(pages, kullanilan, **_k):
         for sayfa in pages:
@@ -196,6 +207,86 @@ def test_baska_aday_yoksa_benzer_gorsel_yine_kullaniliyor(tmp_path, monkeypatch)
     )
 
     assert dosyalar[1] is not None, "sahne bos birakilmamali"
+
+
+def test_tekrar_yedeginden_once_europeana_deneniyor(tmp_path, monkeypatch):
+    """⚠️ Sira kusuru (2026-08-13). `yedek` TANIMI GEREGI bilinen bir kopya:
+    yalnizca `_tekrar_mi` dallarinda ataniyor. Eskiden Europeana'dan ONCE
+    calisiyor, `selected`i dolduruyor ve ucuncu kaynagin kapisini hic
+    actirmiyordu — bilinen kopya, hic denenmemis kaynaga tercih ediliyordu.
+
+    Olculdu (Mehmed II koşumu): hakem "kare 2 ve 3 ayni, kare 6 ve 7 ayni"
+    yazdi, gorsel skoru 56. Tekrar o koşumda kalan tek baskin kusurdu.
+    """
+    eu_yol = tmp_path / "europeana.png"
+
+    def sahte_europeana(_queries, *, scene_number, target_dir, used_ids, **_k):
+        _gorsel(eu_yol, tohum=777)
+        return eu_yol, {
+            "scene": scene_number,
+            "title": "Europeana: bambaska gorsel",
+            "europeana_id": "/1/eu-1",
+            "source_url": "https://europeana.eu/item/1",
+            "license": "Public domain",
+            "artist": "x",
+        }
+
+    _sahte_arama(
+        tmp_path,
+        monkeypatch,
+        [
+            _aday("5", "File:Ayni gravur.png"),
+            _aday("5", "File:Ayni gravur - Colorized.png"),
+        ],
+        europeana=sahte_europeana,
+    )
+
+    dosyalar, krediler = wm.download_scene_materials(
+        "Alexandria",
+        [{"search_term": "library"}, {"search_term": "scrolls"}],
+        tmp_path,
+        kismi=True,
+    )
+
+    assert krediler[1]["title"] == "Europeana: bambaska gorsel", (
+        "ikinci sahne Commons kopyasini degil Europeana'daki yeni gorseli almali"
+    )
+    izler = [gorsel_olcum.parmak_izi(d) for d in dosyalar]
+    assert gorsel_olcum.benzerlik(izler[0], izler[1]) < gorsel_olcum.ARSIV_TEKRAR_ESIGI
+
+
+def test_europeana_bos_donerse_tekrar_yedegi_yine_calisiyor(tmp_path, monkeypatch):
+    """Sira degisti ama YUMUSAK KAPI duruyor — son care hala kopya koymak.
+
+    Bu testin ikizi `test_baska_aday_yoksa_benzer_gorsel_yine_kullaniliyor`;
+    burada ayrica Europeana'nin GERCEKTEN sorulduğu kilitleniyor, yoksa
+    sira duzeltmesi sessizce geri alinabilir.
+    """
+    soruldu: list[int] = []
+
+    def bos_europeana(_queries, *, scene_number, **_k):
+        soruldu.append(scene_number)
+        return None
+
+    _sahte_arama(
+        tmp_path,
+        monkeypatch,
+        [
+            _aday("5", "File:Ayni gravur.png"),
+            _aday("5", "File:Ayni gravur - Colorized.png"),
+        ],
+        europeana=bos_europeana,
+    )
+
+    dosyalar, _ = wm.download_scene_materials(
+        "Alexandria",
+        [{"search_term": "library"}, {"search_term": "scrolls"}],
+        tmp_path,
+        kismi=True,
+    )
+
+    assert soruldu == [2], "kopya yedegine dusmeden once Europeana sorulmali"
+    assert dosyalar[1] is not None, "son care olarak kopya yine konmali"
 
 
 def test_tekrar_kontrolu_indirmeden_sonra(tmp_path, monkeypatch):
