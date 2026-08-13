@@ -90,8 +90,25 @@ def select_met_candidate(
             str(tag.get("term") or "") for tag in tags if isinstance(tag, dict)
         )
         evidence_terms = _terms(evidence)
+        # ⚠️ CAPA, NESNENIN NE OLDUGUNDA aranir; NE ZAMANDAN oldugunda degil.
+        # Olculdu (2026-08-13): "Tutankhamun" capasiyla `The Viceroy's Boat,
+        # Tomb of Huy` kapiyi GECIYORDU — bambaska bir mezarin duvar resmi.
+        # Sebep genis kanit kumesi: Huy, Tutankhamun DONEMINDE yasadigi icin
+        # `reign`/`period` alanlari capayi tasiyor ve nesne "ayni cagdan"
+        # diye geciyordu. Hakemin surekli yazdigi kusur tam da bu: "somebody
+        # else sharing the same era".
+        #
+        # Dar kume nesnenin KIMLIGINI tasiyan alanlar: baslik, nesne adi,
+        # etiketler. Genis kume (donem, hanedan, teknik, sanatci) sorgu
+        # puanlamasinda KALIYOR — orada baglam degerli, kimlik kapisinda
+        # yaniltici.
+        kimlik_kaniti = " ".join(
+            [str(obj.get("title") or ""), str(obj.get("objectName") or "")]
+            + [str(tag.get("term") or "") for tag in tags if isinstance(tag, dict)]
+        )
+        kimlik_terimleri = _terms(kimlik_kaniti)
         if required_anchor_terms and not all(
-            any(required in term or term in required for term in evidence_terms)
+            any(required in term or term in required for term in kimlik_terimleri)
             for required in required_anchor_terms
         ):
             continue
