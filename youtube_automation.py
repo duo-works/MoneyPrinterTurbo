@@ -248,6 +248,7 @@ Create 6-10 chronological scenes. Define visual_anchor as a specific named civil
 Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
+NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF. "No one can reconstruct every transition from this summary alone" and "the record here does not name each turning point" are not narration; they are padding you reach for when you do not know enough about the subject, and no archive image can illustrate them, so that scene is guaranteed to show something unrelated. If you cannot fill a scene with a concrete thing that happened, a named person, a place, an object, or a date, write fewer scenes. Honest uncertainty ABOUT THE WORLD stays welcome ("locals still claim...", "his body was never found").
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
 When a legend or myth is used, say plainly that it is a legend ("the Inca told of...", "locals still claim...") and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
@@ -295,6 +296,53 @@ TARIHLE_ACILIS = re.compile(
 
 UZUN_TIRELER = "—–―‒"
 TUM_TIRELER = "-" + UZUN_TIRELER
+
+
+# Oznesi DUNYA degil KAYDIN KENDISI olan cumleler. Model konuyu yeterince
+# bilmeyince olgu yerine bunlari yaziyor ve ortaya RESMEDILEMEZ bir sahne
+# cikiyor: hicbir arsiv gorseli "kayit her donum noktasini anmiyor"u
+# gosteremez, dolayisiyla o sahneye zorunlu olarak alakasiz bir gorsel
+# geliyor ve hakem haklı olarak uyusmazlik yaziyor.
+#
+# Olculdu (2026-08-13): Ibn Saud koşumunda 8 sahnenin 2'si buydu — "No one
+# can reconstruct every transition from this summary alone" ve "The record
+# here does not name each turning point". Talaat Pasha koşumlarinda da ayni
+# kalip vardi ("archival uncertainty", "incomplete surviving record").
+#
+# ⚠️ Kapsam BILEREK dar tutuldu. Istem baska yerde tarihsel belirsizligi
+# acikca SERBEST birakiyor ("locals still claim...", "the Inca told of...")
+# ve iyi tarih anlatimi bunu gerektiriyor. Burada yalnizca **kendine gonderme
+# yapan** cumleler yasakli: oznesi bu ozet/kayit/video olanlar. Genis bir
+# belirsizlik yasagi dogrulama-yeniden deneme dongusunu kilitler; her
+# yeniden deneme bir cikarim koşumu demek.
+RESMEDILEMEZ_KALIPLAR = (
+    re.compile(r"\bno one can (?:reconstruct|recover|name|list)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:this|the) (?:summary|record|account|video|list|text) (?:here )?"
+        r"(?:does not|cannot|says nothing|is silent)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bfrom (?:this|the) (?:summary|account|record) alone\b", re.IGNORECASE),
+    re.compile(r"\bcannot be reconstructed (?:here|from this)\b", re.IGNORECASE),
+)
+
+
+def resmedilemez_kusuru(anlatim: str) -> str:
+    """Sahne anlatiminin resmedilemez kusuru — yoksa bos dize.
+
+    Mesaj NE YAPILACAGINI soyluyor, cunku dogrulama hatasi modele geri
+    besleniyor ve yalnizca kurali tekrarlayan bir mesaj donguyu kirmiyor
+    (ayni ders `validate_content_plan` icindeki gorsel-capa notunda).
+    """
+    for kalip in RESMEDILEMEZ_KALIPLAR:
+        if eslesme := kalip.search(anlatim):
+            return (
+                f"narration says {eslesme.group(0)!r}, which talks about the record "
+                "instead of the world and no archive image can show it; replace the "
+                "sentence with a concrete thing that happened, a named person, a "
+                "place, an object, or a date"
+            )
+    return ""
 
 
 def _noktalama_topla(metin: str) -> str:
@@ -422,6 +470,8 @@ def validate_content_plan(plan: ContentPlan) -> None:
             raise ValueError(f"scene {index} must contain narration and a concrete search term")
         if not (_normalize_topic(term) & anchor_words):
             raise ValueError(f"scene {index} search term must include the visual anchor")
+        if kusur := resmedilemez_kusuru(narration):
+            raise ValueError(f"scene {index} {kusur}")
 
 
 def parse_cli_result(stdout: str) -> dict[str, Any]:
