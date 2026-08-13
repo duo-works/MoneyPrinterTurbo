@@ -2681,6 +2681,7 @@ def run_cycle(
     privacy: str = "public",
     not_before: str | None = None,
     kuyruktan: bool = False,
+    yedek_konu: bool = False,
 ) -> dict[str, Any]:
     slot = publication_slot_key()
     state = load_state()
@@ -2692,9 +2693,10 @@ def run_cycle(
     # oldugunu sanan ama aslinda kendi konusunu ureten bir hat demek olurdu;
     # bu, hic baglanmamis olmaktan daha kotu cunku fark edilmiyor.
     aday: notion_kuyrugu.Aday | None = None
+    kaynak = "huni" if kuyruktan else "model"
     if kuyruktan:
         adaylar = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH)
-        if not adaylar:
+        if not adaylar and not yedek_konu:
             return {
                 "status": "no-candidate",
                 "slot": slot,
@@ -2703,8 +2705,28 @@ def run_cycle(
                     "Konu uydurulmadi."
                 ),
             }
-        aday = adaylar[0]
-        notion_kuyrugu.adayi_kap(aday, ytoto_path=YTOTO_PATH)
+        if not adaylar:
+            # ⚠️ Geri dusus ACIK ve KAYITLI. Yukaridaki itiraz gecerli ve
+            # korunuyor: sessiz geri dusus, kuyruga bagli oldugunu sanan ama
+            # kendi konusunu ureten bir hat demek olurdu. Bu yuzden
+            # (a) yalnizca `--yedek-konu` verilirse calisir — varsayilan
+            #     davranis degismedi, bayrak yoksa kosum eskisi gibi durur,
+            # (b) kaynak koşum kaydina yazilir ve stdout'a basilir, yani
+            #     hangi kipin urettigi sonradan sayilabilir.
+            #
+            # Neden bu kip degerli: olculdu (2026-08-13), model-secimli
+            # anit/yer konulari 70-90 skor ve 0-3 kusurla gecti; ayni
+            # donemde huniden gelen kisi konulari 68-84 ve 9-11 kusur.
+            # Bos kuyrukta slotu bos birakmak, iyi calisan kipi
+            # kullanmamak demek.
+            kaynak = "yedek"
+            print(
+                "ℹ️ `Seçildi` kuyrugu bos — yedek konu kipi (anit/yer) devrede",
+                flush=True,
+            )
+        else:
+            aday = adaylar[0]
+            notion_kuyrugu.adayi_kap(aday, ytoto_path=YTOTO_PATH)
     aday_kapatildi = False
 
     _acquire_lock()
@@ -2753,6 +2775,12 @@ def run_cycle(
                 state.setdefault("rejected", []).append(
                     {
                         "stage": "source_materials",
+                        # ⚠️ `slot` ve `kaynak` eklendi (2026-08-13): 120
+                        # reddedilmis kaydin hicbiri zaman dilimiyle
+                        # iliskilendirilemiyordu, yani "hangi saatte ne
+                        # oldu" sorusu cevaplanamiyordu.
+                        "slot": slot,
+                        "kaynak": kaynak,
                         "topic": rejected_topic,
                         "visual_anchor": plan.visual_anchor,
                         "task_id": None,
@@ -2800,10 +2828,14 @@ def run_cycle(
                 exclusions.extend([rejected_topic, plan.visual_anchor])
                 state.setdefault("rejected", []).append(
                     {
+                        "stage": "video",
+                        "slot": slot,
+                        "kaynak": kaynak,
                         "topic": rejected_topic,
                         "visual_anchor": plan.visual_anchor,
                         "task_id": task_id,
                         "visual_alignment_score": review.visual_alignment_score,
+                        "subtitle_readability_score": review.subtitle_readability_score,
                         "issues": review.issues,
                         "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                     }
@@ -2856,6 +2888,9 @@ def run_cycle(
         record = {
             "slot": slot,
             "status": status,
+            # Hangi kip uretti: huni adayi mi, model-secimli yedek mi.
+            # Arayuz ve `uretim rapor` bu alanla kirilim yapiyor.
+            "kaynak": kaynak,
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,
@@ -2915,7 +2950,16 @@ def main() -> None:
         action="store_true",
         help=(
             "Konuyu trend hunisinden al (`Seçildi` kuyruğu). Aday yoksa koşum "
-            "durur; modelin kendi konusuna DÜŞMEZ."
+            "durur; modelin kendi konusuna DÜŞMEZ (bkz. --yedek-konu)."
+        ),
+    )
+    parser.add_argument(
+        "--yedek-konu",
+        action="store_true",
+        help=(
+            "Kuyruk boşsa modelin seçtiği anıt/yer konusuyla üret. Geri düşüş "
+            "koşum kaydına `kaynak: yedek` diye yazılır ve stdout'a basılır; "
+            "bayrak verilmezse davranış değişmez ve koşum durur."
         ),
     )
     args = parser.parse_args()
@@ -2924,6 +2968,7 @@ def main() -> None:
         privacy=args.privacy,
         not_before=args.not_before,
         kuyruktan=args.from_notion,
+        yedek_konu=args.yedek_konu,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
