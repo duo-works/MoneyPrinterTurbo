@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import wikimedia_materials as _wm  # noqa: E402
+import youtube_automation as _ya  # noqa: E402
 
 _GERCEK_KATEGORI_COZUMU = _wm.commons_kategorisi
 
@@ -33,6 +34,10 @@ def _kategori_cozumu_kapali(monkeypatch):
     # atildi" olcen testler yanlis dusuyor (bir kez oldu, 2026-08-13).
     monkeypatch.setattr(_wm, "_QID_ONBELLEGI", {})
     monkeypatch.setattr(_wm, "_KISI_ONBELLEGI", {})
+    # ⚠️ Ayni tuzak ikinci kez: modul duzeyindeki HER onbellek test basina
+    # sifirlanmali, yoksa testler birbirinin sonucunu okuyor. Yeni bir
+    # onbellek eklenirse buraya da eklenmeli.
+    monkeypatch.setattr(_ya, "_ENVANTER_ONBELLEGI", {})
 
 
 @pytest.fixture

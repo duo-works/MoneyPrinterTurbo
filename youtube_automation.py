@@ -1149,6 +1149,16 @@ def _son_kancalar(adet: int = 12) -> list[str]:
 
 
 ARSIV_ENVANTER_SINIRI = 45
+ASGARI_ARSIV_DESTEGI = 0.5
+"""Sahnelerin en az bu orani arsivde karsiligi olan bir sey istemeli.
+
+⚠️ Yarim, sertlikle donguyu kilitlememek arasindaki denge. Her sahneye tam
+karsilik istemek gercekci degil (arsiv her seyi adiyla anmiyor) ve bes
+deneme tukenince kosum `DistinctTopicUnavailableError` ile oluyor — yani
+asiri sertlik, hic video olmamasi demek.
+"""
+
+_ENVANTER_ONBELLEGI: dict[str, list[str]] = {}
 
 
 def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[str]:
@@ -1170,9 +1180,13 @@ def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[st
     Bos donmek bilincli: kategorisi olmayan konularda uretim durmamali,
     hat eskisi gibi calisir.
     """
+    anahtar = konu.strip().casefold()
+    if anahtar in _ENVANTER_ONBELLEGI:
+        return _ENVANTER_ONBELLEGI[anahtar]
     try:
         kategori = wikimedia_materials.commons_kategorisi(konu)
         if not kategori:
+            _ENVANTER_ONBELLEGI[anahtar] = []
             return []
         havuz = wikimedia_materials.kategori_gorselleri(kategori)
     except Exception:
@@ -1187,7 +1201,53 @@ def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[st
             adlar.append(baslik)
         if len(adlar) >= sinir:
             break
+    _ENVANTER_ONBELLEGI[anahtar] = adlar
     return adlar
+
+
+def arsiv_destegi_kusuru(plan: ContentPlan) -> str:
+    """Sahnelerin arsivde karsiligi var mi — yoksa kusur metni, varsa bos dize.
+
+    ⚠️ NEDEN KOD, NEDEN ISTEM DEGIL: envanter isteme zaten veriliyordu
+    (572dc2b) ve model yine olmayan seyi istedi. Olculdu (2026-08-13, yedek
+    kip koşumu): Franklin seferi sahne 1'de Franklin istedi, arsivden
+    Crozier geldi; sahne 4 ve 5'e MODERN tibbi cadir fotografi girdi.
+    Antikythera sahne 4'te "arkeolog Valerios Stais" istedi, arsivde o
+    kisinin gorseli yok. Skorlar 43/30/25.
+
+    Ayni ders bu oturumda uc kez alindi (esik, kanca, resmedilemez cumle):
+    modele soylemek yetmiyor, KOD kontrol etmeli. Dogrulama hatasi modele
+    geri besleniyor, yani mesaj envanteri de tasiyor ve tek denemede
+    duzelebiliyor.
+
+    Olcut kasten GEVSEK (`ASGARI_ARSIV_DESTEGI`): arsiv her seyi adiyla
+    anmiyor ve asiri sertlik bes denemeyi tuketip kosumu oldururdu.
+
+    Envanter cekilemezse BOS DONER — kapi degil iyilestirme.
+    """
+    envanter = arsiv_envanteri(plan.visual_anchor)
+    if not envanter:
+        return ""
+    capa_kelimeleri = _normalize_topic(plan.visual_anchor)
+    envanter_kelimeleri = {
+        kelime
+        for ad in envanter
+        for kelime in re.findall(r"[a-zA-Z]{4,}", ad.lower())
+    }
+    desteksiz = []
+    for sira, sahne in enumerate(plan.scenes, 1):
+        # Capa disindaki kelimeler: sahnenin "ne gosterecegi" bilgisi burada.
+        ayirt_edici = _normalize_topic(sahne.get("search_term", "")) - capa_kelimeleri
+        if ayirt_edici and not (ayirt_edici & envanter_kelimeleri):
+            desteksiz.append(sira)
+    if len(desteksiz) <= len(plan.scenes) * (1 - ASGARI_ARSIV_DESTEGI):
+        return ""
+    return (
+        f"scenes {desteksiz} ask for things that do not appear anywhere in this "
+        "subject's archive, so they will be filled with unrelated images. These are "
+        "the only files that exist; rewrite those scenes around what is actually "
+        f"here:\n{json.dumps(envanter, ensure_ascii=False)}"
+    )
 
 
 def generate_content_plan(
@@ -1328,6 +1388,13 @@ def generate_content_plan(
                 "\nThe last JSON plan was invalid: "
                 f"{exc}. Return a completely corrected plan that follows every constraint."
             )
+            continue
+        # ⚠️ HER IKI KIPTE de calisiyor. Huni kipinde envanter zaten isteme
+        # veriliyor ama model yine olmayan seyi istedi; yedek kipte konuyu
+        # model sectigi icin envanter istemde HIC yoktu. Gerekce
+        # `arsiv_destegi_kusuru` docstring'inde.
+        if kusur := arsiv_destegi_kusuru(plan):
+            user += f"\nThe last plan did not match the archive: {kusur}"
             continue
         if konu:
             # Benzerlik kapisi atlaniyor — gerekcesi docstring'de. Dogrulama
