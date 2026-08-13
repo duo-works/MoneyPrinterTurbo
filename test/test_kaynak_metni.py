@@ -175,6 +175,35 @@ def test_kaynak_yoksa_temkin_uyarisi_giriyor(monkeypatch):
     assert "Do not invent" in istem
 
 
+def test_istem_bosluğu_anlatmayi_istemiyor(monkeypatch):
+    """⚠️ ASIL KUSUR BUYDU (2026-08-13) — istem kendi kendisiyle celisiyordu.
+
+    Kaynak blogu modele "where it is silent, say what is not known ...
+    naming the edge of the evidence is this channel's voice" diyordu. Yani
+    hicbir arsiv gorselinin gosteremeyecegi cumleleri model ozensizlikten
+    degil TALIMAT GEREGI yaziyordu:
+
+        "No one can reconstruct every transition from this summary alone."
+        "The record here does not name each turning point."
+        "Why it ended is not known from the evidence given."
+
+    Bu, `resmedilemez_kusuru` yasagiyla dogrudan celisiyordu: bir taraf
+    yaz diyor, oteki reddediyordu — dogrulama-yeniden deneme dongusu bosa
+    donuyordu. Uydurma yasagi (DW-114) KORUNUYOR; degisen sey bosluğun
+    nasil kapatilacagi: senaryoya yazmak yerine konuyu daraltmak.
+
+    Iki taraf birden kontrol ediliyor cunku kusur ikisinin CELISKISIYDI.
+    """
+    for ozet in ("Mehmed II was an Ottoman sultan who ruled twice.", ""):
+        istem = _istemi_yakala(monkeypatch, ozet=ozet)
+
+        assert "say what is not known" not in istem
+        assert "edge of the evidence" not in istem
+        assert "where the record is thin" not in istem
+        # Uydurma yasagi her iki dalda da duruyor.
+        assert "invent" in istem
+
+
 def test_kaynak_yalnizca_huni_kipinde_cekiliyor(monkeypatch):
     """Konu modelin kendi secimiyse ortada cekilecek bir baslik yok."""
     cagrildi = []

@@ -1165,9 +1165,11 @@ def generate_content_plan(
             user += (
                 "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia summary of the subject. "
                 "Every factual claim in your script, title, description and tags must be "
-                "consistent with it. Where it is silent, say what is not known instead of "
-                "filling the gap; naming the edge of the evidence is this channel's voice, "
-                "and inventing a fact is the one failure this channel cannot survive.\n"
+                "consistent with it. Inventing a fact is the one failure this channel "
+                "cannot survive. Where the summary is silent, do NOT write a sentence "
+                "about the silence: narrow the video to an aspect the summary DOES cover "
+                "and build the scenes from that. A script about three well documented "
+                "events beats a script about eight events where five are unexplained.\n"
                 f"{json.dumps(kaynak, ensure_ascii=False)}"
             )
         else:
@@ -1175,9 +1177,10 @@ def generate_content_plan(
             # "serbestsin" degil "temkinli ol" demek.
             user += (
                 "\n\nNo encyclopedia summary could be retrieved for this subject. Write only "
-                "what you are confident is true of THIS specific subject, keep the claims few "
-                "and general, and state plainly where the record is thin. Do not invent "
-                "names, dates, professions or events to fill the script."
+                "what you are confident is true of THIS specific subject and keep the claims "
+                "few and general. Do not invent names, dates, professions or events to fill "
+                "the script, and do not fill it with sentences about the record being thin "
+                "either: write fewer scenes about what you do know."
             )
     else:
         user = (
