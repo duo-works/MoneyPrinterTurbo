@@ -570,6 +570,99 @@ def _puanli_adaylar(
 
 
 _KATEGORI_ONBELLEGI: dict[str, str | None] = {}
+_QID_ONBELLEGI: dict[str, str | None] = {}
+_KISI_ONBELLEGI: dict[str, bool | None] = {}
+
+
+def vikiveri_kimligi(konu: str) -> str | None:
+    """Konunun Wikidata ogesi (QID). Bulunamazsa None.
+
+    `commons_kategorisi` ve `kisi_mi` ayni ilk adimi paylasiyor; tek yerde
+    tutuluyor ki iki cagri arasinda sapma olmasin ve onbellek ortak olsun.
+    """
+    anahtar = konu.strip().casefold()
+    if anahtar in _QID_ONBELLEGI:
+        return _QID_ONBELLEGI[anahtar]
+    sonuc: str | None = None
+    try:
+        yanit = _get_with_retry(
+            VIKIPEDI_API_URL,
+            params={
+                "action": "query",
+                "titles": konu.strip(),
+                "prop": "pageprops",
+                "redirects": "1",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=15,
+        )
+        sayfalar = yanit.json().get("query", {}).get("pages", [])
+        if sayfalar:
+            kimlik = str(sayfalar[0].get("pageprops", {}).get("wikibase_item", "")).strip()
+            sonuc = kimlik or None
+    except (requests.RequestException, ValueError, KeyError, IndexError):
+        sonuc = None
+    _QID_ONBELLEGI[anahtar] = sonuc
+    return sonuc
+
+
+def kisi_mi(konu: str) -> bool | None:
+    """Konu bir INSAN mi (Wikidata P31 = Q5). Cozulemezse None.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-13). Yayinlanan 12 videonun kaydinda
+    konu sinifi ile kusur sayisi arasinda temiz bir ayrim var:
+
+        anit / yer / nesne   skor 70-90, hakem kusuru  0-3
+        kisi biyografisi     skor 68-84, hakem kusuru 9-11
+
+    Sebep kisinin kendisi degil ARSIVI: kisi kategorileri portre yigini,
+    yer kategorileri dogal olarak cesitli (genel gorunum, detay, plan).
+    Hakem her kisi koşumunda ayni cumleyi yaziyor ("static portraits",
+    "repeated portrait format").
+
+    ⚠️ Ucuz olcutlerle bu ayrim YAPILAMADI, ucu de olculup elendi:
+      · dosya adi turu   → Kolezyum'un adlari anlamsiz ("Colosseum (46202669405).jpg")
+      · algisal benzerlik → kaybeden 0,50-0,54 / kazanan 0,51-0,63, ayrismiyor
+      · ton yayilimi      → Dholavira (85 puan, 0 kusur) 0,004 ile en dusugu
+    Geriye kalan tek guvenilir sinyal konu sinifi; Wikidata bunu kesin
+    veriyor (10/10 dogru olculdu).
+
+    ⚠️ Vekil oldugu unutulmamali: asil sebep portre agirligi. Treaty of
+    Breda bir OLAY ama imza sahiplerinin portreleriyle dolu oldugu icin 9
+    kusur aldi. Yani `False` donmesi iyi arsiv GARANTISI degil.
+
+    None donmek "kisi degil" DEMEK DEGIL: cagiran taraf bilinmeyeni kendi
+    politikasina gore ele almali.
+    """
+    anahtar = konu.strip().casefold()
+    if anahtar in _KISI_ONBELLEGI:
+        return _KISI_ONBELLEGI[anahtar]
+    sonuc: bool | None = None
+    kimlik = vikiveri_kimligi(konu)
+    if kimlik:
+        try:
+            iddia = _get_with_retry(
+                VIKIVERI_API_URL,
+                params={
+                    "action": "wbgetclaims",
+                    "entity": kimlik,
+                    "property": "P31",
+                    "format": "json",
+                },
+                timeout=15,
+            )
+            kayitlar = iddia.json().get("claims", {}).get("P31", [])
+            if kayitlar:
+                sonuc = any(
+                    (kayit.get("mainsnak", {}).get("datavalue", {}).get("value") or {}).get("id")
+                    == "Q5"
+                    for kayit in kayitlar
+                )
+        except (requests.RequestException, ValueError, KeyError, IndexError):
+            sonuc = None
+    _KISI_ONBELLEGI[anahtar] = sonuc
+    return sonuc
 
 
 def commons_kategorisi(konu: str) -> str | None:
@@ -597,22 +690,9 @@ def commons_kategorisi(konu: str) -> str | None:
         return _KATEGORI_ONBELLEGI[anahtar]
     sonuc: str | None = None
     try:
-        yanit = _get_with_retry(
-            VIKIPEDI_API_URL,
-            params={
-                "action": "query",
-                "titles": konu.strip(),
-                "prop": "pageprops",
-                "redirects": "1",
-                "format": "json",
-                "formatversion": "2",
-            },
-            timeout=15,
-        )
-        sayfalar = yanit.json().get("query", {}).get("pages", [])
-        kimlik = ""
-        if sayfalar:
-            kimlik = str(sayfalar[0].get("pageprops", {}).get("wikibase_item", ""))
+        # Wikipedia basligi → QID adimi `vikiveri_kimligi`de; `kisi_mi` de
+        # ayni adimi kullaniyor, onbellek ortak.
+        kimlik = vikiveri_kimligi(konu)
         if kimlik:
             iddia = _get_with_retry(
                 VIKIVERI_API_URL,

@@ -27,6 +27,12 @@ _GERCEK_KATEGORI_COZUMU = _wm.commons_kategorisi
 def _kategori_cozumu_kapali(monkeypatch):
     monkeypatch.setattr(_wm, "commons_kategorisi", lambda _konu: None)
     monkeypatch.setattr(_wm, "_KATEGORI_ONBELLEGI", {})
+    # ⚠️ QID ve kisi onbellekleri de test basina sifirlanmali. QID adimi
+    # `commons_kategorisi` ile `kisi_mi` arasinda PAYLASILIYOR; sifirlanmazsa
+    # bir testin doldurdugu QID digerinde ag cagrisini atlatir ve "kac istek
+    # atildi" olcen testler yanlis dusuyor (bir kez oldu, 2026-08-13).
+    monkeypatch.setattr(_wm, "_QID_ONBELLEGI", {})
+    monkeypatch.setattr(_wm, "_KISI_ONBELLEGI", {})
 
 
 @pytest.fixture

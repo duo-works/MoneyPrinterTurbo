@@ -23,6 +23,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+import wikimedia_materials
+
 VARSAYILAN_ZAMAN_ASIMI = 60
 
 
@@ -148,7 +150,41 @@ def kuyrugu_oku(
         raise KopruHatasi(
             f"ytoto aday listele JSON vermedi: {metin[:200]}"
         ) from hata
-    return [Aday.sozlukten(kayit) for kayit in ham]
+    return sinifa_gore_sirala([Aday.sozlukten(kayit) for kayit in ham])
+
+
+def sinifa_gore_sirala(adaylar: list[Aday]) -> list[Aday]:
+    """Kisi-olmayan adaylari one alir; huninin kendi sirasi grup icinde korunur.
+
+    ⚠️ NEDEN — olculdu (2026-08-13), yayinlanan 12 videonun kaydi:
+
+        anit / yer / nesne   skor 70-90, hakem kusuru  0-3
+        kisi biyografisi     skor 68-84, hakem kusuru 9-11
+
+    Sebep kisinin kendisi degil ARSIVI: kisi kategorileri portre yigini ve
+    hakem her kisi koşumunda ayni cumleyi yaziyor ("static portraits",
+    "repeated portrait format"). Gerekcenin tamami ve elenen ucuz
+    alternatifler `wikimedia_materials.kisi_mi` docstring'inde.
+
+    ⚠️ ELEME DEGIL SIRALAMA. Kisi adayi kuyrukta KALIYOR, yalnizca sona
+    dusuyor — Mehmed II bir kisi konusuydu ve 84 aldi, yani sinif kesin bir
+    kural degil egilim. Insanin `Seçildi`ye aldigi aday sessizce cope
+    atilmaz.
+
+    Bilinmeyen sinif (Wikidata cozulemedi, ag hatasi) ORTADA duruyor:
+    kisi-olmayanin gerisinde, kisinin onunde. "Bilmiyorum" ne odul ne ceza
+    almali.
+    """
+
+    def sira(aday: Aday) -> int:
+        try:
+            sinif = wikimedia_materials.kisi_mi(aday.baslik)
+        except Exception:
+            # ⚠️ Siniflandirma bir IYILESTIRME; kuyruk okumayi dusuremez.
+            return 1
+        return {False: 0, None: 1, True: 2}[sinif]
+
+    return sorted(adaylar, key=sira)
 
 
 def adayi_kap(aday: Aday, *, ytoto_path: str | None = None) -> None:
