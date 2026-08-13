@@ -94,6 +94,36 @@ EDITORIAL_ANCHOR_POOL = [
     "Ajanta Caves",
     "Sigiriya",
     "Rani ki Vav",
+    # ⚠️ Asagidakiler 2026-08-13'te EKLENDI cunku havuz TUKENMISTI: 15 capanin
+    # 15'i de kullanilmisti ve `eligible_anchors` bos donuyordu. Model bos
+    # liste alinca ince arsivli gizemlere kayiyordu (Baychimo, Vasa, Phaistos
+    # Diski, Piltdown) ve kaynak kapisinda 25-43 aliyordu.
+    #
+    # Hicbiri tahminle secilmedi; her biri uretimin KENDI kapilariyla olculdu
+    # (kategori var mi, kac dosya kadraj+lisanstan geciyor) ve yalnizca 12+
+    # kullanilabilir gorseli olanlar alindi. Olcum ayni tabloda elenenleri de
+    # gosterdi: Pompeii 0, Leptis Magna 0, Teotihuacan 2, Krak des Chevaliers
+    # 2, Skara Brae 3, Terracotta Army 4, Alhambra 5, Sutton Hoo 7.
+    # Sutton Hoo'nun 7'si onemli — bu hat onu secmis ve 25 almisti.
+    "Petra",                    # 24
+    "Borobudur",                # 28
+    "Stonehenge",               # 12
+    "Mesa Verde National Park",  # 47
+    "Gobekli Tepe",             # 18
+    "Ephesus",                  # 29
+    "Hagia Sophia",             # 29
+    "Masada",                   # 47
+    "Baalbek",                  # 17
+    "Pont du Gard",             # 15
+    "Brooklyn Bridge",          # 28
+    "Panama Canal",             # 20
+    "Suez Canal",               # 18
+    "Cutty Sark",               # 25
+    "Mary Rose",                # 23
+    "Antikythera mechanism",    # 17
+    "Book of Kells",            # 33
+    "Staffordshire Hoard",      # 33
+    "Tutankhamun",              # 29
 ]
 
 
@@ -1369,6 +1399,18 @@ def generate_content_plan(
         for anchor in EDITORIAL_ANCHOR_POOL
         if not is_duplicate_visual_anchor(anchor, previous_anchors)
     ]
+    if not eligible_anchors and not konu:
+        # ⚠️ SESSIZ TUKENME. Olculdu (2026-08-13): havuzdaki 15 capanin 15'i
+        # de kullanilmisti, liste bos gidiyordu ve model bos listeyle ince
+        # arsivli gizemlere kayiyordu (Baychimo, Vasa, Phaistos Diski) —
+        # kaynak kapisinda 25-43. Disaridan bakan biri "model kotu konu
+        # seciyor" sanirdi; oysa hat ona secenek vermiyordu.
+        print(
+            "⚠️ Editoryal capa havuzu TUKENDI — model kendi konusunu serbestce "
+            "seciyor. `EDITORIAL_ANCHOR_POOL`a olculmus yeni capa ekleyin "
+            "(olcut: Commons kategorisinde 12+ kadraj ve lisans gecen gorsel).",
+            flush=True,
+        )
     system = editoryal_sistem_yonergesi()
     if konu:
         # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.
