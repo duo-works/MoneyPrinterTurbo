@@ -56,10 +56,28 @@ def _plan(*anlatimlar: str) -> ya.ContentPlan:
         "This account cannot list every title he held.",
         "The surviving detail cannot be reconstructed from this summary alone.",
         "The video does not name each turning point.",
+        # ⚠️ Model ayni ailenin yeni ifadesini buldu (Mehmed II, 2. deneme).
+        "Why it ended is not known from the evidence given.",
+        "His motive is unclear from the information provided.",
     ],
 )
 def test_kayit_hakkindaki_cumle_yakalaniyor(anlatim):
     assert ya.resmedilemez_kusuru(anlatim) != ""
+
+
+def test_belirsizligin_kendisi_degil_kaynak_eki_yakalaniyor():
+    """⚠️ Bu testin ozu bir AYRIM.
+
+    "Why it ended is not known" TEK BASINA mesru: Fatih'in 1446'da tahttan
+    inisinin sebebi gercekten tartismali ve bu, dunya hakkinda durust bir
+    belirsizlik — anlatimin en iyi yaptigi seylerden biri. Kusurlu olan
+    "from the evidence given" eki, cunku ozneyi dunyadan MODELE VERILEN
+    METNE kaydiriyor.
+
+    Kalip belirsizligi yasaklamaya baslarsa bu test duser.
+    """
+    assert ya.resmedilemez_kusuru("Why it ended is not known.") == ""
+    assert ya.resmedilemez_kusuru("Why it ended is not known from the evidence given.") != ""
 
 
 def test_mesaj_ne_yapilacagini_soyluyor():

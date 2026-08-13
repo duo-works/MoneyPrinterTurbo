@@ -324,6 +324,19 @@ RESMEDILEMEZ_KALIPLAR = (
     ),
     re.compile(r"\bfrom (?:this|the) (?:summary|account|record) alone\b", re.IGNORECASE),
     re.compile(r"\bcannot be reconstructed (?:here|from this)\b", re.IGNORECASE),
+    # ⚠️ Model ayni ailenin YENI bir ifadesini buldu (2026-08-13, Mehmed II
+    # 2. deneme): "Why it ended is not known from the evidence given."
+    #
+    # Ayrim onemli: "Why it ended is not known" TEK BASINA mesru — Fatih'in
+    # 1446'da tahttan inisinin sebebi gercekten tartismali ve bu dunya
+    # hakkinda durust bir belirsizlik. Kusurlu olan "from the evidence
+    # given" eki: ozneyi dunyadan MODELE VERILEN METNE kaydiriyor. Bu yuzden
+    # kalip yalnizca o eki ariyor, belirsizligin kendisini degil.
+    re.compile(
+        r"\bfrom the (?:evidence|information|details|material|summary|text) "
+        r"(?:given|provided|here|above|supplied)\b",
+        re.IGNORECASE,
+    ),
 )
 
 
