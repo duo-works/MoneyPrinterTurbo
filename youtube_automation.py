@@ -116,6 +116,13 @@ class QualityReview:
     issues: list[str] = field(default_factory=list)
     revised_search_terms: list[str] = field(default_factory=list)
     problem_scene_numbers: list[int] = field(default_factory=list)
+    agir_kusurlar: list[str] = field(default_factory=list)
+    """Yayini TEK BASINA engelleyen kusurlar — skordan bagimsiz.
+
+    Skor ortalama bir izlenim: 84 alan bir video 10 kusur tasiyabiliyor
+    (Mehmed II, olculdu 2026-08-13). Yanlis kisi gostermek ise ortalamaya
+    karisacak bir eksiklik degil, tek basina yayindan dusuren bir olgu.
+    """
 
 
 class SourceMaterialRejected(RuntimeError):
@@ -193,6 +200,52 @@ def is_duplicate_topic(candidate: str, previous: list[str]) -> bool:
             if overlap >= 4:
                 return True
         if union and overlap / union >= 0.6:
+            return True
+    return False
+
+
+KANCA_KALIP_KELIMESI = 2
+"""Ozneden sonraki kac kelime "kalip" sayilir.
+
+Iki kelime olculdu: tekrarlayan acilislarin ortak iskeleti ozneden hemen
+sonra basliyor ("... did not ...", "... was never ..."). Uc kelime
+istemek kalibi kaciriyordu, cunku ucuncu kelime fiilin kendisi ve konudan
+konuya degisiyor: "Mehmed II did not RULE" / "Murad III did not TAKE".
+"""
+
+
+def _kalip_iskeleti(cumle: str) -> list[str]:
+    """Ozne atildiktan sonra kalan ilk kelimeler — acilisin "kalibi".
+
+    ⚠️ Ozne SABIT UZUNLUKTA DEGIL: "Mehmed II" iki, "Sutton Hoo" iki,
+    "Cleopatra" tek kelime. Ilk N kelimeyi atmak bu yuzden calismiyordu
+    (ilk surum oyleydi ve "Murad III did not" ile "Mehmed II did not"
+    kalibini kaciriyordu). Bunun yerine bastaki BUYUK HARFLI dizi
+    atiliyor — ozel adlar ve sira sayilari orada bitiyor.
+    """
+    parcalar = re.findall(r"[A-Za-z']+", cumle)
+    sira = 0
+    while sira < len(parcalar) and parcalar[sira][:1].isupper():
+        sira += 1
+    return [kelime.lower() for kelime in parcalar[sira:]]
+
+
+def _kanca_tekrari(senaryo: str, onceki_kancalar: list[str]) -> bool:
+    """Acilis, daha once kullanilmis bir kalibi tekrarliyor mu.
+
+    ⚠️ Karsilastirilan sey acilisin KELIME KELIME aynisi degil KALIBI:
+    "Mehmed II did not rule once" ile "Murad III did not take the throne
+    quietly" farkli cumleler ama ayni kalip, ve kanal ust uste bunlari
+    yayinlarsa izleyici ayni videoyu izliyormus gibi hissediyor (DW-94).
+    """
+    kanca_metni = kanca(senaryo)
+    if not kanca_metni or not onceki_kancalar:
+        return False
+    iskelet = _kalip_iskeleti(kanca_metni)[:KANCA_KALIP_KELIMESI]
+    if len(iskelet) < KANCA_KALIP_KELIMESI:
+        return False
+    for onceki in onceki_kancalar:
+        if iskelet == _kalip_iskeleti(onceki or "")[:KANCA_KALIP_KELIMESI]:
             return True
     return False
 
@@ -695,9 +748,48 @@ def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
     return gorsel_skor >= MIN_VISUAL_SCORE and altyazi_skor >= MIN_SUBTITLE_SCORE
 
 
+def agir_kusurlari_ayikla(kareler: Any) -> list[str]:
+    """Hakemin kare basina bildirdigi OLGULARI agir kusura cevirir.
+
+    ⚠️ Kararin sahibi burasi, hakem degil (DW-87). Modele "bu yayinlanabilir
+    mi" diye sorulmuyor; "bu karede gordugun kisi anlatilan kisi mi"
+    soruluyor ve cevabin ne anlama geldigine KOD karar veriyor.
+
+    ⚠️ EKSIK ALAN KUSUR SAYILMAZ. Alan hic gelmezse (eski hakem cevabi, kirik
+    JSON, modelin atladigi kare) `True` varsayiliyor. Tersi, cevap bicimi
+    degistigi anda her videoyu yayindan dusururdu — sessiz ve tam bir
+    duruş. Kapinin isi yanlisi yakalamak, belirsizligi cezalandirmak degil.
+    """
+    if not isinstance(kareler, list):
+        return []
+    kusurlar: list[str] = []
+    for sira, kare in enumerate(kareler, 1):
+        if not isinstance(kare, dict):
+            continue
+        numara = kare.get("n", sira)
+        if kare.get("person_ok", True) is False:
+            kusurlar.append(f"kare {numara}: anlatilan kisi degil")
+        if kare.get("period_ok", True) is False:
+            kusurlar.append(f"kare {numara}: donem uyusmuyor")
+        if kare.get("modern") is True:
+            kusurlar.append(f"kare {numara}: modern goruntu")
+    return kusurlar
+
+
 def should_publish(review: QualityReview) -> bool:
     # `review.publishable` bilerek OKUNMUYOR: karar skorlardan yeniden
     # turetiliyor ki modelden gelen bir bayrak ileride sessizce geri sizmasin.
+    #
+    # ⚠️ AGIR KUSUR TEK BASINA YETER. Skor ortalama bir izlenim ve yuksek bir
+    # ortalama tekil bir yalani gizleyebiliyor: Mehmed II 84 aldi ve ayni
+    # incelemede 10 kusur listelendi (olculdu 2026-08-13). Yanlis kisi
+    # gostermek ortalamaya karisacak bir eksiklik degil.
+    #
+    # Geriye donuk olculdu: yayinlanmis 12 videonun HICBIRINDE agir kusur
+    # yok, yani bu kapi gecmisteki tek bir basariyi bile engellemezdi —
+    # yalnizca zaten reddedilenleri daha erken ve daha net reddederdi.
+    if review.agir_kusurlar:
+        return False
     return yayina_uygun(
         review.visual_alignment_score, review.subtitle_readability_score
     )
@@ -1355,7 +1447,20 @@ def generate_content_plan(
             + json.dumps(onceki_kancalar, ensure_ascii=False)
         )
 
-    for _ in range(5):
+    # ⚠️ KAPILAR KATMANLI. Ust katman (dogrulama) HER denemede zorunlu; alt
+    # katman (arsiv destegi, capa tekrari, kanca kalibi) yalnizca ilk
+    # denemelerde. Sebebi olculdu (2026-08-13, Sutton Hoo koşumu): yumusak
+    # kapilar bes denemeyi tuketince kosum `DistinctTopicUnavailableError`
+    # ile oldu ve o saat icin HIC video uretilmedi. Kalite tercihini
+    # kovalarken uretimin kendisini kaybetmek, kullanicinin duzeltmemi
+    # istedigi istikrarsizligin ta kendisi.
+    #
+    # Yani: iyi bir plan icin ugrasilir, bulunamazsa gecerli bir plan
+    # yayina degil RENDER'a gonderilir — kalite kapisi (skor + agir kusur)
+    # zaten arkada duruyor ve kotu videoyu orada durduruyor.
+    YUMUSAK_KAPI_DENEMESI = 3
+    for deneme in range(1, 6):
+        yumusak_kapilar_acik = deneme <= YUMUSAK_KAPI_DENEMESI
         data = _json_completion(system, user)
         plan = ContentPlan(
             topic=str(data.get("topic", "")).strip(),
@@ -1393,12 +1498,35 @@ def generate_content_plan(
         # veriliyor ama model yine olmayan seyi istedi; yedek kipte konuyu
         # model sectigi icin envanter istemde HIC yoktu. Gerekce
         # `arsiv_destegi_kusuru` docstring'inde.
-        if kusur := arsiv_destegi_kusuru(plan):
+        if yumusak_kapilar_acik and (kusur := arsiv_destegi_kusuru(plan)):
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
         if konu:
-            # Benzerlik kapisi atlaniyor — gerekcesi docstring'de. Dogrulama
-            # (`validate_content_plan`) yukarida zaten uygulandI.
+            # ⚠️ KONU benzerligi atlanmaya devam ediyor — gerekcesi
+            # docstring'de: konuyu model degil, olculmus talep verisi ve onu
+            # onaylayan insan sectI.
+            #
+            # Ama CAPA ve ACILIS atlanmiyor artik (2026-08-13). Ikisi de
+            # konudan bagimsiz kalite sorunlari: ayni capa ayni arsivi
+            # getiriyor, ayni kalip ayni videoyu uretiyor. Gecmis acilislar
+            # zaten isteme veriliyordu (yukarida) ve model yine tekrarladi —
+            # bu oturumun tekrar eden dersi: soylemek yetmiyor (DW-87).
+            if yumusak_kapilar_acik and is_duplicate_visual_anchor(
+                plan.visual_anchor, previous_anchors
+            ):
+                user += (
+                    f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
+                    "channel. Keep the same subject but anchor the video on a different "
+                    "concrete thing belonging to it."
+                )
+                continue
+            if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
+                user += (
+                    "\nThe opening line repeats the sentence pattern of an earlier video. "
+                    "Open on a different kind of detail: an object, a number, a place, or "
+                    "an unfinished action."
+                )
+                continue
             return plan
         if (
             not is_duplicate_topic(plan.topic, previous)
@@ -2664,17 +2792,30 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             "nameplate? Quote what you can read. Second: when the narration is about a named "
             "person, is the human on screen actually that person, or somebody else sharing "
             "the same medal, uniform, institution or era? Report either as an issue."
+            # ⚠️ Kare basina OLGU soruluyor, karar degil. Duzyazi `issues`
+            # alani bu olgulari zaten tasiyordu ama serbest metin olarak;
+            # kod onu guvenilir bicimde okuyamiyordu. Esik ya da "yayina
+            # uygun mu" HALA sorulmuyor (DW-87) — yalnizca karede ne
+            # goruldugu.
+            " Additionally return a `frames` array with one object per frame: "
+            '{"n": <frame number>, "person_ok": <true when the montage is about a named '
+            "person and the human shown is that person; true when no specific person is "
+            'named>, "period_ok": <true when clothing, technology and setting fit the era '
+            'the narration describes>, "modern": <true when the frame shows present-day '
+            "footage, people or objects that cannot belong to the period>}."
         ),
     }
     data = _vision_json(prompt, montage)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     altyazi_skor = int(data.get("subtitle_readability_score", 0))
+    agir = agir_kusurlari_ayikla(data.get("frames"))
     return QualityReview(
-        publishable=yayina_uygun(gorsel_skor, altyazi_skor),
+        publishable=yayina_uygun(gorsel_skor, altyazi_skor) and not agir,
         visual_alignment_score=gorsel_skor,
         subtitle_readability_score=altyazi_skor,
         issues=[str(issue) for issue in data.get("issues", [])],
         revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
+        agir_kusurlar=agir,
     )
 
 
@@ -2853,6 +2994,7 @@ def run_cycle(
                         "task_id": None,
                         "visual_alignment_score": review.visual_alignment_score,
                         "issues": review.issues,
+                        "agir_kusurlar": review.agir_kusurlar,
                         "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                     }
                 )
@@ -2904,6 +3046,7 @@ def run_cycle(
                         "visual_alignment_score": review.visual_alignment_score,
                         "subtitle_readability_score": review.subtitle_readability_score,
                         "issues": review.issues,
+                        "agir_kusurlar": review.agir_kusurlar,
                         "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                     }
                 )
