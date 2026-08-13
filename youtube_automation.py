@@ -156,9 +156,14 @@ class QualityReview:
 
 
 class SourceMaterialRejected(RuntimeError):
-    def __init__(self, review: QualityReview):
+    def __init__(self, review: QualityReview, credits: list[dict[str, Any]] | None = None):
         super().__init__("source materials failed the pre-render visual quality gate")
         self.review = review
+        # ⚠️ Kunye de tasiniyor: reddin SEBEBINI okumak icin sahnenin NE
+        # ISTEDIGI kadar NE ALDIGI da gerekiyor. Kayitlarda bu ikisi hic yan
+        # yana durmadigi icin, bu oturumdaki teshis 12 kosumu tek tek elle
+        # okumayi gerektirdi.
+        self.credits = credits or []
 
 
 class AIVisualUnavailableError(RuntimeError):
@@ -329,7 +334,7 @@ Return valid JSON only. Create a factual, emotionally compelling, evergreen true
 The script must be 80-120 spoken English words and end with a memorable line. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject (a number, an object, a contradiction, or an unfinished action) so the first six words could belong to no other video.
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME, never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
-Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
+Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone. When the user request carries an ARCHIVE MENU, each scene also needs source_file: one entry's 'dosya' value copied exactly, never invented, never reused by two scenes, and the narration must describe what that file shows.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. Repeating one query ("Murad III", "Murad III", ...) returns the same ranked archive results every time, and the video becomes a row of near-identical portraits, which is the single most common reason a video is rejected. Write instead: "Murad III tughra", "Murad III imperial berat", "Murad III Topkapi palace", "Murad III Ottoman map", which is the anchor plus the concrete thing THIS scene is about.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
@@ -420,6 +425,25 @@ RESMEDILEMEZ_KALIPLAR = (
     re.compile(
         r"\bfrom the (?:evidence|information|details|material|summary|text) "
         r"(?:given|provided|here|above|supplied)\b",
+        re.IGNORECASE,
+    ),
+    # ⚠️ Ailenin UCUNCU bicimi (2026-08-14, arsiv menusu ilk canli plani):
+    # "An 1871 image shows the fast vessel", "Another image shows her
+    # carrying full sail", "One later port photograph may show Sydney".
+    #
+    # Bu kez ozne kayitta degil GORSELIN KENDISINDE. Sahne hala yanlis: alt
+    # yazi bir kaptiyon oluyor ve izleyici seyrettigi seyin hikayesini degil
+    # dosyanin tarifini dinliyor. Kusur menuyle birlikte GELDI, cunku model
+    # artik elindeki dosyayi biliyor ve onu anlatmaya egilimli — yani bu
+    # kalip, alinti kapisinin yan etkisini kapatiyor.
+    #
+    # Kasten DAR: yalnizca gorsel turunden bir ozne + "show/depict" fiili.
+    # "The photograph was taken in 1871" gibi bir cumle mesru kalmali, bu
+    # dunya hakkinda bir olgu.
+    re.compile(
+        r"\b(?:image|photo|photograph|picture|portrait|engraving|drawing|painting|"
+        r"illustration|plate|film|footage)s?\b[^.]{0,40}?\b"
+        r"(?:shows?|showing|depicts?|depicting|captures?)\b",
         re.IGNORECASE,
     ),
 )
@@ -1270,106 +1294,186 @@ def _son_kancalar(adet: int = 12) -> list[str]:
     ]
 
 
-ARSIV_ENVANTER_SINIRI = 45
-ASGARI_ARSIV_DESTEGI = 0.5
-"""Sahnelerin en az bu orani arsivde karsiligi olan bir sey istemeli.
+ARSIV_ENVANTER_SINIRI = 40
+"""Menude en fazla kac dosya gosterilecek.
 
-⚠️ Yarim, sertlikle donguyu kilitlememek arasindaki denge. Her sahneye tam
-karsilik istemek gercekci degil (arsiv her seyi adiyla anmiyor) ve bes
-deneme tukenince kosum `DistinctTopicUnavailableError` ile oluyor — yani
-asiri sertlik, hic video olmamasi demek.
+Havuzun tamami degil, `_kategori_adaylari` siralamasinin tepesi: model
+secim yapabilsin diye genis, isteme sigsin diye sinirli. Olculdu
+(2026-08-14): suzgecten gecen dosya sayisi konu basina 13-40 arasinda,
+yani sinir cogu konuda zaten baglayici degil.
 """
 
-_ENVANTER_ONBELLEGI: dict[str, list[str]] = {}
+_ENVANTER_ONBELLEGI: dict[str, list[dict[str, str]]] = {}
+ACIKLAMA_SINIRI = 140
 
 
-def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[str]:
-    """Konunun Commons kategorisindeki dosya adlari. Bulunamazsa BOS DONER.
+def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[dict[str, str]]:
+    """Konu icin kullanilabilir arsiv gorsellerinin MENUSU. Yoksa BOS DONER.
 
-    ⚠️ NEDEN VAR — olculdu (2026-08-13, Murad III). Sahne terimlerinin
-    birbirinden farkli olmasi zorunlu kilininca (62c4d05) portre yigini
-    bitti ama YENI bir kusur cikti: model bu kez arsivde OLMAYAN seyler
-    istedi. "Murad III Ottoman map", "Murad III coin", "Murad III
-    mausoleum" yazdi; arsivde harita da sikke de turbe de yoktu, arama
-    havuzdaki minyaturu dondurdu ve hakem "harita istedin, minyatur geldi"
-    diyerek skoru 38/67/33'e indirdi.
+    Her girdi `{dosya, gosterdigi, tarih}`. Sahneler bu menuden secim yapmak
+    zorunda (bkz. `alinti_kusuru`), yani bu liste "fikir verir" degil
+    "secenekleri belirler".
 
-    Kusur modelin ozensizligi degil BILGISIZLIGI: konuyu yalnizca adiyla
-    goruyor ve neyin resmedilebilir oldugunu tahmin ediyor. Ayni ders
-    kaynak metninde de alinmisti (DW-114): elimizde veri varken modeli
-    tahmine birakmak kusur uretiyor.
+    ⚠️ NEDEN DOSYA ADI YETMIYOR — olculdu (2026-08-14). Bu fonksiyon
+    onceki halinde kategorinin ilk 45 dosya ADINI donduruyordu ve model
+    onlardan senaryo yazamiyordu: `20190415 151806b.jpg`, `500px photo
+    (50204564).jpeg`, `Ujung.jpg`, `Bingmayong Gisela-Brantl 03.JPG`. Bir
+    dosya adi neyin resmedilebilir oldugunu SOYLEMIYOR, o yuzden model
+    tahmine devam etti ve arsivde bulunmayan anlari istedi ("1974'te kuyu
+    kazan koyluler", "denizde dumenini kaybeden gemi"). Son 12 kosumun
+    kaynak skoru 0-63'tu (kapi 70) ve hakemin gerekcesi hep ayniydi: dogru
+    konu, YANLIS an.
 
-    Bos donmek bilincli: kategorisi olmayan konularda uretim durmamali,
-    hat eskisi gibi calisir.
+    Ayni dosyalarin Commons aciklamasi ise kullanilabilir: "The clipper
+    CUTTY SARK re-conditioned at anchor at Falmouth" (1922 sonrasi),
+    "Boroboedoer bij Magelang, KITLV 99831". Tarih de veriliyor cunku
+    donem, sahnenin anlatiyla uyusup uyusmadigini belirleyen sey.
+
+    Bos donmek bilincli: menu kurulamayan konularda uretim durmamali.
     """
     anahtar = konu.strip().casefold()
     if anahtar in _ENVANTER_ONBELLEGI:
         return _ENVANTER_ONBELLEGI[anahtar]
     try:
-        kategori = wikimedia_materials.commons_kategorisi(konu)
-        if not kategori:
-            _ENVANTER_ONBELLEGI[anahtar] = []
-            return []
-        havuz = wikimedia_materials.kategori_gorselleri(kategori)
+        adaylar = wikimedia_materials.arsiv_menusu(konu, sinir=sinir)
     except Exception:
-        # ⚠️ Envanter bir IYILESTIRME; cekilemezse uretim durmamali.
-        # Kategori ucu 429/5xx donebiliyor ve o an plan asamasindayiz,
-        # yani elde henuz hicbir sey yok.
+        # ⚠️ Menu bir IYILESTIRME; cekilemezse uretim durmamali. Kategori ve
+        # arama uclari 429/5xx donebiliyor ve o an plan asamasindayiz, yani
+        # elde henuz hicbir sey yok.
         return []
-    adlar: list[str] = []
-    for sayfa in havuz:
-        baslik = str(sayfa.get("title") or "").removeprefix("File:").strip()
-        if baslik:
-            adlar.append(baslik)
-        if len(adlar) >= sinir:
-            break
-    _ENVANTER_ONBELLEGI[anahtar] = adlar
-    return adlar
+    menu: list[dict[str, str]] = []
+    for aday in adaylar:
+        dosya = str(aday.get("title") or "").removeprefix("File:").strip()
+        if not dosya:
+            continue
+        menu.append(
+            {
+                "dosya": dosya,
+                "gosterdigi": str(aday.get("aciklama") or "")[:ACIKLAMA_SINIRI],
+                "tarih": str(aday.get("tarih") or "")[:40],
+            }
+        )
+    _ENVANTER_ONBELLEGI[anahtar] = menu
+    return menu
 
 
-def arsiv_destegi_kusuru(plan: ContentPlan) -> str:
-    """Sahnelerin arsivde karsiligi var mi — yoksa kusur metni, varsa bos dize.
+def sahne_kaydi(
+    plan: ContentPlan, credits: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
+    """Sahne basina NE ISTENDI / NE GELDI — koşum kaydinin en teshis edici alani.
 
-    ⚠️ NEDEN KOD, NEDEN ISTEM DEGIL: envanter isteme zaten veriliyordu
-    (572dc2b) ve model yine olmayan seyi istedi. Olculdu (2026-08-13, yedek
-    kip koşumu): Franklin seferi sahne 1'de Franklin istedi, arsivden
-    Crozier geldi; sahne 4 ve 5'e MODERN tibbi cadir fotografi girdi.
-    Antikythera sahne 4'te "arkeolog Valerios Stais" istedi, arsivde o
-    kisinin gorseli yok. Skorlar 43/30/25.
+    ⚠️ NEDEN VAR — bu oturumda darbogazi bulmak, 12 koşumun hakem
+    ciktilarini tek tek elle okumayi gerektirdi, cunku `state.json` sahne
+    duzeyinde HICBIR sey tutmuyordu: hangi terim arandi, hangi dosya
+    alintilandi, karsiliginda ne indirildi. Kayit olmadan bir sonraki
+    "olcup degistir" turu da ayni korlukle baslar.
 
-    Ayni ders bu oturumda uc kez alindi (esik, kanca, resmedilemez cumle):
-    modele soylemek yetmiyor, KOD kontrol etmeli. Dogrulama hatasi modele
-    geri besleniyor, yani mesaj envanteri de tasiyor ve tek denemede
-    duzelebiliyor.
-
-    Olcut kasten GEVSEK (`ASGARI_ARSIV_DESTEGI`): arsiv her seyi adiyla
-    anmiyor ve asiri sertlik bes denemeyi tuketip kosumu oldururdu.
-
-    Envanter cekilemezse BOS DONER — kapi degil iyilestirme.
+    Arayuzun okuyacagi bicim: `{sahne, terim, kaynak_dosya, gelen, anlatim}`.
     """
-    envanter = arsiv_envanteri(plan.visual_anchor)
-    if not envanter:
-        return ""
-    capa_kelimeleri = _normalize_topic(plan.visual_anchor)
-    envanter_kelimeleri = {
-        kelime
-        for ad in envanter
-        for kelime in re.findall(r"[a-zA-Z]{4,}", ad.lower())
+    gelen_by_scene = {
+        int(kredi.get("scene", 0)): str(kredi.get("title") or "")
+        for kredi in (credits or [])
     }
-    desteksiz = []
-    for sira, sahne in enumerate(plan.scenes, 1):
-        # Capa disindaki kelimeler: sahnenin "ne gosterecegi" bilgisi burada.
-        ayirt_edici = _normalize_topic(sahne.get("search_term", "")) - capa_kelimeleri
-        if ayirt_edici and not (ayirt_edici & envanter_kelimeleri):
-            desteksiz.append(sira)
-    if len(desteksiz) <= len(plan.scenes) * (1 - ASGARI_ARSIV_DESTEGI):
-        return ""
+    return [
+        {
+            "sahne": sira,
+            "terim": str(sahne.get("search_term", "")),
+            "kaynak_dosya": str(sahne.get("kaynak_dosya", "")),
+            "gelen": gelen_by_scene.get(sira, ""),
+            "anlatim": str(sahne.get("narration", "")),
+        }
+        for sira, sahne in enumerate(plan.scenes, 1)
+    ]
+
+
+def _menu_talimati(menu: list[dict[str, str]]) -> str:
+    """Menuyu isteme koyan metin. Kapinin (`alinti_kusuru`) sozlu karsiligi.
+
+    Metin tek bir sey soyluyor: ONCE goruntuyu sec, SONRA onun uzerine cumle
+    yaz. Ters sira bu oturumun en pahali kusuruydu — senaryo fotografi
+    cekilmemis anlari anlatiyor, arsiv onlari veremiyor ve kaynak kapisi
+    kosumu render'dan once olduruyordu.
+    """
     return (
-        f"scenes {desteksiz} ask for things that do not appear anywhere in this "
-        "subject's archive, so they will be filled with unrelated images. These are "
-        "the only files that exist; rewrite those scenes around what is actually "
-        f"here:\n{json.dumps(envanter, ensure_ascii=False)}"
+        "\n\nARCHIVE MENU — this is every usable public-domain image that exists for "
+        "this subject, with what it shows and when it was made. These are the ONLY "
+        "pictures the video can display.\n"
+        f"{json.dumps(menu, ensure_ascii=False)}\n"
+        "Write the video FROM this menu, not the other way round. For each scene: pick "
+        "one entry, copy its 'dosya' value EXACTLY into the scene's source_file field, "
+        "and write narration that tells the story of the THING in that picture. A "
+        "different entry for every scene. Do not narrate a moment no entry depicts: if "
+        "nothing here shows the discovery, the battle, the storm or the person at work, "
+        "that moment cannot be a scene, however important it is. Choose entries whose "
+        "date suits the story, and do not describe a modern photograph as a historical "
+        "scene.\n"
+        "NEVER MAKE THE PICTURE ITSELF THE SUBJECT OF A SENTENCE. \"An 1871 image shows "
+        "the vessel\", \"another photograph depicts her under sail\" and \"one later port "
+        "photograph may show Sydney\" are not narration; they are captions, and a video "
+        "of captions is a failed video. Say what happened to the ship, the building or "
+        "the person that the viewer is looking at."
     )
+
+
+def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
+    """Her sahne menuden GERCEK bir dosya secmis mi — secmemisse kusur metni.
+
+    ⚠️ NEDEN ALINTI, NEDEN KELIME ORTUSMESI DEGIL: bu kapinin onceki hali
+    (`arsiv_destegi_kusuru`) sahne teriminin kelimeleriyle dosya adlarinin
+    kelimelerini kesistiriyordu ve pratikte hicbir seyi engellemiyordu.
+    Olculdu (2026-08-14): "1974 Terracotta Army discovery farmers digging
+    well Xi'an" teriminde "xian" kelimesi kategori dosya adlarinda gectigi
+    icin sahne kapiyi geciyordu — oysa arsivde kuyu kazan koylulerin
+    fotografi yok. Kapi acikken uretilen 12 kosumun kaynak skoru 0-63'tu.
+
+    Alinti kontrolu bir KUME ARAMASI: dilbilim tahmini yok, "bu dosya adi
+    menude var mi" var. DW-87 dersinin dogru bicimi bu — kod, dogrulanabilir
+    bir olguyu kontrol ediyor.
+
+    Ikinci is: menu sahne sayisindan kucukse capa REDDEDILIYOR. Slotun
+    olculmemis adaya harcanmasi bu oturumun en pahali kusuruydu — Archimedes
+    Palimpsest ve Pompeii Amon Min menusu 0 dosya, ikisi de skor 0 aldi ve
+    ikisi de bir uretim slotu yakti.
+
+    Menu kurulamazsa BOS DONER — kapi degil iyilestirme; hat eskisi gibi
+    aramayla calisir.
+
+    ⚠️ `menu_konusu` ISTEMDEKI menunun anahtari olmali, planin capasi degil.
+    Olculdu (2026-08-14, canli plan uretimi): huni konusu "Cutty Sark"
+    verilmisken model capayi "Jock Willis" (gemiyi siparis eden armator)
+    olarak sectI. Istem "Cutty Sark" menusunu gostermisti, kapi ise
+    "Jock Willis" menusune bakti — model DOGRU alinti yapmisti ve kapi
+    bes sahneyi birden uydurma sayip plani reddetti. Kapinin modele
+    gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu kusurun
+    kaynagina cevirir.
+    """
+    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    if not menu:
+        return ""
+    if len(menu) < len(plan.scenes):
+        return (
+            f"the archive holds only {len(menu)} usable images for "
+            f"{plan.visual_anchor!r}, fewer than the {len(plan.scenes)} scenes this "
+            "plan needs. Anchor the video on a different concrete thing that archives "
+            "actually photographed, and build the script around that."
+        )
+    gecerli = {girdi["dosya"] for girdi in menu}
+    alintilar = [str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes]
+    eksik = [sira for sira, ad in enumerate(alintilar, 1) if ad not in gecerli]
+    if eksik:
+        return (
+            f"scenes {eksik} cite a source_file that does not exist in this subject's "
+            "archive. Every scene's source_file must be copied EXACTLY from this menu, "
+            "and its narration must describe what that file actually shows:\n"
+            f"{json.dumps(menu, ensure_ascii=False)}"
+        )
+    tekrar = sorted({ad for ad in alintilar if alintilar.count(ad) > 1})
+    if tekrar:
+        return (
+            f"the same archive file is cited by more than one scene ({tekrar}). Each "
+            "scene must cite a different file so the video does not repeat an image."
+        )
+    return ""
 
 
 def generate_content_plan(
@@ -1454,21 +1558,11 @@ def generate_content_plan(
                 "the script, and do not fill it with sentences about the record being thin "
                 "either: write fewer scenes about what you do know."
             )
-        # ⚠️ ARSIV ENVANTERI — gerekcesi `arsiv_envanteri`nde. Kaynak metni
+        # ⚠️ ARSIV MENUSU — gerekcesi `arsiv_envanteri`nde. Kaynak metni
         # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
         # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
         if envanter := arsiv_envanteri(konu):
-            user += (
-                "\n\nARCHIVE INVENTORY — these are the actual public-domain files that "
-                "exist for this subject. They are the ONLY things the video can show, so "
-                "build the scenes around what is genuinely here and write each scene's "
-                "search term from these names. If there is no map in this list, do not "
-                "write a scene that needs a map; if the list is full of documents, seals "
-                "and miniatures, write scenes about those. Matching a scene to an image "
-                "that does not exist is the most common reason this channel's videos are "
-                "rejected.\n"
-                f"{json.dumps(envanter, ensure_ascii=False)}"
-            )
+            user += _menu_talimati(envanter)
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
@@ -1517,6 +1611,9 @@ def generate_content_plan(
                 {
                     "narration": tiresiz_anlatim(str(scene.get("narration", "")).strip()),
                     "search_term": str(scene.get("search_term", "")).strip(),
+                    # Menuden secilen dosya. Bos kalabilir: menusu olmayan
+                    # konularda hat eskisi gibi aramayla calisiyor.
+                    "kaynak_dosya": str(scene.get("source_file", "")).strip(),
                 }
                 for scene in data.get("scenes", [])
                 if isinstance(scene, dict)
@@ -1536,11 +1633,11 @@ def generate_content_plan(
                 f"{exc}. Return a completely corrected plan that follows every constraint."
             )
             continue
-        # ⚠️ HER IKI KIPTE de calisiyor. Huni kipinde envanter zaten isteme
-        # veriliyor ama model yine olmayan seyi istedi; yedek kipte konuyu
-        # model sectigi icin envanter istemde HIC yoktu. Gerekce
-        # `arsiv_destegi_kusuru` docstring'inde.
-        if yumusak_kapilar_acik and (kusur := arsiv_destegi_kusuru(plan)):
+        # ⚠️ HER IKI KIPTE de calisiyor. Huni kipinde menu zaten isteme
+        # veriliyor; yedek kipte capayi model sectigi icin menu istemde HIC
+        # yok ve ancak bu kapinin geri bildirimiyle geliyor. Gerekce
+        # `alinti_kusuru` docstring'inde.
+        if yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu or "")):
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
         if konu:
@@ -2606,7 +2703,7 @@ def run_generator(
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
     ):
-        raise SourceMaterialRejected(source_review)
+        raise SourceMaterialRejected(source_review, credits)
 
     # ⚠️ Render'dan HEMEN once, kalite kapisindan SONRA. Sira bilincli: kapi
     # kaynak gorselin kendisini degerlendirmeli, kirpilmis halini degil. Ama
@@ -3037,6 +3134,7 @@ def run_cycle(
                         "visual_alignment_score": review.visual_alignment_score,
                         "issues": review.issues,
                         "agir_kusurlar": review.agir_kusurlar,
+                        "sahneler": sahne_kaydi(plan, exc.credits),
                         "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                     }
                 )
@@ -3089,6 +3187,7 @@ def run_cycle(
                         "subtitle_readability_score": review.subtitle_readability_score,
                         "issues": review.issues,
                         "agir_kusurlar": review.agir_kusurlar,
+                        "sahneler": sahne_kaydi(plan, credits),
                         "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                     }
                 )

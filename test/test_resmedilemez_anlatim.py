@@ -155,3 +155,34 @@ def test_istem_de_kurali_soyluyor():
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
     assert "NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF" in kaynak
+
+
+# --- Kaptiyon anlatimi (2026-08-14) --------------------------------------
+
+
+def test_gorseli_anlatan_cumle_reddediliyor():
+    """⚠️ Ailenin UCUNCU bicimi, arsiv menusuyle BIRLIKTE geldi.
+
+    Olculdu (2026-08-14, menunun ilk canli plani): model artik elindeki
+    dosyayi bildigi icin onu tarif etmeye basladi — "An 1871 image shows the
+    fast vessel", "Another image shows her carrying full sail", "One later
+    port photograph may show Sydney". Alt yazi kaptiyona donuyor: izleyici
+    seyrettigi seyin hikayesini degil dosyanin tarifini dinliyor.
+    """
+    for cumle in (
+        "An 1871 image shows the fast vessel created for his line.",
+        "Another image shows her carrying full sail before 1916.",
+        "One later port photograph may show Sydney.",
+        "This engraving depicts the harbour at dawn.",
+    ):
+        assert ya.resmedilemez_kusuru(cumle), cumle
+
+
+def test_gorsel_hakkindaki_OLGU_mesru_kaliyor():
+    """⚠️ Kalip kasten DAR: dunya hakkinda bir olgu anlatmak serbest."""
+    for cumle in (
+        "The photograph was taken in Sydney Harbour in 1885.",
+        "The painting hung in the shipowner's office until the fire.",
+        "The plate records the king's name in three scripts.",
+    ):
+        assert ya.resmedilemez_kusuru(cumle) == "", cumle

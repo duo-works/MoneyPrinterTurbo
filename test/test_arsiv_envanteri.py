@@ -1,15 +1,19 @@
-"""Plan istemine ARSIV ENVANTERI veriliyor — model neyi gosterebilecegini bilmeli.
+"""Plan istemine ARSIV MENUSU veriliyor — model neyi gosterebilecegini bilmeli.
 
 ⚠️ Olculdu (2026-08-13, Murad III). Sahne terimlerinin farkli olmasi zorunlu
 kilininca (62c4d05) portre yigini bitti ama YENI bir kusur cikti: model bu
 kez arsivde OLMAYAN seyler istedi — "Murad III Ottoman map", "Murad III
 coin", "Murad III mausoleum". Arsivde harita da sikke de turbe de yoktu;
 arama havuzdaki minyaturu dondurdu ve hakem "harita istedin, minyatur geldi"
-diyerek skoru 38/67/33'e indirdi (onceki koşum 78'di).
+diyerek skoru 38/67/33'e indirdi.
 
-Kusur ozensizlik degil BILGISIZLIK: model konuyu yalnizca adiyla goruyor.
-Kaynak metni (DW-114) modele NE ANLATACAGINI soyluyor; envanter NEYI
-GOSTEREBILECEGINI. Ikisi ayri bilgi.
+⚠️ Ikinci olcum (2026-08-14): envanter DOSYA ADI olarak verildiginde kusur
+surdu. Sebep, adlarin cogunun hicbir sey soylememesi — Borobudur
+kategorisinin ilki `20190415 151806b.jpg`, `500px photo (50204564).jpeg`,
+`Ujung.jpg`. Ayni dosyalarin Commons aciklamasi ise kullanilabilir bilgi
+tasiyor ("The clipper CUTTY SARK re-conditioned at anchor at Falmouth",
+1922 sonrasi). Menu artik ACIKLAMA ve TARIH tasiyor; kapisi
+`test_arsiv_alintisi.py`.
 """
 
 import sys
@@ -21,68 +25,73 @@ import youtube_automation as ya  # noqa: E402
 import wikimedia_materials as wm  # noqa: E402
 
 
-def _sayfa(baslik: str) -> dict:
-    return {"title": baslik}
+def _aday(baslik: str, aciklama: str = "", tarih: str = "") -> dict:
+    return {"title": baslik, "aciklama": aciklama, "tarih": tarih}
 
 
-def test_envanter_dosya_adlarini_donduruyor(monkeypatch):
-    monkeypatch.setattr(wm, "commons_kategorisi", lambda _k: "Murad III")
+def test_menu_dosya_aciklama_ve_tarih_tasiyor(monkeypatch):
     monkeypatch.setattr(
         wm,
-        "kategori_gorselleri",
-        lambda _k: [_sayfa("File:Tughra of Murad III.JPG"), _sayfa("File:Berat 1593.jpg")],
+        "arsiv_menusu",
+        lambda _k, **_kw: [
+            _aday("File:Tughra of Murad III.JPG", "Imperial monogram", "1593"),
+            _aday("File:Berat 1593.jpg", "Decree on paper", "1593"),
+        ],
     )
 
     assert ya.arsiv_envanteri("Murad III") == [
-        "Tughra of Murad III.JPG",
-        "Berat 1593.jpg",
+        {
+            "dosya": "Tughra of Murad III.JPG",
+            "gosterdigi": "Imperial monogram",
+            "tarih": "1593",
+        },
+        {"dosya": "Berat 1593.jpg", "gosterdigi": "Decree on paper", "tarih": "1593"},
     ]
 
 
-def test_kategori_yoksa_bos_donuyor(monkeypatch):
-    """Kategorisi olmayan konuda uretim DURMAMALI."""
-    monkeypatch.setattr(wm, "commons_kategorisi", lambda _k: None)
+def test_menu_yoksa_bos_donuyor(monkeypatch):
+    """Menusu kurulamayan konuda uretim DURMAMALI."""
+    monkeypatch.setattr(wm, "arsiv_menusu", lambda _k, **_kw: [])
 
     assert ya.arsiv_envanteri("Bilinmeyen Konu") == []
 
 
 def test_ag_hatasi_uretimi_durdurmuyor(monkeypatch):
-    """⚠️ Envanter bir IYILESTIRME; cekilemezse hat eskisi gibi calismali.
+    """⚠️ Menu bir IYILESTIRME; cekilemezse hat eskisi gibi calismali.
 
     Plan asamasindayiz, yani elde henuz hicbir sey yok: burada patlamak
     butun koşumu bir 429 yuzunden coplerdi.
     """
 
-    def patla(_k):
+    def patla(_k, **_kw):
         raise RuntimeError("429 Too Many Requests")
 
-    monkeypatch.setattr(wm, "commons_kategorisi", patla)
+    monkeypatch.setattr(wm, "arsiv_menusu", patla)
 
     assert ya.arsiv_envanteri("Murad III") == []
 
 
-def test_liste_sinirlaniyor(monkeypatch):
-    """Istem sinirsiz buyumemeli."""
-    monkeypatch.setattr(wm, "commons_kategorisi", lambda _k: "X")
+def test_aciklama_kirpiliyor(monkeypatch):
+    """Istem sinirsiz buyumemeli: 40 girdi x uzun aciklama isteme sigmaz."""
     monkeypatch.setattr(
-        wm, "kategori_gorselleri", lambda _k: [_sayfa(f"File:{i}.jpg") for i in range(500)]
+        wm, "arsiv_menusu", lambda _k, **_kw: [_aday("File:X.jpg", "a" * 500, "b" * 200)]
     )
 
-    assert len(ya.arsiv_envanteri("X")) == ya.ARSIV_ENVANTER_SINIRI
+    girdi = ya.arsiv_envanteri("X")[0]
+
+    assert len(girdi["gosterdigi"]) == ya.ACIKLAMA_SINIRI
+    assert len(girdi["tarih"]) == 40
 
 
 def test_bos_baslik_atlaniyor(monkeypatch):
-    monkeypatch.setattr(wm, "commons_kategorisi", lambda _k: "X")
     monkeypatch.setattr(
-        wm,
-        "kategori_gorselleri",
-        lambda _k: [_sayfa(""), _sayfa("File:Gercek.jpg"), {}],
+        wm, "arsiv_menusu", lambda _k, **_kw: [_aday(""), _aday("File:Gercek.jpg"), {}]
     )
 
-    assert ya.arsiv_envanteri("X") == ["Gercek.jpg"]
+    assert [g["dosya"] for g in ya.arsiv_envanteri("X")] == ["Gercek.jpg"]
 
 
-def test_envanter_isteme_giriyor(monkeypatch):
+def test_menu_isteme_giriyor(monkeypatch):
     """⚠️ Baglanti testi — fonksiyon dogru olsa bile isteme girmezse kusur surer."""
     yakalanan: dict = {}
 
@@ -90,7 +99,17 @@ def test_envanter_isteme_giriyor(monkeypatch):
         yakalanan["user"] = user
         raise RuntimeError("dur")
 
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: ["Tughra of Murad III.JPG"])
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k: [
+            {
+                "dosya": "Tughra of Murad III.JPG",
+                "gosterdigi": "Imperial monogram",
+                "tarih": "1593",
+            }
+        ],
+    )
     monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *_a, **_k: "Murad III was a sultan.")
     monkeypatch.setattr(ya, "_json_completion", sahte_cikarim)
     monkeypatch.setattr(ya, "load_state", lambda: {})
@@ -103,12 +122,15 @@ def test_envanter_isteme_giriyor(monkeypatch):
         pass
 
     istem = yakalanan.get("user", "")
-    assert "ARCHIVE INVENTORY" in istem
+    assert "ARCHIVE MENU" in istem
     assert "Tughra of Murad III.JPG" in istem
+    assert "Imperial monogram" in istem
+    # ⚠️ Asil talimat: once goruntuyu sec, sonra cumleyi yaz.
+    assert "source_file" in istem
 
 
-def test_envanter_yoksa_istem_bozulmuyor(monkeypatch):
-    """Envanter bos donerse blok hic eklenmemeli, istem gecerli kalmali."""
+def test_menu_yoksa_istem_bozulmuyor(monkeypatch):
+    """Menu bos donerse blok hic eklenmemeli, istem gecerli kalmali."""
     yakalanan: dict = {}
 
     def sahte_cikarim(system: str, user: str) -> dict:
@@ -128,5 +150,5 @@ def test_envanter_yoksa_istem_bozulmuyor(monkeypatch):
         pass
 
     istem = yakalanan.get("user", "")
-    assert "ARCHIVE INVENTORY" not in istem
+    assert "ARCHIVE MENU" not in istem
     assert "AUTHORITATIVE SOURCE" in istem

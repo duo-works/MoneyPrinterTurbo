@@ -554,6 +554,22 @@ def _puanli_adaylar(
             "width": width,
             "height": height,
             "mime": mime,
+            # ⚠️ Aciklama ve tarih, dosya adinin soylemedigini soyluyor.
+            # Olculdu (2026-08-14): Borobudur kategorisinin ilk dosyalari
+            # `20190415 151806b.jpg`, `500px photo (50204564).jpeg`,
+            # `Ujung.jpg` — bir modelin bunlardan ne gorecegini bilmesi
+            # imkansiz. Ayni dosyalarin `ImageDescription` alani ise
+            # "Boroboedoer bij Magelang, KITLV 99831" ya da "The clipper
+            # CUTTY SARK in full sails" gibi gercekten kullanilabilir bir
+            # bilgi tasiyor. `arsiv_menusu` bunun uzerine kuruluyor.
+            "aciklama": (
+                _plain_text(_metadata_value(image, "ImageDescription"))
+                or _plain_text(_metadata_value(image, "ObjectName"))
+            ),
+            "tarih": (
+                _plain_text(_metadata_value(image, "DateTimeOriginal"))
+                or _plain_text(_metadata_value(image, "DateTime"))
+            ),
         }
         relevance_score = len(matched_terms) * 2.0
         candidates.append(
@@ -741,6 +757,127 @@ def kategori_gorselleri(kategori: str, limit: int = 100) -> list[dict[str, Any]]
         return []
 
 
+def dosya_sayfasi(baslik: str) -> dict[str, Any] | None:
+    """TEK bir Commons dosyasini adiyla getirir — `search_commons` biciminde.
+
+    Sahne artik envanterden bir dosya SECIYOR (bkz. `arsiv_menusu`); secilen
+    dosya cogu zaman zaten indirilmis kategori havuzunda bulunuyor ve bu
+    fonksiyon cagrilmiyor. Havuz sinirinin disinda kalan bir secim icin tek
+    istekle dosyayi getirmek, secimi bosa dusurmekten iyidir.
+    """
+    ad = baslik.strip().removeprefix("File:").strip()
+    if not ad:
+        return None
+    try:
+        yanit = _get_with_retry(
+            API_URL,
+            params={
+                "action": "query",
+                "titles": f"File:{ad}",
+                "prop": "imageinfo",
+                "iiprop": "url|size|mime|extmetadata",
+                "iiurlwidth": "1080",
+                "format": "json",
+                "formatversion": "2",
+            },
+            timeout=30,
+        )
+        sayfalar = yanit.json().get("query", {}).get("pages", [])
+    except (requests.RequestException, ValueError):
+        return None
+    for sayfa in sayfalar:
+        if sayfa.get("missing"):
+            continue
+        if sayfa.get("imageinfo"):
+            return sayfa
+    return None
+
+
+MENU_KATEGORI_SINIRI = 500
+
+
+def arsiv_menusu(konu: str, *, sinir: int = 40) -> list[dict[str, Any]]:
+    """Konu icin GERCEKTEN kullanilabilir arsiv gorsellerinin menusu.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-14). Hat, plani yazan modele kategorinin
+    ILK 45 dosya ADINI veriyordu. Commons kategori listesi baslik sirasina
+    gore geliyor, yani listenin basi rakamla baslayan modern telefon
+    fotograflari ve `500px photo (...)` aktarimlari oluyor. Model bu isimsiz
+    slaytlardan ne gosterebilecegini bilemeyince anlatiyi TAHMINLE yaziyor ve
+    arsivde bulunmayan anlari istiyordu: "1974'te kuyu kazan koyluler",
+    "denizde dumenini kaybeden gemi", "Ay'in agiz acma toreni". Son 12
+    kosumun kaynak skoru 0-63 (kapi 70) ve hakemin gerekcesi hep ayniydi:
+    "dogru konu, YANLIS an".
+
+    Menu farki olculdu: ayni kategori lisans + kadraj suzgecinden gecirilip
+    aciklama ve tarihle sunuldugunda Cutty Sark icin "The clipper CUTTY SARK
+    in full sails (1916 oncesi)", "waiting in Sydney Harbour for the new
+    season's wool (1885-1894)", "re-conditioned at anchor at Falmouth (1922
+    sonrasi)" cikiyor — bunlardan senaryo yazilabilir.
+
+    Suzgec `_kategori_adaylari`: yani menude gorunen her dosyayi indirici de
+    kabul eder. Menunun "var" dedigi seyin indirilememesi, menuyu yeniden
+    yalana cevirirdi.
+
+    ⚠️ HAVUZ IKI KAYNAKTAN: kategori VE tam metin aramasi. Yalnizca kategori
+    yetmiyor cunku Commons kategorileri hiyerarsik — olculdu (2026-08-14):
+    `Category:Terracotta Army` dogrudan uyeliginde suzgecten gecen 4 dosya
+    var, gerisi alt kategorilerde. Indiricinin asil yolu zaten arama; menu
+    onun goremedigi bir arsivi anlatirsa yine yalan soyler, yalnizca ters
+    yone dogru.
+    """
+    havuz: list[dict[str, Any]] = []
+    kategori = commons_kategorisi(konu)
+    if kategori:
+        havuz = kategori_gorselleri(kategori, limit=MENU_KATEGORI_SINIRI)
+    adaylar = _kategori_adaylari(havuz, set()) if havuz else []
+    gorulen = {str(aday.get("title") or "") for aday in adaylar}
+    try:
+        aramadan = search_commons(konu, limit=50)
+    except requests.RequestException:
+        aramadan = []
+    # Aramada capa zorunlu: kategori uyeligi konuya aitligi zaten garanti
+    # ediyor, arama etmiyor ("Cutty Sark" sorgusu DLR istasyonunu da
+    # getiriyor — bu oturumda bir videoya modern ulasim haritasi bu yoldan
+    # girdi).
+    for aday in _puanli_adaylar(aramadan, set(), "", konu):
+        baslik = str(aday.get("title") or "")
+        if baslik and baslik not in gorulen:
+            gorulen.add(baslik)
+            adaylar.append(aday)
+    return _aciklamayi_seyrelt(adaylar)[:sinir]
+
+
+AYNI_ACIKLAMA_TAVANI = 2
+
+
+def _aciklamayi_seyrelt(adaylar: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ayni aciklamayi tasiyan dosyalari en fazla `AYNI_ACIKLAMA_TAVANI` tutar.
+
+    ⚠️ Olculdu (2026-08-14, Cutty Sark): menunun 40 girdisinin 38'i
+    `Cutty Sark 26-06-2012 (...).jpg` idi ve HEPSININ aciklamasi ayni tek
+    cumleydi ("Cutty Sark, King William Walk, Greenwich... badly damaged by
+    fire on 21 May 2007"). Bir yukleyicinin ayni gun cektigi 38 kare
+    siralamanin tepesini kapliyor (buyuk, dikey, yuksek cozunurluklu) ve
+    tarihsel SLV fotograflarini menunun disina itiyordu.
+
+    Menunun isi SECENEK sunmak. Ayni cumleyi 38 kez gostermek modele hicbir
+    sey soylemiyor, yalnizca gercekten farkli olan dosyalari gizliyor.
+    """
+    sayac: dict[str, int] = {}
+    seyrek: list[dict[str, Any]] = []
+    for aday in adaylar:
+        # Aciklamasi olmayanlar gruplanmiyor: ortak bosluk bir benzerlik
+        # kaniti degil.
+        anahtar = " ".join(str(aday.get("aciklama") or "").lower().split())[:60]
+        if anahtar:
+            sayac[anahtar] = sayac.get(anahtar, 0) + 1
+            if sayac[anahtar] > AYNI_ACIKLAMA_TAVANI:
+                continue
+        seyrek.append(aday)
+    return seyrek
+
+
 def search_commons(query: str, limit: int = 20) -> list[dict[str, Any]]:
     params = {
         "action": "query",
@@ -824,6 +961,38 @@ def _tekrar_mi(yol: Path, izler: list[Any]) -> bool:
     )
 
 
+_UZANTI = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+
+
+def _alinti_adayi(
+    baslik: str,
+    kategori_havuzu: list[dict[str, Any]],
+    used_titles: set[str],
+) -> dict[str, Any] | None:
+    """Planin alintiladigi dosyayi indiricinin kendi suzgecinden gecirir.
+
+    Menu zaten `_kategori_adaylari` ile suzuldugu icin buradan cogu zaman
+    aday cikar; kontrol yine de yapiliyor cunku menu onbellekten gelebilir ve
+    ayni sahnede daha once kullanilmis bir dosya elenmeli.
+    """
+    ad = baslik.strip().removeprefix("File:").strip()
+    if not ad:
+        return None
+    tam_ad = f"File:{ad}"
+    sayfalar = [
+        sayfa for sayfa in kategori_havuzu if str(sayfa.get("title", "")) == tam_ad
+    ]
+    if not sayfalar:
+        # Menu kategoriden VE aramadan besleniyor; aramadan gelen bir secim
+        # kategori havuzunda bulunmaz, tek istekle getiriliyor.
+        sayfa = dosya_sayfasi(ad)
+        if sayfa is None:
+            return None
+        sayfalar = [sayfa]
+    adaylar = _puanli_adaylar(sayfalar, used_titles, "", "")
+    return adaylar[0] if adaylar else None
+
+
 def download_scene_materials(
     topic: str,
     scenes: list[dict[str, str]],
@@ -893,6 +1062,41 @@ def download_scene_materials(
         selected = None
         destination = None
         failed_titles: set[str] = set()
+        # Tekrar diye elenen ilk aday: baska hicbir sey bulunamazsa buna
+        # donulur. Delik birakmaktansa benzer bir gorsel iyidir.
+        yedek: tuple[dict[str, Any], Path] | None = None
+        # Met/Europeana'nin kredisi zaten hazir gelir; Commons yedeginden
+        # ayri tutuluyor cunku son carede krediyi yeniden kurmak gerekmiyor.
+        hazir_yedek: tuple[Path, dict[str, Any]] | None = None
+
+        # ⚠️ ALINTILANAN DOSYA HER SEYDEN ONCE. Plan artik arsiv menusunden
+        # secim yapiyor (`youtube_automation.alinti_kusuru`) ve sahnenin
+        # anlatisi TAM DA bu dosyanin gosterdigi seyin uzerine yazildi. Baska
+        # bir gorsel "yakin" degil, yanlis olur.
+        #
+        # Olculdu (2026-08-14): senaryo once yazilip arsiv sonra arandiginda
+        # hakem 12 kosumun 12'sinde ayni gerekceyi yazdi — "dogru konu,
+        # yanlis an": Terracotta Army'nin kazi salonu geldi, anlatim boyali
+        # rekonstruksiyon istiyordu; Cutty Sark'in gemi portresi geldi,
+        # anlatim 1872 yarisini istiyordu. Kaynak skorlari 0-63 (kapi 70).
+        #
+        # Alinti bir GARANTI degil ILK TERCIH: dosya silinmis olabilir,
+        # teslim dusebilir ya da ayni gorsel baska sahnede kullanilmis
+        # olabilir. Bu durumlarda asagidaki zincir eskisi gibi calisiyor.
+        if alinti := str(scene.get("kaynak_dosya", "")).strip():
+            alinti_adayi = _alinti_adayi(alinti, kategori_havuzu, used_titles)
+            if alinti_adayi is not None:
+                alinti_hedefi = target_dir / f"scene-{index:02d}{_UZANTI[alinti_adayi['mime']]}"
+                try:
+                    _download(alinti_adayi["url"], alinti_hedefi)
+                except requests.HTTPError:
+                    failed_titles.add(alinti_adayi["title"])
+                else:
+                    if _tekrar_mi(alinti_hedefi, secilmis_izler):
+                        yedek = (alinti_adayi, alinti_hedefi)
+                        failed_titles.add(alinti_adayi["title"])
+                    else:
+                        selected, destination = alinti_adayi, alinti_hedefi
 
         # ⚠️ ONCE MET denendi (2026-08-12'ye kadar Commons ilkti). Canli
         # olculdu: Commons'in 720px tabani gecen adaylari bile konuya gore
@@ -903,19 +1107,17 @@ def download_scene_materials(
         # Brahe" icin 0 aday dondu. Bu yuzden sirada KALDI — Met bulamazsa
         # asagidaki Commons mantigi degismeden calisir, kapsam kaybolmuyor,
         # yalnizca Met'in kapsadigi sahnelerde kalite yukseliyor.
-        met_result = download_met_scene_material(
-            queries,
-            scene_number=index,
-            target_dir=target_dir,
-            used_ids=used_met_ids,
-            required_anchor=visual_anchor,
+        met_result = (
+            None
+            if selected is not None
+            else download_met_scene_material(
+                queries,
+                scene_number=index,
+                target_dir=target_dir,
+                used_ids=used_met_ids,
+                required_anchor=visual_anchor,
+            )
         )
-        # Tekrar diye elenen ilk aday: baska hicbir sey bulunamazsa buna
-        # donulur. Delik birakmaktansa benzer bir gorsel iyidir.
-        yedek: tuple[dict[str, Any], Path] | None = None
-        # Met/Europeana'nin kredisi zaten hazir gelir; Commons yedeginden
-        # ayri tutuluyor cunku son carede krediyi yeniden kurmak gerekmiyor.
-        hazir_yedek: tuple[Path, dict[str, Any]] | None = None
 
         if met_result is not None:
             met_path, met_credit = met_result
@@ -936,7 +1138,9 @@ def download_scene_materials(
                 files.append(met_path)
                 credits.append(met_credit)
                 continue
-        for query in queries:
+        # Alinti tuttuysa arama zinciri hic calismiyor: sahnenin gorseli
+        # zaten SECILMIS durumda, aramak onu degistirmek olurdu.
+        for query in [] if selected is not None else queries:
             pages = search_commons(query)
             while True:
                 candidate = select_candidate(

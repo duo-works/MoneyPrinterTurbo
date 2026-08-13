@@ -75,9 +75,9 @@ def test_yumusak_kapilar_son_denemelerde_gevsiyor():
     govde = kaynak[i : kaynak.index("def refine_search_terms(", i)]
 
     assert "YUMUSAK_KAPI_DENEMESI" in govde
-    assert "yumusak_kapilar_acik and arsiv_destegi_kusuru" in govde.replace("(", " ").replace(
+    assert "yumusak_kapilar_acik and alinti_kusuru" in govde.replace("(", " ").replace(
         ")", " "
-    ) or "yumusak_kapilar_acik and (kusur := arsiv_destegi_kusuru(plan))" in govde
+    ) or "yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu" in govde
     assert "yumusak_kapilar_acik and _kanca_tekrari" in govde
 
 
