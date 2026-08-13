@@ -4,6 +4,7 @@ import argparse
 import base64
 import io
 import json
+import math
 import os
 import random
 import re
@@ -2414,12 +2415,40 @@ def run_generator(
     return task_id, video_path, script_path, credits
 
 
-def create_review_montage(video_path: Path, task_id: str) -> Path:
+def montaj_izgarasi(kare_sayisi: int) -> tuple[int, int]:
+    """Kare sayisina gore sutun/satir. Iki satir sabit — dikey kareler yan yana."""
+    return max(math.ceil(kare_sayisi / 2), 1), 2
+
+
+def create_review_montage(video_path: Path, task_id: str, scene_count: int) -> Path:
+    """Sahne BASINA bir kare — 8 sabit degil.
+
+    ⚠️ Montaj 2026-08-13'e kadar senaryoda kac sahne olursa olsun HER ZAMAN
+    8 kare orneklerdi (`fps=8/sure`, `tile=4x2`). Ama plan 6-10 sahneye izin
+    veriyor, yani 6 sahnelik bir videoda 8 kare iki sahneyi IKI KEZ
+    ornekliyordu ve hakem bunu "agir tekrar" diye cezalandiriyordu.
+
+    Kusur olcum yonteminde, videoda degil. Kaniti hakemin KENDI etiketleri
+    (Murad III koşumu): kare 2 -> sahne 2, kare 3 -> sahne 2; kare 6, 7, 8 ->
+    ucu de sahne 6. Ardindan "frames 2-3 are duplicates, frames 6-8 reuse the
+    same engraving" yazip skoru dusurdu.
+
+    Kareler sahnenin ORTASINDAN aliniyor: kesme noktasina denk gelen bir kare
+    bir onceki sahneyi gosterebilir. Kare numaralari videonun kendi fps'inden
+    hesaplaniyor, boylece secim kayan noktaya bagli kalmiyor.
+    """
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     montage = REVIEW_DIR / f"{task_id}-montage.jpg"
     with VideoFileClip(str(video_path)) as clip:
         duration = max(float(clip.duration), 1.0)
-    fps_value = 8.0 / duration
+        fps = float(clip.fps or 30.0) or 30.0
+    kare_sayisi = max(int(scene_count), 1)
+    klip = duration / kare_sayisi
+    kare_numaralari = [
+        max(int(round((sira + 0.5) * klip * fps)), 0) for sira in range(kare_sayisi)
+    ]
+    secim = "+".join(rf"eq(n\,{numara})" for numara in kare_numaralari)
+    sutun, satir = montaj_izgarasi(kare_sayisi)
     command = [
         get_ffmpeg_exe(),
         "-y",
@@ -2429,9 +2458,14 @@ def create_review_montage(video_path: Path, task_id: str) -> Path:
         "-i",
         str(video_path),
         "-vf",
-        f"fps={fps_value:.8f},scale=270:480,tile=4x2",
+        f"select='{secim}',scale=270:480,tile={sutun}x{satir}",
         "-frames:v",
         "1",
+        # ⚠️ `select` ile birlikte sart: varsayilan kip eksik kareleri
+        # cogaltip zaman tabanini duzler, yani ayni kare tekrar tekrar
+        # dizilir — tam da kaldirmaya calistigimiz tekrar.
+        "-fps_mode",
+        "passthrough",
         str(montage),
     ]
     subprocess.run(command, check=True, timeout=180)
@@ -2446,7 +2480,15 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
         "script": plan.script,
         "scenes": plan.scenes,
         "instructions": (
-            "The image is an 8-frame chronological montage from a vertical Short. "
+            # ⚠️ Kare sayisi SABIT DEGIL — sahne basina bir kare aliniyor
+            # (bkz. `create_review_montage`). Eslemeyi soylemek onemli:
+            # soylenmediginde hakem ayni sahnenin iki ornegini "duplicate"
+            # sanip skoru dusuruyordu.
+            f"The image is a {len(plan.scenes)}-frame chronological montage from a vertical "
+            "Short, read left to right and top to bottom. There is exactly ONE frame per "
+            "scene: frame 1 is scene 1, frame 2 is scene 2, and so on, each sampled from the "
+            "middle of its scene. Two frames are therefore never the same scene, and any "
+            "trailing blank cell is padding, not a scene. "
             "Judge whether visuals match the narration and historical period, whether captions are readable, and whether footage is repetitive. "
             "Historically grounded AI illustrations are acceptable; do not reject them merely for not being archival photographs, but reject misleading or historically inconsistent details. "
             "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
@@ -2648,7 +2690,7 @@ def run_cycle(
                         )
                         break
                 continue
-            montage = create_review_montage(video_path, task_id)
+            montage = create_review_montage(video_path, task_id, len(plan.scenes))
             review = review_video(plan, montage)
             reviews.append(
                 {
