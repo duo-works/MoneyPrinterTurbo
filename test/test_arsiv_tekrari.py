@@ -110,7 +110,7 @@ def test_ilk_sahne_her_zaman_geciyor(tmp_path):
 
 
 def _sahte_arama(
-    tmp_path, monkeypatch, adaylar: list[dict], *, europeana=None
+    tmp_path, monkeypatch, adaylar: list[dict], *, europeana=None, met=None
 ) -> list[str]:
     """`search_commons` ve `_download` yamanir; indirilen dosyalar uretilir.
 
@@ -139,7 +139,9 @@ def _sahte_arama(
         _gorsel(hedef, tohum=int(url))
 
     monkeypatch.setattr(wm, "_download", sahte_indir)
-    monkeypatch.setattr(wm, "download_met_scene_material", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        wm, "download_met_scene_material", met or (lambda *_a, **_k: None)
+    )
     return indirilen
 
 
@@ -287,6 +289,77 @@ def test_europeana_bos_donerse_tekrar_yedegi_yine_calisiyor(tmp_path, monkeypatc
 
     assert soruldu == [2], "kopya yedegine dusmeden once Europeana sorulmali"
     assert dosyalar[1] is not None, "son care olarak kopya yine konmali"
+
+
+def _met_veren(tmp_path, tohumlar: dict[int, int]):
+    """Sahne numarasina gore parmak izi verilen sahte Met kaynagi."""
+
+    def sahte_met(_queries, *, scene_number, target_dir, used_ids, **_k):
+        if scene_number not in tohumlar:
+            return None
+        yol = tmp_path / f"met-{scene_number}.png"
+        _gorsel(yol, tohum=tohumlar[scene_number])
+        return yol, {
+            "scene": scene_number,
+            "title": f"Met nesnesi {scene_number}",
+            "object_id": 1000 + scene_number,
+            "source_url": f"https://metmuseum.org/{scene_number}",
+            "license": "Public domain",
+            "artist": "x",
+        }
+
+    return sahte_met
+
+
+def test_met_kopyasi_ikinci_sahnede_kullanilmiyor(tmp_path, monkeypatch):
+    """⚠️ Met parmak izini KAYDEDIYOR ama sorgulaMIYORdu (2026-08-13'e kadar).
+
+    Met her sahnede ILK denenen kaynak (f271e27), yani kusur her sahneyi
+    etkiliyordu. Kucuk katalogunda ayni oznenin birkac benzer nesnesi var ve
+    hepsi ayri `object_id` tasidigi icin `used_met_ids` de yakalamiyordu.
+
+    Olculdu (Mehmed II): sahne 1 ve 4 benzerlik 0,887 — esik 0,70.
+    """
+    _sahte_arama(
+        tmp_path,
+        monkeypatch,
+        [_aday("91", "File:Commons gorseli.png")],
+        # Iki sahnede AYNI tohum: Met ayni gorseli iki kez veriyor.
+        met=_met_veren(tmp_path, {1: 5, 2: 5}),
+    )
+
+    dosyalar, krediler = wm.download_scene_materials(
+        "Mehmed II",
+        [{"search_term": "medal"}, {"search_term": "throne"}],
+        tmp_path,
+        kismi=True,
+    )
+
+    izler = [gorsel_olcum.parmak_izi(d) for d in dosyalar]
+    assert gorsel_olcum.benzerlik(izler[0], izler[1]) < gorsel_olcum.ARSIV_TEKRAR_ESIGI
+    assert krediler[1]["title"] == "File:Commons gorseli.png", (
+        "ikinci sahne Met kopyasini birakip Commons'a dusmeli"
+    )
+
+
+def test_met_kopyasi_baska_care_yoksa_yine_kullaniliyor(tmp_path, monkeypatch):
+    """Yumusak kapi Met icin de gecerli — delik birakmak daha kotu."""
+    _sahte_arama(
+        tmp_path,
+        monkeypatch,
+        [],  # Commons bos
+        met=_met_veren(tmp_path, {1: 5, 2: 5}),
+    )
+
+    dosyalar, krediler = wm.download_scene_materials(
+        "Mehmed II",
+        [{"search_term": "medal"}, {"search_term": "throne"}],
+        tmp_path,
+        kismi=True,
+    )
+
+    assert dosyalar[1] is not None, "sahne bos birakilmamali"
+    assert krediler[1]["title"] == "Met nesnesi 2", "son carede Met kopyasi kullanilir"
 
 
 def test_tekrar_kontrolu_indirmeden_sonra(tmp_path, monkeypatch):

@@ -820,17 +820,32 @@ def download_scene_materials(
             used_ids=used_met_ids,
             required_anchor=visual_anchor,
         )
-        if met_result is not None:
-            met_path, met_credit = met_result
-            used_met_ids.add(int(met_credit["object_id"]))
-            _izi_ekle(met_path, secilmis_izler)
-            files.append(met_path)
-            credits.append(met_credit)
-            continue
-
         # Tekrar diye elenen ilk aday: baska hicbir sey bulunamazsa buna
         # donulur. Delik birakmaktansa benzer bir gorsel iyidir.
         yedek: tuple[dict[str, Any], Path] | None = None
+        # Met/Europeana'nin kredisi zaten hazir gelir; Commons yedeginden
+        # ayri tutuluyor cunku son carede krediyi yeniden kurmak gerekmiyor.
+        hazir_yedek: tuple[Path, dict[str, Any]] | None = None
+
+        if met_result is not None:
+            met_path, met_credit = met_result
+            used_met_ids.add(int(met_credit["object_id"]))
+            # ⚠️ Bu kontrol 2026-08-13'e kadar YOKTU: Met parmak izini
+            # kaydediyor (`_izi_ekle`) ama hic SORGULAMIYORDU. Met her
+            # sahnede ILK denenen kaynak oldugu icin (f271e27) kusur her
+            # sahneyi etkiliyordu — kucuk katalogunda ayni oznenin birkac
+            # benzer nesnesi var ve hepsi ayri `object_id` tasidigi icin
+            # `used_met_ids` de yakalamiyordu.
+            #
+            # Olculdu (2026-08-13, Mehmed II): sahne 1 ve 4 benzerlik 0,887
+            # (esik 0,70) ve hakem "dort madalya karesi" diye yazdi.
+            if _tekrar_mi(met_path, secilmis_izler):
+                hazir_yedek = (met_path, met_credit)
+            else:
+                _izi_ekle(met_path, secilmis_izler)
+                files.append(met_path)
+                credits.append(met_credit)
+                continue
         for query in queries:
             pages = search_commons(query)
             while True:
@@ -937,11 +952,17 @@ def download_scene_materials(
             if europeana_result is not None:
                 eu_path, eu_credit = europeana_result
                 used_europeana_ids.add(str(eu_credit["europeana_id"]))
-                used_titles.add(str(eu_credit["title"]))
-                _izi_ekle(eu_path, secilmis_izler)
-                files.append(eu_path)
-                credits.append(eu_credit)
-                continue
+                # ⚠️ Met'teki kusurun ikizi — burada da parmak izi
+                # kaydediliyor ama sorgulanmiyordu (2026-08-13'e kadar).
+                if _tekrar_mi(eu_path, secilmis_izler):
+                    if hazir_yedek is None:
+                        hazir_yedek = (eu_path, eu_credit)
+                else:
+                    used_titles.add(str(eu_credit["title"]))
+                    _izi_ekle(eu_path, secilmis_izler)
+                    files.append(eu_path)
+                    credits.append(eu_credit)
+                    continue
         if (not selected or destination is None) and yedek is not None:
             # SON CARE: butun adaylar tekrar cikti ve Europeana da bos dondu.
             # Yine de bir gorsel koymak, sahneyi bos birakmaktan iyi.
@@ -956,6 +977,14 @@ def download_scene_materials(
             # 6 ve 7 ayni" yazdi ve gorsel skoru 56'ya dustu; tekrar, o
             # koşumda kalan tek baskin kusurdu.
             selected, destination = yedek
+        if (not selected or destination is None) and hazir_yedek is not None:
+            # Commons yedegi de yoksa Met/Europeana'nin kopyasina donuluyor.
+            # Kredisi hazir geldigi icin asagidaki kurulum atlaniyor.
+            yol, kredi = hazir_yedek
+            _izi_ekle(yol, secilmis_izler)
+            files.append(yol)
+            credits.append(kredi)
+            continue
         if not selected or destination is None:
             if not kismi:
                 raise MaterialsUnavailableError(
