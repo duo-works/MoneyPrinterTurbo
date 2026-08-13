@@ -46,9 +46,15 @@ _GECERLI_PLAN = {
     "visual_anchor": "Theresian Academy",
     "title": "Who Was Franziska Scanagatta? #Shorts",
     "script": _SENARYO,
+    # ⚠️ Terimler BIRBIRINDEN farkli: ayni terimi tekrarlayan plan artik
+    # dogrulamadan gecmiyor (portre yigini kusuru, 2026-08-13).
     "scenes": [
-        {"narration": f"Sahne {i}", "search_term": "Theresian Academy building"}
-        for i in range(1, 7)
+        {"narration": f"Sahne {i}", "search_term": f"Theresian Academy {ayrinti}"}
+        for i, ayrinti in enumerate(
+            ("building", "parade ground", "cadet uniform", "entrance gate",
+             "classroom", "officer register"),
+            start=1,
+        )
     ],
     "description": "d",
     "tags": ["a", "b", "c"],

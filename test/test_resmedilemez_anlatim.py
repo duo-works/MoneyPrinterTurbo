@@ -38,9 +38,17 @@ def _plan(*anlatimlar: str) -> ya.ContentPlan:
         description="d",
         tags=["a", "b", "c"],
         title="Who Was Ibn Saud? #Shorts",
+        # ⚠️ Terimler farkli: ayni terimi tekrarlayan plan artik
+        # dogrulamadan gecmiyor (portre yigini kusuru, 2026-08-13). Bu
+        # dosyanin konusu ANLATIM, terimler yalnizca gecerli olsun diye var.
         scenes=[
-            {"narration": anlatim, "search_term": "Ibn Saud portrait"}
-            for anlatim in anlatimlar
+            {"narration": anlatim, "search_term": f"Ibn Saud {ayrinti}"}
+            for anlatim, ayrinti in zip(
+                anlatimlar,
+                ("portrait", "Riyadh fort", "desert camp", "signed treaty",
+                 "USS Quincy meeting", "Nejd banner", "royal court", "later years"),
+                strict=False,
+            )
         ],
     )
 

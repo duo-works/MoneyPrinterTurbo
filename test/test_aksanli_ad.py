@@ -50,9 +50,15 @@ def test_dort_kelimelik_aksanli_ad_capa_kapisini_geciyor():
         visual_anchor="Carl Friedrich von Weizsäcker",
         title="Who Was Carl Friedrich von Weizsäcker? #Shorts",
         script=_senaryo(),
+        # ⚠️ Terimler farkli olmali: ayni terimi tekrarlayan plan artik
+        # dogrulamadan gecmiyor (portre yigini kusuru, 2026-08-13). Testin
+        # konusu AKSANLI CAPA, bu yuzden hepsi capayi tasiyor ama ayrisiyor.
         scenes=[
-            {"narration": "n", "search_term": "Weizsäcker portrait photograph"}
-            for _ in range(6)
+            {"narration": "n", "search_term": f"Weizsäcker {ayrinti}"}
+            for ayrinti in (
+                "portrait photograph", "lecture hall", "Göttingen laboratory",
+                "signed manifesto", "physics conference", "later years",
+            )
         ],
         description="d",
         tags=["a", "b", "c"],
@@ -72,7 +78,13 @@ def test_gercekten_uzun_capa_HALA_reddediliyor_ve_nasil_kisaltilacagini_soyluyor
         visual_anchor="Carl Friedrich Freiherr von Weizsäcker",
         title="t",
         script=_senaryo(),
-        scenes=[{"narration": "n", "search_term": "Weizsäcker portrait"} for _ in range(6)],
+        scenes=[
+            {"narration": "n", "search_term": f"Weizsäcker {ayrinti}"}
+            for ayrinti in (
+                "portrait", "lecture hall", "laboratory",
+                "manifesto", "conference", "later years",
+            )
+        ],
         description="d",
         tags=["a", "b", "c"],
     )

@@ -248,6 +248,7 @@ NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or 
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME, never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
 Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
+EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. Repeating one query ("Murad III", "Murad III", ...) returns the same ranked archive results every time, and the video becomes a row of near-identical portraits, which is the single most common reason a video is rejected. Write instead: "Murad III tughra", "Murad III imperial berat", "Murad III Topkapi palace", "Murad III Ottoman map", which is the anchor plus the concrete thing THIS scene is about.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF. "No one can reconstruct every transition from this summary alone" and "the record here does not name each turning point" are not narration; they are padding you reach for when you do not know enough about the subject, and no archive image can illustrate them, so that scene is guaranteed to show something unrelated. If you cannot fill a scene with a concrete thing that happened, a named person, a place, an object, or a date, write fewer scenes. Honest uncertainty ABOUT THE WORLD stays welcome ("locals still claim...", "his body was never found").
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
@@ -486,6 +487,40 @@ def validate_content_plan(plan: ContentPlan) -> None:
             raise ValueError(f"scene {index} search term must include the visual anchor")
         if kusur := resmedilemez_kusuru(narration):
             raise ValueError(f"scene {index} {kusur}")
+        # ⚠️ Capayi TEKRARLAMAK yetmiyor, capaya bir sey EKLEMEK gerekiyor.
+        # "Murad III" tek basina 2 kelime ve capayi iceriyor, yani eski
+        # dogrulamayi geciyordu.
+        if not (_normalize_topic(term) - anchor_words):
+            raise ValueError(
+                f"scene {index} search term {term!r} is only the visual anchor; add "
+                "the concrete thing this scene is about (an object, a document, a "
+                "building, a place, an event) so the archive returns something other "
+                "than another portrait"
+            )
+    # ⚠️ Sahne terimleri BIRBIRINDEN farkli olmali. Olculdu (2026-08-13):
+    # uretilen planlarda 8 sahnenin 8'i de birebir ayni terimi tasiyordu
+    # ("Mehmed II", "Murad III"). Ayni sorgu her sahnede ayni sirali aday
+    # listesini getiriyor; `used_titles` yalnizca birebir tekrari
+    # engelledigi icin sahne N listenin N'inci gorselini aliyor — hepsi ayni
+    # havuzun en tepesindeki portreler. Hakem bunu her koşumda "duruk portre
+    # yigini, tekrarlayan format" diye cezalandirdi ve gorsel skor 78'i
+    # gecemedi (kapi 80).
+    #
+    # Istem cesitliligi ZATEN istiyordu ("Vary what the camera is actually
+    # on..."). DW-87 dersi: modele soylemek yetmiyor, KOD kontrol etmeli.
+    terimler = [
+        " ".join(sorted(_normalize_topic(scene.get("search_term", "")))) for scene in plan.scenes
+    ]
+    tekrarlayan = {terim for terim in terimler if terimler.count(terim) > 1}
+    if tekrarlayan:
+        raise ValueError(
+            f"{len(tekrarlayan)} search term(s) repeat across scenes "
+            f"({', '.join(sorted(tekrarlayan))}); every scene needs its OWN concrete "
+            "search term, because an identical query returns the same ranked archive "
+            "results and the video becomes a row of near-identical portraits. Vary "
+            "what the camera is on: the person, a document they signed, their seal, "
+            "the room, the city, the battle, the tomb"
+        )
 
 
 def parse_cli_result(stdout: str) -> dict[str, Any]:
