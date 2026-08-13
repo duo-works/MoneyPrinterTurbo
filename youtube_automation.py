@@ -1148,6 +1148,48 @@ def _son_kancalar(adet: int = 12) -> list[str]:
     ]
 
 
+ARSIV_ENVANTER_SINIRI = 45
+
+
+def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[str]:
+    """Konunun Commons kategorisindeki dosya adlari. Bulunamazsa BOS DONER.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-13, Murad III). Sahne terimlerinin
+    birbirinden farkli olmasi zorunlu kilininca (62c4d05) portre yigini
+    bitti ama YENI bir kusur cikti: model bu kez arsivde OLMAYAN seyler
+    istedi. "Murad III Ottoman map", "Murad III coin", "Murad III
+    mausoleum" yazdi; arsivde harita da sikke de turbe de yoktu, arama
+    havuzdaki minyaturu dondurdu ve hakem "harita istedin, minyatur geldi"
+    diyerek skoru 38/67/33'e indirdi.
+
+    Kusur modelin ozensizligi degil BILGISIZLIGI: konuyu yalnizca adiyla
+    goruyor ve neyin resmedilebilir oldugunu tahmin ediyor. Ayni ders
+    kaynak metninde de alinmisti (DW-114): elimizde veri varken modeli
+    tahmine birakmak kusur uretiyor.
+
+    Bos donmek bilincli: kategorisi olmayan konularda uretim durmamali,
+    hat eskisi gibi calisir.
+    """
+    try:
+        kategori = wikimedia_materials.commons_kategorisi(konu)
+        if not kategori:
+            return []
+        havuz = wikimedia_materials.kategori_gorselleri(kategori)
+    except Exception:
+        # ⚠️ Envanter bir IYILESTIRME; cekilemezse uretim durmamali.
+        # Kategori ucu 429/5xx donebiliyor ve o an plan asamasindayiz,
+        # yani elde henuz hicbir sey yok.
+        return []
+    adlar: list[str] = []
+    for sayfa in havuz:
+        baslik = str(sayfa.get("title") or "").removeprefix("File:").strip()
+        if baslik:
+            adlar.append(baslik)
+        if len(adlar) >= sinir:
+            break
+    return adlar
+
+
 def generate_content_plan(
     extra_exclusions: list[str] | None = None, konu: str | None = None
 ) -> ContentPlan:
@@ -1217,6 +1259,21 @@ def generate_content_plan(
                 "few and general. Do not invent names, dates, professions or events to fill "
                 "the script, and do not fill it with sentences about the record being thin "
                 "either: write fewer scenes about what you do know."
+            )
+        # ⚠️ ARSIV ENVANTERI — gerekcesi `arsiv_envanteri`nde. Kaynak metni
+        # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
+        # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
+        if envanter := arsiv_envanteri(konu):
+            user += (
+                "\n\nARCHIVE INVENTORY — these are the actual public-domain files that "
+                "exist for this subject. They are the ONLY things the video can show, so "
+                "build the scenes around what is genuinely here and write each scene's "
+                "search term from these names. If there is no map in this list, do not "
+                "write a scene that needs a map; if the list is full of documents, seals "
+                "and miniatures, write scenes about those. Matching a scene to an image "
+                "that does not exist is the most common reason this channel's videos are "
+                "rejected.\n"
+                f"{json.dumps(envanter, ensure_ascii=False)}"
             )
     else:
         user = (
