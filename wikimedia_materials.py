@@ -974,6 +974,22 @@ def _alinti_adayi(
     Menu zaten `_kategori_adaylari` ile suzuldugu icin buradan cogu zaman
     aday cikar; kontrol yine de yapiliyor cunku menu onbellekten gelebilir ve
     ayni sahnede daha once kullanilmis bir dosya elenmeli.
+
+    ⚠️ HAVUZDAKI KAYIT EKSIK OLABILIR, DOSYA EKSIK DEMEK DEGIL. Olculdu
+    (2026-08-14): MediaWiki `generator=categorymembers` istegi `imageinfo`yu
+    sayfa basina degil ISTEK BASINA sinirliyor ve yaklasik ilk 50 dosyadan
+    sonrasini BOS donduruyor (mime yok, boyut yok, url yok). Kategori
+    buyuklugune gore: Machu Picchu 31 uye → %0 bos, Rosetta Stone 94 → %47,
+    Great Zimbabwe 102 → %51, Angkor Wat 500 → %90.
+
+    Sonucu dogrudan olculdu: alintilarin yalnizca %39'u teslim edilebildi.
+    Havuzdaki bos kayit suzgecten eleniyor, sahne aramaya dusuyor ve baska
+    bir gorsel geliyordu — hakemin sikayet ettigi 11 sahnenin 10'u tam da
+    bunlardi. Yani menu, indiricinin getiremeyecegi dosyayi vaat ediyordu.
+
+    Bu yuzden eleme SESSIZ KABUL EDILMIYOR: havuz kaydi aday vermezse dosya
+    tek istekle yeniden isteniyor. Ancak ondan sonra "bu dosya kullanilamaz"
+    denir.
     """
     ad = baslik.strip().removeprefix("File:").strip()
     if not ad:
@@ -982,14 +998,17 @@ def _alinti_adayi(
     sayfalar = [
         sayfa for sayfa in kategori_havuzu if str(sayfa.get("title", "")) == tam_ad
     ]
-    if not sayfalar:
-        # Menu kategoriden VE aramadan besleniyor; aramadan gelen bir secim
-        # kategori havuzunda bulunmaz, tek istekle getiriliyor.
-        sayfa = dosya_sayfasi(ad)
-        if sayfa is None:
-            return None
-        sayfalar = [sayfa]
-    adaylar = _puanli_adaylar(sayfalar, used_titles, "", "")
+    if sayfalar:
+        adaylar = _puanli_adaylar(sayfalar, used_titles, "", "")
+        if adaylar:
+            return adaylar[0]
+    # Havuzda yok, ya da havuzdaki kayit eksik: tek istekle dosyanin kendisi.
+    # Menu kategoriden VE aramadan beslendigi icin aramadan gelen bir secim
+    # zaten burada cozuluyor.
+    sayfa = dosya_sayfasi(ad)
+    if sayfa is None:
+        return None
+    adaylar = _puanli_adaylar([sayfa], used_titles, "", "")
     return adaylar[0] if adaylar else None
 
 

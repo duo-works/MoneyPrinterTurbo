@@ -124,6 +124,31 @@ def test_kategoride_olmayan_alinti_tek_istekle_getiriliyor(monkeypatch, tmp_path
     assert kunyeler[0]["title"] == "File:uzak.jpg"
 
 
+def test_havuzdaki_EKSIK_kayit_dosyayi_dusurmuyor(monkeypatch, tmp_path):
+    """⚠️ Alintilarin %61'ini kaybettiren kusur — olculdu (2026-08-14).
+
+    MediaWiki `categorymembers` istegi `imageinfo`yu ISTEK BASINA
+    siniriyor ve yaklasik ilk 50 dosyadan sonrasini BOS donduruyor. Angkor
+    Wat kategorisinde uyelerin %90'i boyle geldi. Havuzdaki bos kayit
+    suzgecten elenince sahne aramaya dusuyor ve BASKA bir gorsel geliyordu;
+    hakemin sikayet ettigi 11 sahnenin 10'u tam da bunlardi.
+    """
+    eksik = {"title": "File:secilen.jpg", "imageinfo": [{}]}
+    _hat(monkeypatch, [eksik, _sayfa("File:baska.jpg", "u2")])
+    monkeypatch.setattr(
+        wm, "dosya_sayfasi", lambda ad: _sayfa(f"File:{ad}", "u-tam")
+    )
+
+    _dosyalar, kunyeler = wm.download_scene_materials(
+        "Konu",
+        [{"narration": "n", "search_term": "Konu detay", "kaynak_dosya": "secilen.jpg"}],
+        tmp_path,
+        visual_anchor="Konu",
+    )
+
+    assert kunyeler[0]["title"] == "File:secilen.jpg", "eksik kayit dosyayi dusurmemeli"
+
+
 def test_alinti_bulunamazsa_zincir_devam_ediyor(monkeypatch, tmp_path):
     """⚠️ Alinti bir GARANTI degil ILK TERCIH.
 
