@@ -213,6 +213,21 @@ class DistinctTopicUnavailableError(RuntimeError):
     pass
 
 
+class UzunFormatUygunDegilError(RuntimeError):
+    """Arsiv bu konuda uzun formati besleyemiyor — Shorts'a dusulmeli.
+
+    ⚠️ NEDEN TIPLI HATA, NEDEN KAPIYA BIRAKILMADI: `alinti_kusuru`'nun
+    "menu sahne sayisindan kucuk" kolu bu durumu huni kipinde COZEMEZ.
+    Konu disaridan sabitlenmis oluyor ("Keep this subject") ve kapinin
+    modele verdigi geri bildirim "baska bir seye capa at" diyor — model
+    bunu yapamaz, bes deneme yanar, koşum `DistinctTopicUnavailableError`
+    ile HIC VIDEO URETMEDEN duser. Bu hatta olculmus bir kusur (18:05).
+
+    Onun yerine cikarim koşumu BASLAMADAN once menu olculuyor ve cagiran
+    tarafa "bu konuda uzun format olmaz" deniyor. Maliyeti sifir.
+    """
+
+
 # NFKD'nin AYRISTIRMADIGI harfler. Ayrismayan bir harf `[a-z0-9]+` suzgecinde
 # kelimeyi ikiye boluyor, o yuzden tek tek karsiliklari yaziliyor.
 _AYRISMAYAN_HARFLER = str.maketrans(
@@ -398,9 +413,89 @@ sonraki uc-tirnak arasi). Kimlik ayri bir sabite tasininca o dilim koptu ve
 """
 
 
-def editoryal_sistem_yonergesi() -> str:
-    """Modele giden tam sistem yonergesi. Testler bunu okur, kaynagi degil."""
-    return KANAL_SESI + EDITORYAL_YONERGE
+UZUN_YONERGE = """
+THIS IS A LONG FORM DOCUMENTARY, NOT A SHORT, and the difference is not length alone. The viewer has chosen to sit down for eight to fifteen minutes; a Short's script stretched to that length is the one failure to avoid. No filler, no restating what was already said, no list of a monument's features.
+Build the script in parts: an opening that poses the question, then three to five thematic sections that each answer a different part of it, then a closing that takes a position. Each section must move the story somewhere the previous one did not; a section that could swap places with another is a section that should be cut.
+NEVER ANNOUNCE THE STRUCTURE. Do not write "in this section", "first we will look at", "as we saw earlier", or any other signposting. The viewer feels a new section through the change of subject, not through being told about it.
+THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
+Length makes one failure far more expensive: inventing facts to fill time. When the source text runs out, write fewer scenes about what it does contain, never more scenes about what it does not."""
+"""Uzun formata OZEL yonerge — Shorts sozlesmesinin ustune eklenir.
+
+⚠️ Sahne anlatimlarinin esit uzunlukta olmasi maddesi kozmetik degil:
+`run_generator` her materyale ESIT `clip_duration` veriyor (`klip_suresi`),
+yani sahne i'nin karesi sesin i'nci esit diliminde ekranda. Shorts'ta 8
+sahne × ~12 kelimede kayma gorunmuyordu; 45 sahnede birikiyor ve gorsel
+soylenenden kopuyor.
+"""
+
+
+def _yonerge_degistir(metin: str, eski: str, yeni: str) -> str:
+    """Istem cumlesini degistirir; hedef cumle YOKSA PATLAR.
+
+    ⚠️ Sessiz `str.replace` burada tehlikeli olurdu: Shorts sozlesmesi
+    zamanla degisirse uzun kipin istemi eski sayilari (80-120 kelime, 6-10
+    sahne) tasimaya devam eder ve model her denemede dogrulamadan doner.
+    Bes deneme tukendiginde koşum hic video uretmeden duser — bu hatta
+    olculmus bir kusur (18:05 koşumu).
+    """
+    if eski not in metin:
+        raise RuntimeError(
+            f"uzun format yonergesi kurulamadi: {eski!r} artik istemde yok. "
+            "Shorts sozlesmesi degistiyse uzun kipin karsiligi da guncellenmeli."
+        )
+    return metin.replace(eski, yeni)
+
+
+def editoryal_sistem_yonergesi(bicim: "VideoBicimi | None" = None) -> str:
+    """Modele giden tam sistem yonergesi. Testler bunu okur, kaynagi degil.
+
+    ⚠️ Uzun kipte sozlesme DEGISTIRILIYOR, uzerine yazilmiyor. Ilk tasarim
+    "80-120 kelime" cumlesini yerinde birakip sonuna bir gecersiz kilma
+    blogu eklemekti; birakilsaydi istem kendi kendisiyle celisirdi ve her
+    celiskili deneme ~2.000 kelimelik bir cikarim koşumu demek. Bes deneme
+    o sekilde tukenirse o saat icin video uretilmez.
+
+    ⚠️ `bicim` varsayilani `None`, `SHORTS_BICIMI` degil: bu fonksiyon
+    dosyada `SHORTS_BICIMI`den ONCE tanimli ve varsayilan degerler `def`
+    aninda hesaplaniyor. Ayni sinif kusur bu oturumda uc koşum oldurdu.
+    """
+    bicim = bicim or SHORTS_BICIMI
+    if bicim.ad == SHORTS_BICIMI.ad:
+        return KANAL_SESI + EDITORYAL_YONERGE
+
+    kelime_en_az, kelime_en_cok = bicim.kelime_araligi
+    sahne_en_az, sahne_en_cok = bicim.sahne_araligi
+
+    kimlik = _yonerge_degistir(
+        KANAL_SESI,
+        "English global-history YouTube Shorts channel",
+        "English global-history YouTube documentary channel",
+    )
+    sozlesme = _yonerge_degistir(
+        EDITORYAL_YONERGE,
+        "The script must be 80-120 spoken English words",
+        f"The script must be {kelime_en_az}-{kelime_en_cok} spoken English words",
+    )
+    sozlesme = _yonerge_degistir(
+        sozlesme,
+        "Create 6-10 chronological scenes.",
+        f"Create {sahne_en_az}-{sahne_en_cok} chronological scenes.",
+    )
+    # ⚠️ Basliktaki `#Shorts` istemden DUSUYOR; kalirsa YouTube videoyu
+    # Shorts sayar ve IZLENME SAATI YAZMAZ — uzun formatin butun amaci o
+    # saatler. Yasak acikca yaziliyor cunku isteme ayrica son basliklar
+    # veriliyor ve hepsi `#Shorts` ile bitiyor: model onlari taklit eder.
+    sozlesme = _yonerge_degistir(
+        sozlesme,
+        "Under 65 characters when practical, and contain #Shorts.",
+        "Under 65 characters when practical. NEVER put #Shorts, or any other Shorts "
+        "tag, anywhere in the title: this is a long form video and that tag makes "
+        "YouTube file it as a Short, which destroys the watch time this video exists "
+        "to earn. Earlier titles quoted to you below end in #Shorts because they were "
+        "Shorts; do not copy that from them.",
+    )
+    return kimlik + sozlesme + UZUN_YONERGE
+
 
 KALIP_ACILISLAR = (
     "did you know",
@@ -710,6 +805,17 @@ def validate_content_plan(
         )
     if len(plan.title) > 100:
         raise ValueError("YouTube title must be at most 100 characters")
+    # ⚠️ KOD KAPISI, yalnizca istem degil. Uzun formatin butun amaci izlenme
+    # saati ve YouTube `#Shorts` etiketli videoyu Shorts sayip saat YAZMIYOR.
+    # Isteme ayrica son 40 baslik veriliyor ve hepsi `#Shorts` ile bitiyor,
+    # yani modelin onunde yasagi delen 40 ornek var; DW-87 dersi geregi
+    # dogrulanabilir olguyu kod denetliyor.
+    if not bicim.dikey and "#shorts" in plan.title.casefold():
+        raise ValueError(
+            f"title {plan.title!r} contains #Shorts, but this is a long form video. "
+            "YouTube would file it as a Short and it would earn no watch time. "
+            "Write the same search phrase without any Shorts tag"
+        )
     if len(plan.tags) < 3:
         raise ValueError("at least three tags are required")
     for index, scene in enumerate(plan.scenes, 1):
@@ -1709,7 +1815,25 @@ secim yapabilsin diye genis, isteme sigsin diye sinirli. Olculdu
 yani sinir cogu konuda zaten baglayici degil.
 """
 
-_ENVANTER_ONBELLEGI: dict[str, list[dict[str, str]]] = {}
+UZUN_ENVANTER_SINIRI = 60
+"""Uzun formatta menude en fazla kac dosya gosterilecek.
+
+⚠️ 40 yetmez: uzun format 24-45 sahne istiyor ve her sahne menuden AYRI bir
+dosya alintilamak zorunda (`alinti_kusuru`). 40'lik menuyle 45 sahne
+istemek, modelden imkansizi istemek olurdu.
+
+Olculdu (2026-08-15) — bu sinirla kullanilabilir gorsel: Bagan 49,
+Herculaneum 37, Alhambra 32, Egyptian pyramids 23. Yani sinir cogu konuda
+baglayici bile degil; asil sinir arsivin kendisi.
+"""
+
+
+def envanter_siniri(bicim: "VideoBicimi | None" = None) -> int:
+    """Bicimin menu siniri. Tek yerden okunur ki kapi ile istem ayrisamasin."""
+    return UZUN_ENVANTER_SINIRI if bicim and not bicim.dikey else ARSIV_ENVANTER_SINIRI
+
+
+_ENVANTER_ONBELLEGI: dict[tuple[str, int], list[dict[str, str]]] = {}
 ACIKLAMA_SINIRI = 140
 
 
@@ -1737,7 +1861,12 @@ def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[di
 
     Bos donmek bilincli: menu kurulamayan konularda uretim durmamali.
     """
-    anahtar = konu.strip().casefold()
+    # ⚠️ Onbellek anahtari SINIRI DA iceriyor. Yalnizca konuyla anahtarlansaydi
+    # ayni surecte once calisan Shorts koşumu 40'lik menuyu onbellege koyar,
+    # sonraki uzun koşum 60 isteyip 40 alirdi — ve tersi de mumkun. Kapinin
+    # modele gosterilenden BASKA bir listeye bakmasi, bu dosyada zaten
+    # olculmus bir kusur sinifi (bkz. `alinti_kusuru`, "Jock Willis").
+    anahtar = (konu.strip().casefold(), sinir)
     if anahtar in _ENVANTER_ONBELLEGI:
         return _ENVANTER_ONBELLEGI[anahtar]
     try:
@@ -1811,7 +1940,12 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     return len(menu) >= sahne_sayisi * KARE_YUVASI
 
 
-def ikincil_alintilari_temizle(plan: ContentPlan, menu_konusu: str = "") -> int:
+def ikincil_alintilari_temizle(
+    plan: ContentPlan,
+    menu_konusu: str = "",
+    *,
+    sinir: int = ARSIV_ENVANTER_SINIRI,
+) -> int:
     """Gecersiz ya da tekrarlayan IKINCI alintilari siler; silinen sayisi doner.
 
     ⚠️ NEDEN REDDETMEK DEGIL TEMIZLEMEK: ikinci gorsel bir IYILESTIRME.
@@ -1821,7 +1955,7 @@ def ikincil_alintilari_temizle(plan: ContentPlan, menu_konusu: str = "") -> int:
     Iyilestirme ugruna calisan bir plani cope atmak, kazanci maliyetten
     kucuk bir takas.
     """
-    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor, sinir=sinir)
     gecerli = {girdi["dosya"] for girdi in menu} if menu else set()
     gorulen = {str(s.get("kaynak_dosya", "")).strip() for s in plan.scenes}
     silinen = 0
@@ -1837,7 +1971,12 @@ def ikincil_alintilari_temizle(plan: ContentPlan, menu_konusu: str = "") -> int:
     return silinen
 
 
-def _menu_talimati(menu: list[dict[str, str]], sahne_sayisi: int = 0) -> str:
+def _menu_talimati(
+    menu: list[dict[str, str]],
+    sahne_sayisi: int = 0,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> str:
     """Menuyu isteme koyan metin. Kapinin (`alinti_kusuru`) sozlu karsiligi.
 
     Metin tek bir sey soyluyor: ONCE goruntuyu sec, SONRA onun uzerine cumle
@@ -1854,6 +1993,18 @@ def _menu_talimati(menu: list[dict[str, str]], sahne_sayisi: int = 0) -> str:
         "one entry, copy its 'dosya' value EXACTLY into the scene's source_file field, "
         "and write narration that tells the story of the THING in that picture. A "
         "different entry for every scene. "
+        # ⚠️ SAHNE TAVANINI MENU BELIRLIYOR ve model bunu BILMELI. Uzun kipte
+        # sozlesme 24-45 sahne diyor; 32 dosyalik bir arsivde 40 sahne
+        # istenirse her sahne ayri dosya alintilayamaz, `alinti_kusuru`
+        # plani reddeder ve bes deneme yanar. Tek cumle, cogu yeniden
+        # denemeyi bastan siliyor.
+        + (
+            f"This archive holds {len(menu)} usable images, so this video can have at "
+            f"most {len(menu)} scenes: write between {bicim.sahne_araligi[0]} and "
+            f"{min(bicim.sahne_araligi[1], len(menu))} scenes and no more. "
+            if not bicim.dikey
+            else ""
+        )
         # ⚠️ IKINCI GORSEL YALNIZCA MENU YETIYORSA isteniyor — kanal
         # sahibinin karari (2026-08-14): her sahne iki kare gosteriyor,
         # cunku tek gorsel altyazinin 2,5 kati yavas kaliyordu.
@@ -1871,7 +2022,14 @@ def _menu_talimati(menu: list[dict[str, str]], sahne_sayisi: int = 0) -> str:
             "any scene already cites, in either field. If you cannot find a distinct "
             "second entry for a scene, leave its source_file_2 empty rather than "
             "repeating one. "
-            if ikinci_gorsel_istenebilir(menu, sahne_sayisi or len(menu))
+            if bicim.kare_yuvasi >= 2
+            and ikinci_gorsel_istenebilir(menu, sahne_sayisi or len(menu))
+            # ⚠️ Uzun kipte sahne basina TEK kare var (`kare_yuvasi = 1`), yani
+            # ikinci gorsel istemenin yeri yok: istenirse model gereksiz yere
+            # menunun iki katini tuketir ve ekranda hicbir sey degismez.
+            else "Leave source_file_2 empty for every scene: each scene shows exactly "
+            "one picture in this format. "
+            if bicim.kare_yuvasi < 2
             else "Leave source_file_2 empty for every scene: this archive is too small "
             "to give each scene a second distinct picture. "
         )
@@ -1888,7 +2046,12 @@ def _menu_talimati(menu: list[dict[str, str]], sahne_sayisi: int = 0) -> str:
     )
 
 
-def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
+def alinti_kusuru(
+    plan: ContentPlan,
+    menu_konusu: str = "",
+    *,
+    sinir: int = ARSIV_ENVANTER_SINIRI,
+) -> str:
     """Her sahne menuden GERCEK bir dosya secmis mi — secmemisse kusur metni.
 
     ⚠️ NEDEN ALINTI, NEDEN KELIME ORTUSMESI DEGIL: bu kapinin onceki hali
@@ -1920,7 +2083,7 @@ def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
     gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu kusurun
     kaynagina cevirir.
     """
-    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor, sinir=sinir)
     if not menu:
         return ""
     if len(menu) < len(plan.scenes):
@@ -1967,6 +2130,8 @@ def generate_content_plan(
     extra_exclusions: list[str] | None = None,
     konu: str | None = None,
     sahne_sayisi: int | None = None,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
 ) -> ContentPlan:
     """Video planini uretir; `konu` verilirse KONUYU SECMEZ, verileni isler.
 
@@ -1978,7 +2143,33 @@ def generate_content_plan(
     Bu ayrimin bedeli olculdu: 6 Agustos gecesi uretilen 6 videonun konusunu
     model kendi havuzundan sectI ve ayni gecede iki Roma muhendisligi videosu
     cikti. Huni beslemesinin varlik sebebi bu.
+
+    ⚠️ UZUN BICIM `konu` ZORUNLU KILIYOR. Kaynak metin ve arsiv menusu
+    bloklarinin ikisi de `if konu:` dalinin icinde; `konu=None` ile uzun bir
+    plan istemek, modelden 2.000 kelimeyi HAFIZADAN yazmasini istemek ve
+    alinti kapisini sessizce kapatmak olurdu. Uydurma bu hatta olculmus bir
+    kusur (DW-114, "Franziska Scanagatta") ve uzun formatta kelime basina
+    degil kelime SAYISIYLA olcekleniyor.
     """
+    if not bicim.dikey and not konu:
+        raise ValueError(
+            "uzun bicim icin `konu` zorunlu: kaynak metin ve arsiv menusu yalnizca "
+            "konu verildiginde isteme giriyor, konusuz uzun plan hafizadan yazilir"
+        )
+    envanter_sinir = envanter_siniri(bicim)
+    # ⚠️ ON KONTROL — cikarim koşumu BASLAMADAN. Gerekcesi
+    # `UzunFormatUygunDegilError` docstring'inde: bu durumu `alinti_kusuru`
+    # huni kipinde cozemez, cunku konu sabit ve kapinin geri bildirimi
+    # "baska bir seye capa at" diyor. Bes deneme yanar, koşum hic video
+    # uretmeden duser. Burada maliyet sifir.
+    if not bicim.dikey:
+        on_menu = arsiv_envanteri(konu or "", sinir=envanter_sinir)
+        if len(on_menu) < bicim.sahne_araligi[0]:
+            raise UzunFormatUygunDegilError(
+                f"{konu!r} icin arsivde {len(on_menu)} kullanilabilir gorsel var, "
+                f"uzun formatin gerektirdigi {bicim.sahne_araligi[0]} sahneden az; "
+                "bu konu Shorts olarak uretilmeli"
+            )
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = [
@@ -2004,7 +2195,7 @@ def generate_content_plan(
             "(olcut: Commons kategorisinde 12+ kadraj ve lisans gecen gorsel).",
             flush=True,
         )
-    system = editoryal_sistem_yonergesi()
+    system = editoryal_sistem_yonergesi(bicim)
     if konu:
         # Konu sabit: model yalnizca acilari, sahneleri ve gorsel capayi kurar.
         # Kisitlar (sahne sayisi, capa tekrari, kamu malI gorsel) aynen gecerli.
@@ -2026,9 +2217,19 @@ def generate_content_plan(
         # kadin. Huninin varlik sebebi arzi az konular bulmak, arzin az olmasinin
         # en yaygin sebebi ise konunun az bilinmesi — yani huni ne kadar iyi
         # calisirsa modelin bilmedigi konu o kadar cok geliyor.
-        if kaynak := wikimedia_materials.vikipedi_ozeti(konu):
+        # ⚠️ Uzun kipte OZET DEGIL TAM MAKALE. Olculdu (2026-08-15): ozet
+        # 32-102 kelime, tam makale 1.492-7.539 (27-193 kat). 56 kelimelik
+        # ozetten 2.000 kelime yazmasi istenen model aradaki farki uydurur.
+        kaynak_cek = (
+            wikimedia_materials.vikipedi_ozeti
+            if bicim.dikey
+            else wikimedia_materials.vikipedi_tam_metin
+        )
+        if kaynak := kaynak_cek(konu):
             user += (
-                "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia summary of the subject. "
+                "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia "
+                + ("summary" if bicim.dikey else "article")
+                + " of the subject. "
                 "Every factual claim in your script, title, description and tags must be "
                 "consistent with it. Inventing a fact is the one failure this channel "
                 "cannot survive. Where the summary is silent, do NOT write a sentence "
@@ -2050,12 +2251,16 @@ def generate_content_plan(
         # ⚠️ ARSIV MENUSU — gerekcesi `arsiv_envanteri`nde. Kaynak metni
         # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
         # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
-        if envanter := arsiv_envanteri(konu):
-            # Sahne sayisi verilmemisse (model 6-10 arasi secer) en KOTU
-            # ihtimale gore karar veriliyor: 10 sahne icin yeterli degilse
-            # ikinci gorsel istenmiyor. Iyimser davranip sonra temizlemek,
-            # modelin bosuna dosya uydurmasini davet ederdi.
-            user += _menu_talimati(envanter, sahne_sayisi or 10)
+        if envanter := arsiv_envanteri(konu, sinir=envanter_sinir):
+            # Sahne sayisi verilmemisse (model bicimin araliginda secer) en
+            # KOTU ihtimale gore karar veriliyor: aralikin USTU icin yeterli
+            # degilse ikinci gorsel istenmiyor. Iyimser davranip sonra
+            # temizlemek, modelin bosuna dosya uydurmasini davet ederdi.
+            user += _menu_talimati(
+                envanter,
+                sahne_sayisi or bicim.sahne_araligi[1],
+                bicim=bicim,
+            )
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
@@ -2153,7 +2358,7 @@ def generate_content_plan(
                 scene["search_term"], plan.visual_anchor
             )
         try:
-            validate_content_plan(plan, sahne_sayisi)
+            validate_content_plan(plan, sahne_sayisi, bicim=bicim)
         except ValueError as exc:
             user += (
                 "\nThe last JSON plan was invalid: "
@@ -2164,13 +2369,17 @@ def generate_content_plan(
         # veriliyor; yedek kipte capayi model sectigi icin menu istemde HIC
         # yok ve ancak bu kapinin geri bildirimiyle geliyor. Gerekce
         # `alinti_kusuru` docstring'inde.
-        if yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu or "")):
+        if yumusak_kapilar_acik and (
+            kusur := alinti_kusuru(plan, konu or "", sinir=envanter_sinir)
+        ):
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
         # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
         # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
         # tekrarlayan ikinci alintilar siliniyor; plan yasiyor.
-        if silinen := ikincil_alintilari_temizle(plan, konu or ""):
+        if silinen := ikincil_alintilari_temizle(
+            plan, konu or "", sinir=envanter_sinir
+        ):
             print(
                 f"ℹ️ {silinen} ikinci alıntı temizlendi (uydurma ya da tekrar); "
                 "o sahneler birincil kareyi iki yuvada gösterecek",

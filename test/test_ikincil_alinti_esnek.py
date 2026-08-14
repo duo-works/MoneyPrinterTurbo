@@ -22,6 +22,7 @@ gosterir ve bugunku haliyle birebir ayni durur. Iyilestirme ugruna
 calisan bir plani cope atmak, kazanci maliyetten kucuk bir takas.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -90,14 +91,14 @@ def test_istem_buyuk_menude_ikinci_dosya_ISTIYOR():
 
 def test_uydurma_ikinci_alinti_plani_REDDETMIYOR(monkeypatch):
     """⚠️ Gerilemenin ta kendisi: burada bos donmezse koşum video uretmez."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
     plan = _plan([("A.jpg", "YOK.jpg"), ("B.jpg", "")])
 
     assert ya.alinti_kusuru(plan) == ""
 
 
 def test_tekrarlayan_ikinci_alinti_plani_REDDETMIYOR(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
     plan = _plan([("A.jpg", "B.jpg"), ("B.jpg", "A.jpg")])
 
     assert ya.alinti_kusuru(plan) == ""
@@ -105,7 +106,7 @@ def test_tekrarlayan_ikinci_alinti_plani_REDDETMIYOR(monkeypatch):
 
 def test_BIRINCIL_alinti_hala_sert_deneteniyor(monkeypatch):
     """⚠️ Gevsetme yalnizca ikinci alintida. Birincil yanlissa video yanlis."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
 
     uydurma = ya.alinti_kusuru(_plan([("YOK.jpg", ""), ("B.jpg", "")]))
     tekrarli = ya.alinti_kusuru(_plan([("A.jpg", ""), ("A.jpg", "")]))
@@ -118,7 +119,7 @@ def test_BIRINCIL_alinti_hala_sert_deneteniyor(monkeypatch):
 
 
 def test_uydurma_ikinci_alinti_SILINIYOR(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg"))
     plan = _plan([("A.jpg", "YOK.jpg"), ("B.jpg", "C.jpg")])
 
     silinen = ya.ikincil_alintilari_temizle(plan)
@@ -130,7 +131,7 @@ def test_uydurma_ikinci_alinti_SILINIYOR(monkeypatch):
 
 def test_BIRINCILLE_cakisan_ikinci_alinti_siliniyor(monkeypatch):
     """Ayni gorsel bir sahnenin iki yuvasinda cikmasin — sikayet buydu."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
     plan = _plan([("A.jpg", "B.jpg"), ("B.jpg", "")])
 
     silinen = ya.ikincil_alintilari_temizle(plan)
@@ -140,7 +141,7 @@ def test_BIRINCILLE_cakisan_ikinci_alinti_siliniyor(monkeypatch):
 
 
 def test_ikinci_alintilar_birbirini_tekrar_edemez(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "X.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "X.jpg"))
     plan = _plan([("A.jpg", "X.jpg"), ("B.jpg", "X.jpg")])
 
     silinen = ya.ikincil_alintilari_temizle(plan)
@@ -150,7 +151,7 @@ def test_ikinci_alintilar_birbirini_tekrar_edemez(monkeypatch):
 
 
 def test_temiz_plan_bozulmuyor(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg", "D.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg", "D.jpg"))
     plan = _plan([("A.jpg", "B.jpg"), ("C.jpg", "D.jpg")])
 
     assert ya.ikincil_alintilari_temizle(plan) == 0
@@ -159,7 +160,7 @@ def test_temiz_plan_bozulmuyor(monkeypatch):
 
 def test_menu_yoksa_temizlik_patlamiyor(monkeypatch):
     """Menusu olmayan konularda hat eskisi gibi aramayla calisiyor."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: [])
     plan = _plan([("A.jpg", "B.jpg")])
 
     assert ya.ikincil_alintilari_temizle(plan) == 0
@@ -172,4 +173,10 @@ def test_temizlik_plan_dongusune_BAGLI():
     """⚠️ Fonksiyon dogru olsa bile cagrilmazsa bozuk alinti indirmeye gider."""
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert "ikincil_alintilari_temizle(plan, konu or \"\")" in kaynak
+    # ⚠️ Kapanis parantezi ARANMIYOR ve bosluklar siliniyor: cagriya
+    # sonradan `sinir=` eklendi, satir sardi ve test kirildi. Testin konusu
+    # argüman listesi degil, temizligin plan dongusune bagli olmasi.
+    def bosluksuz(metin: str) -> str:
+        return re.sub(r"\s+", "", metin)
+
+    assert bosluksuz('ikincil_alintilari_temizle(plan, konu or ""') in bosluksuz(kaynak)

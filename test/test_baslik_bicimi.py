@@ -202,7 +202,7 @@ def test_kapi_YEDEK_KIPTE_gercekten_yuruyor(monkeypatch):
     monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
     monkeypatch.setattr(ya, "load_state", lambda: {})
     monkeypatch.setattr(ya, "_recent_titles", lambda: [])
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: [])
 
     plan = ya.generate_content_plan(konu=None)
 

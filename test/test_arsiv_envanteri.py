@@ -102,7 +102,7 @@ def test_menu_isteme_giriyor(monkeypatch):
     monkeypatch.setattr(
         ya,
         "arsiv_envanteri",
-        lambda _k: [
+        lambda _k, **_: [
             {
                 "dosya": "Tughra of Murad III.JPG",
                 "gosterdigi": "Imperial monogram",
@@ -137,7 +137,7 @@ def test_menu_yoksa_istem_bozulmuyor(monkeypatch):
         yakalanan["user"] = user
         raise RuntimeError("dur")
 
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: [])
     monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *_a, **_k: "Murad III was a sultan.")
     monkeypatch.setattr(ya, "_json_completion", sahte_cikarim)
     monkeypatch.setattr(ya, "load_state", lambda: {})

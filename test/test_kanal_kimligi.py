@@ -156,8 +156,10 @@ def test_uretim_akisi_bu_yonergeyi_kullaniyor():
     """Baglanti testi — birlesme dogru olsa bile `plan_content` onu
     cagirmazsa kimlik modele hic gitmez (DW-97 dersi).
     """
+    # Argüman listesi ARANMIYOR: fonksiyon uzun format icin `bicim` aldi ve
+    # testin konusu imza degil, uretim akisinin bu yonergeyi cagirmasi.
     i = KAYNAK.index("    system = ")
-    assert "editoryal_sistem_yonergesi()" in KAYNAK[i : i + 120]
+    assert "editoryal_sistem_yonergesi(" in KAYNAK[i : i + 120]
 
 
 def test_insan_yazdi_iddiasi_yok():

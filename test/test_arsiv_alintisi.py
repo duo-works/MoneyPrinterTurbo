@@ -49,7 +49,7 @@ def _plan(*alintilar: str) -> ya.ContentPlan:
 
 def test_menudeki_dosyalar_geciyor(monkeypatch):
     monkeypatch.setattr(
-        ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg", "D.jpg")
+        ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg", "D.jpg")
     )
 
     assert ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "C.jpg")) == ""
@@ -57,7 +57,7 @@ def test_menudeki_dosyalar_geciyor(monkeypatch):
 
 def test_uydurulan_dosya_reddediliyor(monkeypatch):
     """Modelin var SANDIGI dosya — kusurun ta kendisi."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg"))
 
     kusur = ya.alinti_kusuru(_plan("A.jpg", "1974 farmers digging well.jpg", "C.jpg"))
 
@@ -67,7 +67,7 @@ def test_uydurulan_dosya_reddediliyor(monkeypatch):
 def test_kusur_mesaji_menuyu_tasiyor(monkeypatch):
     """⚠️ Dogrulama hatasi modele geri besleniyor: mesaj SECENEKLERI tasimazsa
     model ayni uydurmayi tekrarliyor ve dongu bes denemeyi tuketiyor."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg"))
 
     kusur = ya.alinti_kusuru(_plan("yok.jpg", "B.jpg", "C.jpg"))
 
@@ -76,7 +76,7 @@ def test_kusur_mesaji_menuyu_tasiyor(monkeypatch):
 
 def test_ayni_dosya_iki_sahnede_reddediliyor(monkeypatch):
     """Kullanicinin birebir sikayeti: 'bir resmi birden fazla kez kullanmissin'."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "C.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "C.jpg"))
 
     kusur = ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "A.jpg"))
 
@@ -93,7 +93,7 @@ def test_menu_sahne_sayisindan_kucukse_capa_reddediliyor(monkeypatch):
     Olculdu (2026-08-14): Archimedes Palimpsest ve Pompeii Amon Min menusu
     SIFIR dosya; ikisi de skor 0 aldi ve ikisi de bir uretim slotu yakti.
     """
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
 
     kusur = ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "A.jpg"))
 
@@ -103,7 +103,7 @@ def test_menu_sahne_sayisindan_kucukse_capa_reddediliyor(monkeypatch):
 
 def test_menu_yoksa_kapi_kapali(monkeypatch):
     """Menusu kurulamayan konularda hat eskisi gibi aramayla calismali."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: [])
 
     assert ya.alinti_kusuru(_plan("", "", "")) == ""
 
@@ -119,7 +119,7 @@ def test_kapi_ISTEMDEKI_menuye_bakiyor(monkeypatch):
     kusurun kaynagina cevirir.
     """
     menuler = {"Cutty Sark": _menu("A.jpg", "B.jpg", "C.jpg"), "Jock Willis": _menu("Z.jpg")}
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda k: menuler.get(k, []))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda k, **_: menuler.get(k, []))
 
     plan = _plan("A.jpg", "B.jpg", "C.jpg")
     plan.visual_anchor = "Jock Willis"

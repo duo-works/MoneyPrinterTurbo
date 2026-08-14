@@ -15,6 +15,7 @@ Iki ayri sey kilitleniyor:
    duzeltilmesi istenen istikrarsizligin ta kendisi.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -75,10 +76,18 @@ def test_yumusak_kapilar_son_denemelerde_gevsiyor():
     govde = kaynak[i : kaynak.index("def refine_search_terms(", i)]
 
     assert "YUMUSAK_KAPI_DENEMESI" in govde
-    assert "yumusak_kapilar_acik and alinti_kusuru" in govde.replace("(", " ").replace(
-        ")", " "
-    ) or "yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu" in govde
-    assert "yumusak_kapilar_acik and _kanca_tekrari" in govde
+
+    # ⚠️ BOSLUKLARDAN BAGIMSIZ karsilastirma. Onceki hali cagrinin tek
+    # satirda durdugunu varsayiyordu ve `alinti_kusuru`ya bir argüman
+    # eklenip satir sarinca kirildi — kusur kodda degil, testin kodu okuma
+    # bicimindeydi. Bicimlendirici satiri istedigi yerden bolebilmeli.
+    def bosluksuz(metin: str) -> str:
+        return re.sub(r"\s+", "", metin)
+
+    assert bosluksuz("yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu") in (
+        bosluksuz(govde)
+    )
+    assert bosluksuz("yumusak_kapilar_acik and _kanca_tekrari") in bosluksuz(govde)
 
 
 def test_dogrulama_HER_denemede_zorunlu():

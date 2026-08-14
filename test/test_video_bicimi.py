@@ -23,11 +23,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import youtube_automation as ya  # noqa: E402
 
 
-def _plan(kelime: int, sahne: int) -> ya.ContentPlan:
+def _plan(kelime: int, sahne: int, baslik: str = "baslik #Shorts") -> ya.ContentPlan:
     return ya.ContentPlan(
         topic="konu",
         visual_anchor="Herculaneum",
-        title="baslik #Shorts",
+        title=baslik,
         script="Herculaneum was buried. " + "word " * max(kelime - 3, 0),
         scenes=[
             {"narration": f"sahne {i}", "search_term": f"Herculaneum detay {i}"}
@@ -36,6 +36,11 @@ def _plan(kelime: int, sahne: int) -> ya.ContentPlan:
         description="aciklama",
         tags=["a", "b", "c"],
     )
+
+
+def _uzun_plan(kelime: int, sahne: int) -> ya.ContentPlan:
+    """Uzun format plani — basligi `#Shorts` TASIMAZ (kapi onu reddediyor)."""
+    return _plan(kelime, sahne, baslik="Herculaneum: What the Ash Preserved")
 
 
 def test_varsayilan_bicim_SHORTS():
@@ -48,20 +53,20 @@ def test_varsayilan_bicim_SHORTS():
 
 def test_uzun_bicim_2000_kelimeyi_KABUL_ediyor():
     """⚠️ Kapi kipe bagli olmasaydi her uzun senaryo reddedilirdi."""
-    ya.validate_content_plan(_plan(1500, 30), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 30), bicim=ya.UZUN_BICIMI)
 
 
 def test_uzun_bicimde_SHORTS_senaryosu_reddediliyor():
     with pytest.raises(ValueError, match="1200-2200 words"):
-        ya.validate_content_plan(_plan(100, 30), bicim=ya.UZUN_BICIMI)
+        ya.validate_content_plan(_uzun_plan(100, 30), bicim=ya.UZUN_BICIMI)
 
 
 def test_uzun_bicim_sahne_araligi():
-    ya.validate_content_plan(_plan(1500, 24), bicim=ya.UZUN_BICIMI)
-    ya.validate_content_plan(_plan(1500, 45), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 24), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 45), bicim=ya.UZUN_BICIMI)
 
     with pytest.raises(ValueError, match="24-45 scenes"):
-        ya.validate_content_plan(_plan(1500, 8), bicim=ya.UZUN_BICIMI)
+        ya.validate_content_plan(_uzun_plan(1500, 8), bicim=ya.UZUN_BICIMI)
 
 
 def test_sahne_TAVANI_arsiv_arzindan():
