@@ -36,6 +36,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 KOK = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_FILE = os.path.join(KOK, "client_secret.json")
@@ -127,10 +128,19 @@ def telefon_baglantisi() -> str:
     """
     akis = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
     akis.redirect_uri = TELEFON_REDIRECT
+    # ⚠️ `include_granted_scopes` BILEREK YOK. Denendi (2026-08-14) ve
+    # olculdu: bayrak acikken Google, ayni istemciye DAHA ONCE verilmis
+    # izinleri de jetona ekliyor. Donen jeton `youtube.upload` ve
+    # `youtube.force-ssl` tasiyordu — yani video silip duzenleyebilen bir
+    # yetki, "rapor okuma" komutunun icinde.
+    #
+    # Daha da sinsisi: kutuphanenin `credentials.scopes` alani yalnizca
+    # ISTENEN iki readonly kapsami gosteriyordu. Gercek kapsam ancak
+    # Google'in `tokeninfo` ucuna sorulunca goruldu. Yani "kapsam
+    # readonly" iddiasi yerel nesneye bakarak DOGRULANAMIYOR.
     baglanti, durum = akis.authorization_url(
         access_type="offline",  # yenileme jetonu icin
         prompt="consent",
-        include_granted_scopes="true",
     )
     with open(AKIS_DURUM_FILE, "w", encoding="utf-8") as dosya:
         json.dump(
@@ -294,6 +304,20 @@ def main() -> None:
         # Yetki eksikligi bir COKME degil, yapilacak bir is. Traceback
         # basmak kullaniciyi kutuphane yigini okumaya zorluyordu.
         sys.exit(str(hata))
+    except HttpError as hata:
+        # ⚠️ Olculdu (2026-08-14): jeton dogru alindiktan SONRA bile 403
+        # geliyordu — Analytics API'si Cloud projesinde acik degildi. Ham
+        # traceback bunu 20 satirlik bir yiginin icine gomuyordu; sebep
+        # tek satirlik ve yapilacak is tek tiklik.
+        if hata.resp.status == 403 and b"accessNotConfigured" in hata.content:
+            sys.exit(
+                "YouTube Analytics API bu Google Cloud projesinde KAPALI.\n"
+                "Bir kez acilmasi gerekiyor:\n"
+                "    https://console.developers.google.com/apis/api/"
+                "youtubeanalytics.googleapis.com/overview?project=445932056496\n"
+                "Actiktan birkac dakika sonra komutu tekrar calistir."
+            )
+        raise
     if secenekler.json:
         print(json.dumps(veri, ensure_ascii=False, indent=2))
     else:

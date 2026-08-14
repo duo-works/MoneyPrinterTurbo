@@ -13,6 +13,7 @@ olculmedi.
 """
 
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import kanal_rapor as kr  # noqa: E402
 import youtube_upload as yu  # noqa: E402
+
+TMP = tempfile.mkdtemp(prefix="kanal-rapor-test-")
 
 
 def test_yukleme_kapsami_DEGISMEDI():
@@ -165,6 +168,46 @@ def test_tamamla_durum_yoksa_ACIK_hata(monkeypatch, tmp_path):
         kr.telefon_tamamla("http://localhost:8765/?code=x")
 
     assert "--yetkilendir-telefon" in str(hata.value)
+
+
+def test_onceki_izinler_jetona_EKLENMIYOR():
+    """⚠️ Olculdu (2026-08-14) ve canli olarak yakalandi.
+
+    `include_granted_scopes="true"` acikken Google, ayni istemciye daha
+    once verilmis izinleri de jetona ekledi: donen jeton `youtube.upload`
+    ve `youtube.force-ssl` tasiyordu — video silip duzenleyebilen bir
+    yetki, "rapor okuma" komutunun icinde.
+
+    ⚠️ Daha sinsisi: `credentials.scopes` yalnizca ISTENEN iki readonly
+    kapsami gosteriyordu. Gercek kapsam ancak Google'in `tokeninfo` ucuna
+    sorulunca goruldu — yani yerel nesneye bakarak dogrulanamiyor.
+    """
+    yakalanan: dict = {}
+
+    class _Akis:
+        redirect_uri = None
+        code_verifier = "v"
+
+        def authorization_url(self, **kwargs):
+            yakalanan.update(kwargs)
+            return "https://accounts.google.com/o/oauth2/auth", "durum"
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(kr, "AKIS_DURUM_FILE", str(Path(TMP) / "durum.json"))
+        monkeypatch.setattr(
+            kr.InstalledAppFlow,
+            "from_client_secrets_file",
+            classmethod(lambda cls, *a, **k: _Akis()),
+        )
+        kr.telefon_baglantisi()
+    finally:
+        monkeypatch.undo()
+
+    # ⚠️ Davranis kontrolu, metin degil: yorumda gecen bir sozcuk testi
+    # yanlis yerden gecirir/dusurur.
+    assert "include_granted_scopes" not in yakalanan, yakalanan
+    assert yakalanan.get("access_type") == "offline", "yenileme jetonu sart"
 
 
 def test_telefon_redirect_localhost():
