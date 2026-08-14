@@ -345,7 +345,7 @@ When a legend or myth is used, say plainly that it is a legend ("the Inca told o
 The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
 WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
-The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised; never leave the question unanswered in the description. Then 3 to 5 hashtags.
+What you write in `description` is placed UNDER a fixed one line channel signature that already exists, so do not write a channel description, a signature or a sign off yourself. Your own first sentence still carries the search: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised; never leave the question unanswered in the description. Then 3 to 5 hashtags.
 END ON A REASON TO COME BACK, NOT ON A SUMMARY. The last sentence is the only moment a viewer decides whether this channel is worth following, and a closing that merely restates the video ("the mystery remains unsolved") gives them nothing. Close instead on what this channel keeps doing: the next thing in the archive, the pattern this story belongs to, the question the next one answers. Say it in the video's own voice and in a different shape every time; never write "subscribe", "follow", "like and comment" or any other stock call to action, and never repeat a closing line you have used before.
 NEVER USE A DASH CHARACTER ANYWHERE IN THE SCRIPT OR THE SCENE NARRATION: no em dash, no en dash, no hyphen. Rephrase instead: write "single handedly", not "single-handedly"; use a comma or a full stop where you would reach for an em dash; write year ranges as "1652 to 1674". Titles and tags may keep an ordinary hyphen inside a proper name.
 Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary; never write a phrase nobody would type into a search box.
@@ -1878,16 +1878,38 @@ def generate_content_plan(
         if yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu or "")):
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
+        # ⚠️ ACILIS ve KAPANIS kapilari HER IKI KIPTE de calisiyor.
+        #
+        # Ikisi de 2026-08-14'e kadar `if konu:` dalinin ICINDEYDI, yani
+        # yalnizca huni kipinde. Zamanlayici kurulunca bu sessiz bir bosluk
+        # oldu: kuyruk neredeyse her zaman bos, koşumlarin tamamina yakini
+        # YEDEK kipte calisiyor (`konu=None`) ve o dal hic girilmiyordu.
+        # Yani gunde 4-6 video ureten kipte tekrar kontrolu YOKTU — tam da
+        # tekrarin birikecegi yerde.
+        #
+        # Ikisi de konudan BAGIMSIZ kalite sorunlari: ayni kalip ayni
+        # videoyu uretiyor, ayni kapanis seri kimligi degil reklam kusagi
+        # oluyor. Konu benzerligi atlanmaya devam ediyor — gerekcesi
+        # docstring'de: konuyu model degil, olculmus talep verisi ve onu
+        # onaylayan insan sectI.
+        if yumusak_kapilar_acik and _kapanis_tekrari(plan.script, onceki_kapanislar):
+            user += (
+                "\nThe closing line repeats the sentence pattern of an earlier video. "
+                "End on a different kind of note: a different part of the archive, a "
+                "different unanswered question, a different consequence."
+            )
+            continue
+        if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
+            user += (
+                "\nThe opening line repeats the sentence pattern of an earlier video. "
+                "Open on a different kind of detail: an object, a number, a place, or "
+                "an unfinished action."
+            )
+            continue
         if konu:
-            # ⚠️ KONU benzerligi atlanmaya devam ediyor — gerekcesi
-            # docstring'de: konuyu model degil, olculmus talep verisi ve onu
-            # onaylayan insan sectI.
-            #
-            # Ama CAPA ve ACILIS atlanmiyor artik (2026-08-13). Ikisi de
-            # konudan bagimsiz kalite sorunlari: ayni capa ayni arsivi
-            # getiriyor, ayni kalip ayni videoyu uretiyor. Gecmis acilislar
-            # zaten isteme veriliyordu (yukarida) ve model yine tekrarladi —
-            # bu oturumun tekrar eden dersi: soylemek yetmiyor (DW-87).
+            # ⚠️ CAPA tekrari huni kipine OZEL kaliyor: yedek kipte capayi
+            # zaten model seciyor ve asagidaki dal onu `is_duplicate_visual_anchor`
+            # ile denetliyor. Buraya tasimak ayni kontrolu iki kez yapardi.
             if yumusak_kapilar_acik and is_duplicate_visual_anchor(
                 plan.visual_anchor, previous_anchors
             ):
@@ -1895,20 +1917,6 @@ def generate_content_plan(
                     f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
                     "channel. Keep the same subject but anchor the video on a different "
                     "concrete thing belonging to it."
-                )
-                continue
-            if yumusak_kapilar_acik and _kapanis_tekrari(plan.script, onceki_kapanislar):
-                user += (
-                    "\nThe closing line repeats the sentence pattern of an earlier video. "
-                    "End on a different kind of note: a different part of the archive, a "
-                    "different unanswered question, a different consequence."
-                )
-                continue
-            if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
-                user += (
-                    "\nThe opening line repeats the sentence pattern of an earlier video. "
-                    "Open on a different kind of detail: an object, a number, a place, or "
-                    "an unfinished action."
                 )
                 continue
             return plan

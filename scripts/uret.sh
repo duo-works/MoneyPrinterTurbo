@@ -33,6 +33,25 @@ mkdir -p "$LOG_DIZINI"
 zaman() { date "+%Y-%m-%d %H:%M:%S"; }
 yaz() { echo "$(zaman) | $*" >>"$OZET_LOG"; }
 
+# ⚠️ PATH ACIKTAN KURULUYOR. launchd islerini `/usr/bin:/bin:/usr/sbin:/sbin`
+# ile calistiriyor — kabuk profili OKUNMUYOR. Hat cikarimi `hermes` komutunu
+# CIPLAK ADLA cagiriyor (`_json_completion` → `_run_hermes`) ve hermes
+# `~/.local/bin` altinda, yani o dar PATH'te BULUNAMAZ.
+#
+# Elle calistirinca sorun gorunmuyor: oturumun kendi PATH'i devraliniyor ve
+# her sey calisiyor. Kusur yalnizca zamanlayici ilk kez atesledigi anda
+# ortaya cikardi — yani gozetimsizken.
+#
+# `ytoto` mutlak yolla yapilandirilmis (config.toml `ytoto_path`), ffmpeg
+# `imageio_ffmpeg` ile paket icinden geliyor; PATH'e ihtiyac duyan tek sey
+# hermes.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+if ! command -v hermes >/dev/null 2>&1; then
+  yaz "HATA | hermes bulunamadi (PATH=$PATH)"
+  exit 1
+fi
+
 # .env dosyasi degerleri: `ytoto` koprusu ve API anahtarlari oradan geliyor.
 # ⚠️ Icerik LOGA BASILMAZ; yalnizca ortama alinir.
 if [[ -f "$ENV_DOSYASI" ]]; then
@@ -58,7 +77,10 @@ trap 'rm -f "$CIKTI_DOSYASI"' EXIT
 #
 # 0/6/12/18 → 6 sahne (uzun klip) · 3/9/15/21 → 8 sahne (mevcut davranis)
 # Gunde 4'er deneme, yani kol basina haftada ~28 sans.
-SAAT="$(date +%-H)"
+# ⚠️ `10#` ONEKI ZORUNLU. `date +%H` saat 06'da "06" veriyor ve bash bunu
+# `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce `else`
+# daline dusurup 06:05 koşumunu yanlis kola yazardi.
+SAAT=$((10#$(date +%H)))
 if (( (SAAT / 3) % 2 == 0 )); then
   SAHNE=6
 else

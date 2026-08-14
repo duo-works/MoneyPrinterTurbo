@@ -49,11 +49,19 @@ def test_populer_ad_bilimsel_adin_onune_geciyor():
 
 
 def test_aciklamanin_ilk_cumlesi_arama_ifadesini_tekrarliyor():
-    """Arama sonuclarinda gorunen ve indekslenen kisim ilk cumle."""
+    """Arama sonuclarinda gorunen ve indekslenen kisim ilk cumle.
+
+    ⚠️ Ifade 2026-08-14'te degisti: aciklamanin en ustune artik sabit bir
+    kanal imzasi (`SERI_IMZASI`) ekleniyor, yani modelin yazdigi cumle
+    teknik olarak IKINCI satir. Istem eskiden "FIRST sentence" diyordu ve
+    kodla celisiyordu — bu oturumda olculen kusur siniflarindan biri tam
+    olarak "istem X der, kod Y yapar".
+    """
     yonerge = _sistem_yonergesi()
 
-    assert "FIRST sentence" in yonerge
     assert "restate the title's search phrase" in yonerge
+    # Model imzayi KENDISI yazmamali; yoksa aciklamada iki imza olur.
+    assert "do not write a channel description" in yonerge
 
 
 def test_aciklama_soruyu_cevapsiz_birakmiyor():
