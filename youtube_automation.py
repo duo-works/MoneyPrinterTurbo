@@ -34,6 +34,7 @@ import requests
 from app.config import config
 import gorsel_olcum
 import notion_kuyrugu
+import tekrar_olcusu
 import temizlik
 import wikimedia_materials
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
@@ -1485,14 +1486,29 @@ def _kapanis_tekrari(senaryo: str, onceki_kapanislar: list[str]) -> bool:
     return False
 
 
-def _son_kapanislar(adet: int = 12) -> list[str]:
+TEKRAR_PENCERESI = 40
+"""Kanca ve kapanis tekrari kac gecmis videoya karsi olculuyor.
+
+⚠️ OLCULDU (2026-08-14) ve DEGISTI: 12'ydi. 12 kayitlik pencere, ayda ~10
+video uretilirken bir aydan uzun hafiza demekti. Zamanlayici kurulunca hiz
+gunde 4-5 videoya cikti ve ayni 12 kayit **2,4-3 GUNE** dustu — uc gun
+sonra donen bir kalip artik hic yakalanmiyordu. Yani pencere sabit
+kalirken hafiza sessizce kisaldi.
+
+⚠️ Genisletmenin uretimi kilitleme riski YOK: yumusak kapilar yalnizca ilk
+uc denemede acik (`YUMUSAK_KAPI_DENEMESI`), sonra kapaniyor. En kotu
+ihtimalle uc deneme yanar, koşum olmez.
+"""
+
+
+def _son_kapanislar(adet: int = TEKRAR_PENCERESI) -> list[str]:
     """Daha once kullanilmis kapanislar — `_son_kancalar`in ikizi."""
     return [
         k for k in (item.get("kapanis", "") for item in load_state().get("published", [])) if k
     ][-adet:]
 
 
-def _son_kancalar(adet: int = 12) -> list[str]:
+def _son_kancalar(adet: int = TEKRAR_PENCERESI) -> list[str]:
     """Daha once kullanilmis acilislar — modele "bunlari tekrarlama" demek icin.
 
     ⚠️ Yasaklamak tek basina yetmiyor; model gecmisini gormeli. Olculdu
@@ -1507,6 +1523,48 @@ def _son_kancalar(adet: int = 12) -> list[str]:
     return [k for k in (item.get("hook", "") for item in load_state().get("published", [])) if k][
         -adet:
     ]
+
+
+BASLIK_BICIMI_PENCERESI = 3
+"""Baslik bicimi kac gecmis videoya karsi olculuyor.
+
+⚠️ Kanca/kapanis penceresinden (`TEKRAR_PENCERESI`) KASITLI olarak dar.
+Soru kelimesi havuzu kucuk (why/who/how/what/did/when/where); "son 40
+videoda why kullanildi" demek bicimi tuketir ve uretimi kilitlerdi. Amac
+kaliplari yasaklamak degil, aralarinda DONDURMEK.
+"""
+
+_baslik_bicimi = tekrar_olcusu.baslik_bicimi
+
+
+def _son_basliklar(adet: int = BASLIK_BICIMI_PENCERESI) -> list[str]:
+    """Son yayinlanan basliklar — bicim tekrarini olcmek icin."""
+    return [t for t in (item.get("title", "") for item in load_state().get("published", [])) if t][
+        -adet:
+    ]
+
+
+def _baslik_bicimi_tekrari(baslik: str, onceki_basliklar: list[str]) -> bool:
+    """Baslik, son videolarin bicimini tekrarliyor mu.
+
+    ⚠️ OLCULDU (2026-08-14, yayindaki 15 video): ilk bes video "The ... of
+    ..." tamlamasi, son dokuzu duz soru, SON ALTISININ ALTISI da soru ve
+    ucu "Why ...". En uzun ardisik ayni-bicim serisi **5**. Konu tekrari
+    icin kapi vardi (`_recent_titles` tum gecmisi okuyor, 15/15 konu
+    benzersiz), kanca ve kapanis icin kapi vardi — bicim icin YOKTU. Kanal
+    sayfasina bakan biri bu yuzden iki blok halinde tekrar goruyor.
+
+    ⚠️ BU KAPI SORU BICIMINI YASAKLAMIYOR, CESITLENDIRIYOR. Soru bicimi
+    KASITLI (DW-104): baslik arama kutusuna yazilan ifadeye benzedigi
+    olcude bulunuyor, ve bulunurluk su an kanalin calisan tek yani (%96
+    trafik Shorts akisindan). Yasaklanan sey ust uste AYNI soru kelimesi.
+    """
+    bicim = _baslik_bicimi(baslik)
+    # ⚠️ "diger" bir kalip degil, siniflandiramadigimiz sey. Onu tekrar
+    # saymak birbirinden tamamen farkli iki basligi reddederdi.
+    if bicim == "diger" or not onceki_basliklar:
+        return False
+    return any(_baslik_bicimi(onceki) == bicim for onceki in onceki_basliklar)
 
 
 ARSIV_ENVANTER_SINIRI = 40
@@ -1812,6 +1870,15 @@ def generate_content_plan(
             + json.dumps(onceki_kapanislar, ensure_ascii=False)
         )
 
+    # Gecmis BASLIKLAR: modele yasagi degil, kacinmasi gereken BICIMI
+    # gosteriyor. Yalnizca "tekrarlama" demek yetmiyordu (DW-94'un dersi).
+    if onceki_basliklar := _son_basliklar():
+        user += (
+            "\nThese titles were already used on this channel. Keep writing the title as a "
+            "search query, but do not open with the same question word or the same "
+            "sentence shape:\n" + json.dumps(onceki_basliklar, ensure_ascii=False)
+        )
+
     # Gecmis acilislar HER IKI kipte de veriliyor: konu disaridan gelse bile
     # kanca modelin kalemi ve kalibina saplanabiliyor (DW-94).
     if onceki_kancalar := _son_kancalar():
@@ -1897,6 +1964,17 @@ def generate_content_plan(
                 "\nThe closing line repeats the sentence pattern of an earlier video. "
                 "End on a different kind of note: a different part of the archive, a "
                 "different unanswered question, a different consequence."
+            )
+            continue
+        # ⚠️ Baslik bicimi kapisi da HER IKI KIPTE calisiyor. Baslik, kanal
+        # sayfasinda ve arama sonucunda gorunen tek sey; ust uste ayni kalip
+        # orada "hepsi ayni video" izlenimi veriyor — ve bu izlenim tam da
+        # "toplu uretilmis, tekrar eden icerik" olcutunun baktigi sey.
+        if yumusak_kapilar_acik and _baslik_bicimi_tekrari(plan.title, onceki_basliklar):
+            user += (
+                "\nThe title repeats the shape of a recent one. Keep it a search query, "
+                "but change the shape: a different question word, or a statement that "
+                "names the surprising fact instead of asking about it."
             )
             continue
         if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
@@ -3574,6 +3652,13 @@ def run_cycle(
             # tekrarlatmiyor. Yazilmazsa kapanis kapisi hep bos liste gorur
             # ve hicbir seyi engellemez.
             "kapanis": kapanis(plan.script),
+            # ⚠️ TELEMETRI, kapi degil. Kanca (ilk cumle) ve kapanis (son
+            # cumle) olculuyor; ARADAKI 4-8 cumle icin hicbir tekrar olcusu
+            # yok — ve senaryo kaydedilmedigi icin GERIYE DONUK olcmek de
+            # mumkun degildi. Once kaydet, kapiyi veri birikince kur: bu
+            # oturumda agir kusur kapisinda tam tersi yapildi ve o alan
+            # kayitlarda hic olmadan "olculdu" denmisti.
+            "script": plan.script,
             "url": url,
             "task_id": task_id,
             "video_path": str(video_path),

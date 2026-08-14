@@ -38,6 +38,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+import tekrar_olcusu
+
 KOK = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_FILE = os.path.join(KOK, "client_secret.json")
 TOKEN_FILE = os.path.join(KOK, "youtube_analytics_token.json")
@@ -321,6 +323,104 @@ def _karsilastirmayi_yazdir(veri: dict[str, Any]) -> None:
     print("\n⚠️ Az sayida videoyla fark gurultu olabilir; kol basina en az 6-8 video birikmeden karar verme.")
 
 
+def _ortusme_ozeti(metinler: list[str]) -> dict[str, Any]:
+    """Bir metin kumesinin kendi icindeki ikili ortusmesi."""
+    ozet: dict[str, Any] = {
+        "olculen": len(metinler),
+        "ortalama_ortusme": 0.0,
+        "esigi_gecen": 0,
+        "en_benzer": [],
+    }
+    ciftler = [
+        (tekrar_olcusu.kelime_ortusmesi(a, b), a, b)
+        for (i, a) in enumerate(metinler)
+        for b in metinler[i + 1 :]
+    ]
+    if not ciftler:
+        return ozet
+    ciftler.sort(key=lambda c: c[0], reverse=True)
+    ozet["ortalama_ortusme"] = sum(c[0] for c in ciftler) / len(ciftler)
+    ozet["esigi_gecen"] = sum(1 for c in ciftler if c[0] >= tekrar_olcusu.ORTUSME_ESIGI)
+    ozet["en_benzer"] = [
+        {"oran": round(oran, 3), "a": a[:70], "b": b[:70]} for oran, a, b in ciftler[:3]
+    ]
+    return ozet
+
+
+def tekrar_raporu(kayitlar: list[dict[str, Any]]) -> dict[str, Any]:
+    """Yayinlanan videolar birbirinden ayirt edilebilir mi.
+
+    ⚠️ NEDEN VAR — 2026-08-14. Zamanlayici aylik ciktiyi ~10'dan ~150'ye
+    cikardi ve dogru soru soruldu: "YouTube'un toplu uretilmis icerik
+    politikasi bizi vurur mu, sikligi mi dusurelim?" Politika SIKLIGI degil
+    AYIRT EDILEBILIRLIGI olcuyor — yani dogru cevap hizi kesmek degil,
+    ayirt edilebilirligi SUREKLI OLCMEK ve esige yaklasinca yavaslamak.
+
+    ⚠️ API'siz calisiyor: veri `state.json`dan geliyor. Bilerek — Analytics
+    2-3 gun gecikmeli ve analitik token'i "Testing" kipinde 7 gunde bir
+    oluyor; tekrar olcumu bunlarin hicbirine bagli olmamali.
+
+    Baslangic olcumu (15 video): kanca ortalama ortusme %4,1, esigi gecen
+    cift 0/36, benzersiz konu 15/15 — tek zayif yuzey BASLIK BICIMI:
+    son alti videonun altisi da soru, ucu "Why ...".
+    """
+    kancalar = [str(k.get("hook") or "") for k in kayitlar if str(k.get("hook") or "").strip()]
+    kapanislar = [
+        str(k.get("kapanis") or "") for k in kayitlar if str(k.get("kapanis") or "").strip()
+    ]
+
+    bicimler = [tekrar_olcusu.baslik_bicimi(str(k.get("title") or "")) for k in kayitlar]
+    dagilim: dict[str, int] = {}
+    for bicim in bicimler:
+        dagilim[bicim] = dagilim.get(bicim, 0) + 1
+
+    # ⚠️ Dagilim tek basina yetmiyor: 15 videonun 9'u soru olabilir ve bu
+    # sorun olmayabilir. Sorun ARDISIK ayni bicim — kanal sayfasina bakanin
+    # "hepsi ayni" dedigi sey blok halinde tekrar.
+    en_uzun, suren = 0, 0
+    onceki = None
+    for bicim in bicimler:
+        suren = suren + 1 if bicim == onceki else 1
+        onceki = bicim
+        en_uzun = max(en_uzun, suren)
+
+    return {
+        "video": len(kayitlar),
+        "kanca": _ortusme_ozeti(kancalar),
+        "kapanis": _ortusme_ozeti(kapanislar),
+        "baslik_bicimi": {"dagilim": dagilim, "en_uzun_seri": en_uzun},
+        "esik": tekrar_olcusu.ORTUSME_ESIGI,
+    }
+
+
+def _tekrari_yazdir(veri: dict[str, Any]) -> None:
+    print(f"=== tekrar olcumu · {veri['video']} yayinlanmis video ===")
+    print("⚠️ Politika sikligi degil AYIRT EDILEBILIRLIGI olcuyor.\n")
+    for alan, ad in (("kanca", "kanca (ilk cumle)"), ("kapanis", "kapanis (son cumle)")):
+        ozet = veri[alan]
+        print(
+            f"{ad:<22} {ozet['olculen']:>3} olculdu | ort. ortusme "
+            f"{ozet['ortalama_ortusme']:.1%} | esigi ({veri['esik']:.0%}) gecen cift: "
+            f"{ozet['esigi_gecen']}"
+        )
+        for benzer in ozet["en_benzer"][:2]:
+            print(f"    {benzer['oran']:.1%}  {benzer['a']}")
+            print(f"           {benzer['b']}")
+    bicim = veri["baslik_bicimi"]
+    print(f"\nbaslik bicimi dagilimi (en uzun ARDISIK seri: {bicim['en_uzun_seri']})")
+    for ad, adet in sorted(bicim["dagilim"].items(), key=lambda p: -p[1]):
+        print(f"    {adet:>3}x  {ad}")
+    if bicim["en_uzun_seri"] >= 3:
+        print("\n⚠️ Uc ve uzeri ardisik ayni bicim: kanal sayfasi blok halinde tekrar ediyor.")
+
+
+def _yayinlanan_kayitlar() -> list[dict[str, Any]]:
+    if not os.path.exists(STATE_YOLU):
+        return []
+    with open(STATE_YOLU, encoding="utf-8") as dosya:
+        return json.load(dosya).get("published", [])
+
+
 def _yazdir(veri: dict[str, Any]) -> None:
     k = veri["kanal"]
     print(f"=== {veri['baslangic']} → {veri['bitis']} ({veri['gun']} gun) ===")
@@ -382,7 +482,23 @@ def main() -> None:
         action="store_true",
         help="Sahne sayisi kollarini yan yana koy (tutunma deneyi)",
     )
+    ayristirici.add_argument(
+        "--tekrar",
+        action="store_true",
+        help="Videolar birbirinden ayirt edilebilir mi (API'siz, state.json'dan)",
+    )
     secenekler = ayristirici.parse_args()
+
+    # ⚠️ YETKIDEN ONCE. Tekrar olcumu Analytics'e gitmiyor; onu asagidaki
+    # try blogunun icine koymak, token oldugunde olcumu de oldururdu — oysa
+    # asil ihtiyac duyulan an tam da hattin gozetimsiz aktigi an.
+    if secenekler.tekrar:
+        veri = tekrar_raporu(_yayinlanan_kayitlar())
+        if secenekler.json:
+            print(json.dumps(veri, ensure_ascii=False, indent=2))
+        else:
+            _tekrari_yazdir(veri)
+        return
 
     if secenekler.yetkilendir:
         yetkilendir(etkilesimli=True)
