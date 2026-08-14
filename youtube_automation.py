@@ -147,6 +147,21 @@ class QualityReview:
     issues: list[str] = field(default_factory=list)
     revised_search_terms: list[str] = field(default_factory=list)
     problem_scene_numbers: list[int] = field(default_factory=list)
+    kareler: list[dict[str, Any]] = field(default_factory=list)
+    """Hakemin KARE BASINA verdigi ham cevaplar — TELEMETRI, kapi degil.
+
+    ⚠️ OLCULDU (2026-08-14) ve bir olcum korlugunu kapatiyor. Hakeme
+    kare basina "iceride okunabilir yazi var mi", "anlatilan kisi mi",
+    "donem uyuyor mu" soruluyor ve model bunlari cevapliyor; ama cevap
+    yalnizca `agir_kusurlari_ayikla`dan geciyor ve gerisi ATILIYORDU.
+
+    Sonuc: 183 koşum kaydinin **0'inda** kare verisi yok. Kanal sahibinin
+    sesli notundaki uc madde (cok fazla harita, ustu yazili gorsel,
+    birbirine benzeyen kareler) tam da bu veriyle olculebilirdi ve
+    olculemiyor. `script` alaninda ayni kusur ayni gun bulundu: once
+    kaydet, kapiyi veri birikince kur.
+    """
+
     agir_kusurlar: list[str] = field(default_factory=list)
     """Yayini TEK BASINA engelleyen kusurlar — skordan bagimsiz.
 
@@ -3565,7 +3580,8 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
     data = _vision_json(prompt, montage)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     altyazi_skor = int(data.get("subtitle_readability_score", 0))
-    agir = agir_kusurlari_ayikla(data.get("frames"))
+    kareler = data.get("frames")
+    agir = agir_kusurlari_ayikla(kareler)
     return QualityReview(
         publishable=yayina_uygun(gorsel_skor, altyazi_skor) and not agir,
         visual_alignment_score=gorsel_skor,
@@ -3573,6 +3589,7 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
         issues=[str(issue) for issue in data.get("issues", [])],
         revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
         agir_kusurlar=agir,
+        kareler=[k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else [],
     )
 
 
