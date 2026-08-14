@@ -122,6 +122,60 @@ def test_rapor_kirilimlari_dolduruyor(monkeypatch):
     assert veri["trafik"][0] == {"kaynak": "SHORTS", "izlenme": 2100}
 
 
+# --- Telefondan onay ------------------------------------------------------
+
+
+def test_telefon_akisi_PKCE_dogrulayicisini_saklıyor(monkeypatch, tmp_path):
+    """⚠️ Iki adim AYRI SURECLERDE calisiyor.
+
+    `code_verifier` ilk adimda uretiliyor; diske yazilmazsa ikinci adim
+    jetonu alamaz. Telefon akisinin tek kirilgan noktasi bu.
+    """
+    durum_dosyasi = tmp_path / "durum.json"
+    monkeypatch.setattr(kr, "AKIS_DURUM_FILE", str(durum_dosyasi))
+
+    class _Akis:
+        redirect_uri = None
+        code_verifier = "gizli-dogrulayici"
+
+        def authorization_url(self, **_k):
+            return "https://accounts.google.com/o/oauth2/auth?x=1", "durum-abc"
+
+    monkeypatch.setattr(
+        kr.InstalledAppFlow, "from_client_secrets_file", classmethod(lambda cls, *a, **k: _Akis())
+    )
+
+    baglanti = kr.telefon_baglantisi()
+
+    assert baglanti.startswith("https://accounts.google.com/")
+    import json as _json
+
+    kayit = _json.loads(durum_dosyasi.read_text(encoding="utf-8"))
+    assert kayit["code_verifier"] == "gizli-dogrulayici"
+    assert kayit["state"] == "durum-abc"
+    assert kayit["redirect_uri"] == kr.TELEFON_REDIRECT
+    # Icinde PKCE dogrulayicisi var: baskasi okuyamamali.
+    assert oct(durum_dosyasi.stat().st_mode)[-3:] == "600"
+
+
+def test_tamamla_durum_yoksa_ACIK_hata(monkeypatch, tmp_path):
+    monkeypatch.setattr(kr, "AKIS_DURUM_FILE", str(tmp_path / "yok.json"))
+
+    with pytest.raises(RuntimeError) as hata:
+        kr.telefon_tamamla("http://localhost:8765/?code=x")
+
+    assert "--yetkilendir-telefon" in str(hata.value)
+
+
+def test_telefon_redirect_localhost():
+    """⚠️ Desktop istemcide yalnizca localhost/127.0.0.1 kabul ediliyor.
+
+    LAN adresi yazmak (telefonun Mac'e ulasabilmesi icin) cazip ama Google
+    onu reddeder; bu yuzden donus adresini KOPYALAMA yolu secildi.
+    """
+    assert kr.TELEFON_REDIRECT.startswith("http://localhost")
+
+
 def test_tutunma_olcumu_isteniyor():
     """⚠️ Izlenme dagitimin SONUCU, tutunma SEBEBI. Sorgudan dusmemeli."""
     assert "averageViewPercentage" in kr.VIDEO_OLCUMLERI

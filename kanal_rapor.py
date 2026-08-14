@@ -102,6 +102,65 @@ def yetkilendir(etkilesimli: bool = True):
     return creds
 
 
+AKIS_DURUM_FILE = os.path.join(KOK, ".analitik_akis_durumu.json")
+TELEFON_REDIRECT = "http://localhost:8765/"
+"""Desktop istemcilerde `http://localhost` her portla kabul ediliyor.
+
+Bu adreste HICBIR SEY DINLEMIYOR ve dinlemesi de gerekmiyor: telefon
+onaydan sonra buraya yonlendirilince "baglanilamadi" sayfasi gosterir ama
+adres cubugunda `?code=...` durur. Ihtiyacimiz olan tek sey o adres.
+"""
+
+
+def telefon_baglantisi() -> str:
+    """Onay baglantisini uretir ve akis durumunu diske yazar.
+
+    ⚠️ NEDEN IKI ADIM. Normal akis (`run_local_server`) Mac'te bir sunucu
+    acip tarayicinin `localhost`a donmesini bekliyor; TELEFON Mac'in
+    `localhost`una ulasamaz. `run_console` ise kutuphaneden kaldirildi
+    (google-auth-oauthlib 1.x) cunku Google OOB akisini kapatti.
+
+    Geriye tek saglam yol kaliyor: baglantiyi uret, onay telefonda verilsin,
+    donus adresi geri getirilsin. PKCE dogrulayicisi (`code_verifier`) ilk
+    adimda uretildigi icin diske yaziliyor — yoksa ikinci adim baska bir
+    surecte calisamazdi.
+    """
+    akis = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+    akis.redirect_uri = TELEFON_REDIRECT
+    baglanti, durum = akis.authorization_url(
+        access_type="offline",  # yenileme jetonu icin
+        prompt="consent",
+        include_granted_scopes="true",
+    )
+    with open(AKIS_DURUM_FILE, "w", encoding="utf-8") as dosya:
+        json.dump(
+            {"state": durum, "code_verifier": akis.code_verifier, "redirect_uri": TELEFON_REDIRECT},
+            dosya,
+        )
+    os.chmod(AKIS_DURUM_FILE, 0o600)
+    return baglanti
+
+
+def telefon_tamamla(donus_adresi: str):
+    """Telefondan gelen donus adresiyle jetonu alir."""
+    if not os.path.exists(AKIS_DURUM_FILE):
+        raise RuntimeError(
+            "Once baglanti uretilmeli:\n    python kanal_rapor.py --yetkilendir-telefon"
+        )
+    with open(AKIS_DURUM_FILE, encoding="utf-8") as dosya:
+        durum = json.load(dosya)
+    akis = InstalledAppFlow.from_client_secrets_file(
+        CLIENT_SECRET_FILE, SCOPES, state=durum["state"]
+    )
+    akis.redirect_uri = durum["redirect_uri"]
+    akis.code_verifier = durum["code_verifier"]
+    akis.fetch_token(authorization_response=donus_adresi.strip())
+    _token_yaz(akis.credentials)
+    # Tek kullanimlik: durum dosyasi jetondan sonra hicbir ise yaramiyor.
+    os.remove(AKIS_DURUM_FILE)
+    return akis.credentials
+
+
 def _basliklar(youtube, video_kimlikleri: list[str]) -> dict[str, str]:
     """Video kimliklerini basliklara cevirir. Analitik ucu baslik dondurmuyor."""
     adlar: dict[str, str] = {}
@@ -195,12 +254,37 @@ def main() -> None:
     ayristirici.add_argument(
         "--yetkilendir",
         action="store_true",
-        help="Tarayicidan bir kez onay al (yukleme token'ina dokunmaz)",
+        help="Ayni makinedeki tarayicidan onay al (yukleme token'ina dokunmaz)",
+    )
+    ayristirici.add_argument(
+        "--yetkilendir-telefon",
+        action="store_true",
+        help="Telefondan onaylamak icin baglanti uretir",
+    )
+    ayristirici.add_argument(
+        "--yetkilendir-tamamla",
+        metavar="ADRES",
+        help="Telefondaki onaydan sonra adres cubugundaki TAM adres",
     )
     secenekler = ayristirici.parse_args()
 
     if secenekler.yetkilendir:
         yetkilendir(etkilesimli=True)
+        print(f"✅ analitik yetkisi alindi: {TOKEN_FILE}")
+        return
+
+    if secenekler.yetkilendir_telefon:
+        print("Bu baglantiyi telefonda ac ve onayla:\n")
+        print(telefon_baglantisi())
+        print(
+            "\nOnaydan sonra telefon 'baglanilamadi' sayfasi gosterecek — NORMAL.\n"
+            "Adres cubugundaki TAM adresi kopyala ve su komutu calistir:\n"
+            '    python kanal_rapor.py --yetkilendir-tamamla "<adres>"'
+        )
+        return
+
+    if secenekler.yetkilendir_tamamla:
+        telefon_tamamla(secenekler.yetkilendir_tamamla)
         print(f"✅ analitik yetkisi alindi: {TOKEN_FILE}")
         return
 
