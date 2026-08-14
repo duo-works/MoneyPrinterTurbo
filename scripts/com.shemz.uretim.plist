@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shemz uretim zamanlayicisi.
+
+  ⚠️ ARALIK 3 SAAT, ve bu sayi KOTADAN geliyor: YouTube Data API'de
+  `videos.insert` 1600 birim, gunluk kota 10.000 — yani GUNDE EN FAZLA
+  6 YUKLEME. Saat basi tetiklemek (24 deneme) tavani gun ortasinda
+  doldurur ve kalan koşumlarin render'i bosa gider; render en pahali
+  adim. 3 saatte bir = 8 deneme, ~%50-60 yayin oraniyla 4-5 video/gun.
+
+  Kurulum:
+      cp scripts/com.shemz.uretim.plist ~/Library/LaunchAgents/
+      launchctl load ~/Library/LaunchAgents/com.shemz.uretim.plist
+
+  Durdurma (tek komut):
+      launchctl unload ~/Library/LaunchAgents/com.shemz.uretim.plist
+
+  Durum:
+      launchctl list | grep shemz
+      tail -f storage/youtube_automation/logs/zamanlayici.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shemz.uretim</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/mirzasaribiyik/Projects/MoneyPrinterTurbo/scripts/uret.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/mirzasaribiyik/Projects/MoneyPrinterTurbo</string>
+
+    <!-- 3 saatte bir, saatin 5'inde. Tam saat degil: baska bir zamanlanmis
+         is ya da elle baslatilan bir koşum tam saatte yigilmasin. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>5</integer></dict>
+    </array>
+
+    <!-- ⚠️ Yuklenince HEMEN calismasin: `launchctl load` bir video
+         uretmeye baslasin istemiyoruz, kurulum bir uretim karari degil. -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Betik kendi ozetini `zamanlayici.log`a yaziyor; bunlar launchd'nin
+         kendi hatalari icin (betik hic calisamazsa orada gorunur). -->
+    <key>StandardOutPath</key>
+    <string>/Users/mirzasaribiyik/Projects/MoneyPrinterTurbo/storage/youtube_automation/logs/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/mirzasaribiyik/Projects/MoneyPrinterTurbo/storage/youtube_automation/logs/launchd.log</string>
+</dict>
+</plist>

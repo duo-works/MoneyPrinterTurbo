@@ -3172,16 +3172,40 @@ def run_cycle(
     kaynak = "huni" if kuyruktan else "model"
     if kuyruktan:
         adaylar = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH)
-        if not adaylar and not yedek_konu:
+        # ⚠️ LISTE ILE KAPMA CELISEBILIYOR, ve bu koşumu OLDURMEMELI.
+        #
+        # Olculdu (2026-08-14): Notion'un veritabani sorgu indeksi bayat
+        # kalabiliyor. `Durum = Seçildi` filtresi, sayfasi okununca `Elendi`
+        # gorunen adaylari donduruyordu — Talaat Pasha ve Murad III, ikisi de
+        # saatler once elenmis konular. Dogrudan Notion'a sorulunca her ikisi
+        # icin de TEK sayfa var ve durumu `Elendi`; yani mukerrer kayit degil,
+        # indeks gecikmesi. Birkac dakika icinde ayni filtre 2 sayfadan 1'e
+        # dustu, yani indeks yavasca yetisiyor.
+        #
+        # Eski kod `adaylar[0]`i alip kapiyor, kapayamazsa `KopruHatasi` ile
+        # butun koşumu dusuruyordu. Saat basi calisan bir zamanlayicida bu,
+        # bayat TEK bir kayit yuzunden uretimin tamamen durmasi demek.
+        #
+        # ⚠️ "Kapmadan uretme" guvencesi KORUNUYOR: kapilamayan aday
+        # uretilmiyor, yalnizca ATLANIYOR. Tehlikeli olan tersiydi.
+        for sirasiyla in adaylar:
+            try:
+                notion_kuyrugu.adayi_kap(sirasiyla, ytoto_path=YTOTO_PATH)
+            except notion_kuyrugu.KopruHatasi as hata:
+                print(f"ℹ️ aday atlandı ({sirasiyla.baslik}): {hata}", flush=True)
+                continue
+            aday = sirasiyla
+            break
+        if aday is None and not yedek_konu:
             return {
                 "status": "no-candidate",
                 "slot": slot,
                 "reason": (
-                    "`Seçildi` kuyrugu bos — Notion'da bir adayi bu duruma alin. "
-                    "Konu uydurulmadi."
+                    "`Seçildi` kuyrugunda kapilabilir aday yok — Notion'da bir adayi "
+                    "bu duruma alin. Konu uydurulmadi."
                 ),
             }
-        if not adaylar:
+        if aday is None:
             # ⚠️ Geri dusus ACIK ve KAYITLI. Yukaridaki itiraz gecerli ve
             # korunuyor: sessiz geri dusus, kuyruga bagli oldugunu sanan ama
             # kendi konusunu ureten bir hat demek olurdu. Bu yuzden
@@ -3197,12 +3221,10 @@ def run_cycle(
             # kullanmamak demek.
             kaynak = "yedek"
             print(
-                "ℹ️ `Seçildi` kuyrugu bos — yedek konu kipi (anit/yer) devrede",
+                "ℹ️ `Seçildi` kuyrugunda kapilabilir aday yok — "
+                "yedek konu kipi (anit/yer) devrede",
                 flush=True,
             )
-        else:
-            aday = adaylar[0]
-            notion_kuyrugu.adayi_kap(aday, ytoto_path=YTOTO_PATH)
     aday_kapatildi = False
 
     _acquire_lock()
