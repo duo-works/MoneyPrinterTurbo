@@ -600,12 +600,81 @@ def kanca_kusuru(metin: str) -> str:
     return ""
 
 
-def validate_content_plan(plan: ContentPlan, sahne_sayisi: int | None = None) -> None:
+KARE_YUVASI = 2
+"""Sahne basina kac kare yuvasi (Shorts).
+
+⚠️ SABIT olmasi zorunlu, "elden geldiginde iki" degil. MPT her materyale
+ESIT `clip_duration` veriyor; bir sahne iki yuva, digeri tek yuva alsaydi
+iki yuvali sahne ayni ses icin iki kat ekran suresi yer ve gorsel
+anlatimdan kayardi. Ikinci gorsel yoksa BIRINCISI iki yuvaya konuyor —
+o sahne bugunku haliyle birebir ayni gorunur, zamanlama bozulmaz.
+
+⚠️ Tanim BURADA, dosyanin ortasinda degil: `SHORTS_BICIMI` bunu varsayilan
+deger olarak okuyor ve varsayilan degerler `def` anında hesaplaniyor.
+Asagida biraktigimda ice aktarma `NameError` ile oluyordu — bu oturumda
+uc uretim koşumunu olduren kusurun aynisi.
+"""
+
+
+@dataclass(frozen=True)
+class VideoBicimi:
+    """Bir video biciminin sayisal sozlesmesi — TEK YERDE.
+
+    ⚠️ Dagitilmis `if uzun_format:` dallari yerine tek bir nesne, cunku bu
+    sayilar birbirine bagli: kelime sayisi konusma suresini, konusma suresi
+    gereken gorsel sayisini, gorsel sayisi da arsiv arzini belirliyor.
+    Ayri ayri degistirilirlerse sessizce tutarsiz bir video cikar.
+    """
+
+    ad: str
+    kelime_araligi: tuple[int, int]
+    sahne_araligi: tuple[int, int]
+    kare_yuvasi: int
+    dikey: bool
+
+
+SHORTS_BICIMI = VideoBicimi(
+    ad="shorts",
+    kelime_araligi=(80, 120),
+    sahne_araligi=(6, 10),
+    # Sahne basina iki kare: gorsel altyazi ritmine yaklassin (2026-08-14,
+    # kanal sahibinin sesli notu).
+    kare_yuvasi=KARE_YUVASI,
+    dikey=True,
+)
+
+UZUN_BICIMI = VideoBicimi(
+    ad="uzun",
+    # ⚠️ Olculdu: konusma hizi ~150 kelime/dakika (Anita 41 sn / ~100
+    # kelime). 8-12 dakika hedefi 1.200-1.800 kelime demek; ust sinir
+    # 2.200 ile ~15 dakikaya izin veriliyor.
+    kelime_araligi=(1200, 2200),
+    # ⚠️ Sahne sayisinin tavani ARSIV ARZINDAN geliyor, tercihten degil.
+    # Olculdu (2026-08-15, menu siniri 60): Bagan 49, Herculaneum 37,
+    # Alhambra 32, Egyptian pyramids 23 kullanilabilir gorsel. 45'in
+    # ustunu istemek, arzin veremedigi videoyu istemek olurdu.
+    sahne_araligi=(24, 45),
+    # ⚠️ Uzun formatta sahne basina TEK kare. Shorts'ta iki yuva vardi
+    # cunku 5 saniyelik bir kare altyazidan yavas kaliyordu; 15 saniyelik
+    # bir belgesel karesinde ayni sorun yok ve ikiye bolmek gereken gorsel
+    # sayisini iki katina cikarip arzi asardi.
+    kare_yuvasi=1,
+    dikey=False,
+)
+
+
+def validate_content_plan(
+    plan: ContentPlan,
+    sahne_sayisi: int | None = None,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> None:
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
     if kusur := kanca_kusuru(plan.script):
         raise ValueError(kusur)
-    if not 80 <= word_count <= 120:
-        raise ValueError(f"script must contain 80-120 words, got {word_count}")
+    en_az, en_cok = bicim.kelime_araligi
+    if not en_az <= word_count <= en_cok:
+        raise ValueError(f"script must contain {en_az}-{en_cok} words, got {word_count}")
     # ⚠️ `sahne_sayisi` verilirse aralik degil TAM SAYI zorunlu. Sebep bir
     # deney: klip suresi `ses ÷ sahne` oldugu icin sahne sayisi, ilk kesmenin
     # NE ZAMAN geldigini belirliyor. Olculdu (2026-08-14, `audienceWatchRatio`):
@@ -619,8 +688,13 @@ def validate_content_plan(plan: ContentPlan, sahne_sayisi: int | None = None) ->
                 f"content plan must contain exactly {sahne_sayisi} scenes, "
                 f"got {len(plan.scenes)}"
             )
-    elif not 6 <= len(plan.scenes) <= 10:
-        raise ValueError("content plan must contain 6-10 scenes")
+    else:
+        sahne_en_az, sahne_en_cok = bicim.sahne_araligi
+        if not sahne_en_az <= len(plan.scenes) <= sahne_en_cok:
+            raise ValueError(
+                f"content plan must contain {sahne_en_az}-{sahne_en_cok} scenes, "
+                f"got {len(plan.scenes)}"
+            )
     if not plan.topic.strip() or not plan.title.strip():
         raise ValueError("topic and title are required")
     anchor_words = _normalize_topic(plan.visual_anchor)
@@ -2340,17 +2414,6 @@ def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
         dikeye_uydur(dosya, hedef_dizin / f"sahne-{sira:02d}.jpg")
         for sira, dosya in enumerate(dosyalar, 1)
     ]
-
-
-KARE_YUVASI = 2
-"""Sahne basina kac kare yuvasi.
-
-⚠️ SABIT olmasi zorunlu, "elden geldiginde iki" degil. MPT her materyale
-ESIT `clip_duration` veriyor; bir sahne iki yuva, digeri tek yuva alsaydi
-iki yuvali sahne ayni ses icin iki kat ekran suresi yer ve gorsel
-anlatimdan kayardi. Ikinci gorsel yoksa BIRINCISI iki yuvaya konuyor —
-o sahne bugunku haliyle birebir ayni gorunur, zamanlama bozulmaz.
-"""
 
 
 def kare_yerlesimi(
