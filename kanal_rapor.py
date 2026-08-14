@@ -41,6 +41,7 @@ from googleapiclient.errors import HttpError
 KOK = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_FILE = os.path.join(KOK, "client_secret.json")
 TOKEN_FILE = os.path.join(KOK, "youtube_analytics_token.json")
+STATE_YOLU = os.path.join(KOK, "storage", "youtube_automation", "state.json")
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
@@ -235,9 +236,98 @@ def rapor(gun: int = 28, creds=None) -> dict[str, Any]:
     }
 
 
+def tutunma_egrisi(video_kimligi: str, gun: int = 90, creds=None) -> list[tuple[float, float]]:
+    """Videonun tutunma egrisi: `(oran, izleyen)` ciftleri.
+
+    ⚠️ Bu sorgu bu oturumda ELLE yazildi ve hattin en degerli olcumunu
+    verdi (2026-08-14): iki videonun egrisi birebir ayni kalibi gosterdi —
+    ilk 5 sn'de tutunma %100'un ustunde (kanca calisiyor, izleyici basa
+    sariyor), sonraki ~4 sn'de ucte biri gidiyor. Dususun yeri klip
+    suresiyle ortusuyor, yani kayip ILK SAHNE DEGISIMINDE basliyor.
+
+    Elle yazilan bir sorgu bir daha kolay calistirilmaz; kalici hale
+    getirilmesinin sebebi bu.
+    """
+    creds = creds or yetkilendir(etkilesimli=False)
+    analytics = build("youtubeAnalytics", "v2", credentials=creds)
+    bitis = date.today()
+    yanit = (
+        analytics.reports()
+        .query(
+            ids="channel==MINE",
+            startDate=(bitis - timedelta(days=gun)).isoformat(),
+            endDate=bitis.isoformat(),
+            metrics="audienceWatchRatio",
+            dimensions="elapsedVideoTimeRatio",
+            filters=f"video=={video_kimligi}",
+        )
+        .execute()
+    )
+    return [(satir[0], satir[1]) for satir in (yanit.get("rows") or [])]
+
+
+def _egriyi_yazdir(egri: list[tuple[float, float]], sure_sn: int | None) -> None:
+    if not egri:
+        print("veri yok (video cok yeni olabilir — Analytics 2-3 gun gecikmeli)")
+        return
+    for oran, izleyen in egri[::10]:
+        an = f"{round(oran * sure_sn):>3} sn" if sure_sn else f"%{oran * 100:>5.1f}"
+        print(f"  {an}  {izleyen * 100:5.1f}%  {'#' * int(izleyen * 30)}")
+
+
+def kollari_karsilastir(gun: int = 28, creds=None) -> dict[str, Any]:
+    """Sahne sayisi kollarini yan yana koyar — tutunma deneyinin okumasi.
+
+    `state.json`daki `sahne_sayisi` alanina gore gruplar. Alan olmayan eski
+    kayitlar "bilinmiyor" kovasina dusuyor; onlari kola saymak deneyi
+    kirletirdi.
+    """
+    creds = creds or yetkilendir(etkilesimli=False)
+    veri = rapor(gun=gun, creds=creds)
+    olcumler = {kayit.get("video"): kayit for kayit in veri["videolar"]}
+
+    try:
+        with open(STATE_YOLU, encoding="utf-8") as dosya:
+            yayinlar = json.load(dosya).get("published", [])
+    except (OSError, ValueError):
+        yayinlar = []
+
+    kollar: dict[str, list[dict[str, Any]]] = {}
+    for yayin in yayinlar:
+        kimlik = str(yayin.get("url", "")).rsplit("/", 1)[-1]
+        olcum = olcumler.get(kimlik)
+        if not olcum:
+            continue  # Analytics henuz gormemis ya da pencerenin disinda.
+        kol = str(yayin.get("sahne_sayisi") or "bilinmiyor")
+        kollar.setdefault(kol, []).append({**olcum, "baslik": yayin.get("title", "")})
+    return {"gun": gun, "kollar": kollar}
+
+
+def _karsilastirmayi_yazdir(veri: dict[str, Any]) -> None:
+    print(f"=== sahne sayisi kollari · son {veri['gun']} gun ===")
+    if not veri["kollar"]:
+        print("eslesen video yok (Analytics 2-3 gun gecikmeli)")
+        return
+    for kol in sorted(veri["kollar"]):
+        kayitlar = veri["kollar"][kol]
+        n = len(kayitlar)
+        tut = sum(k.get("averageViewPercentage", 0) for k in kayitlar) / n
+        abone = sum(k.get("subscribersGained", 0) for k in kayitlar)
+        izlenme = sum(k.get("views", 0) for k in kayitlar)
+        print(
+            f"{kol:>10} sahne | {n:>2} video | ort. tutunma {tut:5.1f}% "
+            f"| {izlenme:>6} izlenme | +{abone} abone"
+        )
+    print("\n⚠️ Az sayida videoyla fark gurultu olabilir; kol basina en az 6-8 video birikmeden karar verme.")
+
+
 def _yazdir(veri: dict[str, Any]) -> None:
     k = veri["kanal"]
     print(f"=== {veri['baslangic']} → {veri['bitis']} ({veri['gun']} gun) ===")
+    # ⚠️ Gecikme BASLIKTA yaziyor: olculdu (2026-08-14), 13-14 Agustos'ta
+    # yayinlanan videolar (Mehmed II 709 izlenme dahil) raporda HIC yoktu.
+    # Bunu bilmeden bakan biri "yeni videolar tutmadi" diye okur.
+    print("⚠️ Analytics 2-3 gun gecikmeli — son videolar burada gorunmez.")
     print(f"izlenme        : {k.get('views', 0)}")
     print(f"izlenme suresi : {k.get('estimatedMinutesWatched', 0)} dk")
     print(f"ort. sure      : {k.get('averageViewDuration', 0)} sn")
@@ -276,6 +366,22 @@ def main() -> None:
         metavar="ADRES",
         help="Telefondaki onaydan sonra adres cubugundaki TAM adres",
     )
+    ayristirici.add_argument(
+        "--tutunma",
+        metavar="VIDEO_ID",
+        help="Videonun tutunma egrisini bas (izleyici NEREDE birakiyor)",
+    )
+    ayristirici.add_argument(
+        "--sure",
+        type=int,
+        metavar="SN",
+        help="--tutunma ile: video suresi, egriyi saniyeye cevirmek icin",
+    )
+    ayristirici.add_argument(
+        "--karsilastir",
+        action="store_true",
+        help="Sahne sayisi kollarini yan yana koy (tutunma deneyi)",
+    )
     secenekler = ayristirici.parse_args()
 
     if secenekler.yetkilendir:
@@ -299,6 +405,16 @@ def main() -> None:
         return
 
     try:
+        if secenekler.tutunma:
+            _egriyi_yazdir(tutunma_egrisi(secenekler.tutunma), secenekler.sure)
+            return
+        if secenekler.karsilastir:
+            karsilastirma = kollari_karsilastir(secenekler.gun)
+            if secenekler.json:
+                print(json.dumps(karsilastirma, ensure_ascii=False, indent=2))
+            else:
+                _karsilastirmayi_yazdir(karsilastirma)
+            return
         veri = rapor(secenekler.gun)
     except RuntimeError as hata:
         # Yetki eksikligi bir COKME degil, yapilacak bir is. Traceback

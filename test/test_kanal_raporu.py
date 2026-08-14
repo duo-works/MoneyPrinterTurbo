@@ -12,6 +12,7 @@ etti — "gorsel cumleye uyuyor mu" sorusunu. "Insan izliyor mu" sorusu hic
 olculmedi.
 """
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -217,6 +218,84 @@ def test_telefon_redirect_localhost():
     onu reddeder; bu yuzden donus adresini KOPYALAMA yolu secildi.
     """
     assert kr.TELEFON_REDIRECT.startswith("http://localhost")
+
+
+# --- Deney okumasi -------------------------------------------------------
+
+
+def test_kollar_sahne_sayisina_gore_ayriliyor(monkeypatch, tmp_path):
+    """`state.json`daki kol alani ile Analytics olcumleri birlestiriliyor mu."""
+    durum = tmp_path / "state.json"
+    durum.write_text(
+        json.dumps(
+            {
+                "published": [
+                    {"url": "https://youtube.com/shorts/aaa", "sahne_sayisi": 6, "title": "Alti"},
+                    {"url": "https://youtube.com/shorts/bbb", "sahne_sayisi": 8, "title": "Sekiz"},
+                    {"url": "https://youtube.com/shorts/ccc", "title": "Eski kayit"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(kr, "STATE_YOLU", str(durum))
+    monkeypatch.setattr(
+        kr,
+        "rapor",
+        lambda gun, creds=None: {
+            "videolar": [
+                {"video": "aaa", "views": 100, "averageViewPercentage": 70.0, "subscribersGained": 2},
+                {"video": "bbb", "views": 200, "averageViewPercentage": 50.0, "subscribersGained": 1},
+                {"video": "ccc", "views": 50, "averageViewPercentage": 40.0, "subscribersGained": 0},
+            ]
+        },
+    )
+
+    veri = kr.kollari_karsilastir(gun=28, creds=object())
+
+    assert set(veri["kollar"]) == {"6", "8", "bilinmiyor"}
+    assert veri["kollar"]["6"][0]["averageViewPercentage"] == 70.0
+    assert veri["kollar"]["8"][0]["views"] == 200
+
+
+def test_kol_alani_olmayan_kayit_KOLA_SAYILMIYOR(monkeypatch, tmp_path):
+    """⚠️ Eski kayitlari bir kola saymak deneyi kirletirdi.
+
+    `sahne_sayisi` alani 2026-08-14'te eklendi; ondan onceki videolarin
+    sahne sayisi bilinmiyor ve tahmin edilemez.
+    """
+    durum = tmp_path / "state.json"
+    durum.write_text(
+        json.dumps({"published": [{"url": "https://youtube.com/shorts/ccc", "title": "Eski"}]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(kr, "STATE_YOLU", str(durum))
+    monkeypatch.setattr(
+        kr,
+        "rapor",
+        lambda gun, creds=None: {"videolar": [{"video": "ccc", "views": 50}]},
+    )
+
+    veri = kr.kollari_karsilastir(gun=28, creds=object())
+
+    assert list(veri["kollar"]) == ["bilinmiyor"]
+
+
+def test_gecikme_UYARISI_basiliyor(capsys):
+    """⚠️ Olculdu: 13-14 Agu videolari raporda hic yoktu (Mehmed II 709 izlenme
+    dahil). Bunu bilmeden bakan biri "yeni videolar tutmadi" diye okur."""
+    kr._yazdir(
+        {
+            "baslangic": "2026-07-17",
+            "bitis": "2026-08-14",
+            "gun": 28,
+            "kanal": {"views": 1115},
+            "videolar": [],
+            "trafik": [],
+        }
+    )
+
+    assert "2-3 gun gecikmeli" in capsys.readouterr().out
 
 
 def test_tutunma_olcumu_isteniyor():
