@@ -346,6 +346,7 @@ The subject may be a monument, civilization, artifact, invention, vessel, or sit
 Avoid graphic violence, medical misinformation, politics, religion advocacy, copyrighted characters, and uncertain claims.
 WRITE THE TITLE AS A SEARCH QUERY, NOT AS A HEADLINE. It must read like the phrase an English-speaking viewer would actually type into YouTube: usually a direct question ("What Happened to...", "Why Did...", "Who Built...") or the named subject followed by the hook. Put the searchable proper noun in the first three words. When a subject has a widely used popular name and a scholarly name, the TITLE takes the popular one because that is what people type; the description carries the scholarly one. Under 65 characters when practical, and contain #Shorts.
 The description's FIRST sentence is what search indexes and what viewers see in results: restate the title's search phrase as a full sentence naming the place, the people, and the century. Then two or three sentences that deliver the answer the title promised; never leave the question unanswered in the description. Then 3 to 5 hashtags.
+END ON A REASON TO COME BACK, NOT ON A SUMMARY. The last sentence is the only moment a viewer decides whether this channel is worth following, and a closing that merely restates the video ("the mystery remains unsolved") gives them nothing. Close instead on what this channel keeps doing: the next thing in the archive, the pattern this story belongs to, the question the next one answers. Say it in the video's own voice and in a different shape every time; never write "subscribe", "follow", "like and comment" or any other stock call to action, and never repeat a closing line you have used before.
 NEVER USE A DASH CHARACTER ANYWHERE IN THE SCRIPT OR THE SCENE NARRATION: no em dash, no en dash, no hyphen. Rephrase instead: write "single handedly", not "single-handedly"; use a comma or a full stop where you would reach for an em dash; write year ranges as "1652 to 1674". Titles and tags may keep an ordinary hyphen inside a proper name.
 Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary; never write a phrase nobody would type into a search box.
 JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
@@ -1403,10 +1404,92 @@ def _recent_titles() -> list[str]:
     return [title for title in titles if title]
 
 
+SERI_IMZASI = (
+    "Shemz — short documentaries built from public domain archives, "
+    "one forgotten story at a time."
+)
+"""Aciklamanin ilk satiri: kanalin NE OLDUGUNU soyleyen sabit cumle.
+
+⚠️ Olculdu (2026-08-14): 1.115 izlenme, **1 abone** (%0,09) ve trafigin
+%96'si Shorts akisi. Yani dagitim calisiyor, DONUSUM calismiyor —
+izleyicinin karsisina cikan hicbir yerde kanalin ne yaptigi yazmiyordu.
+Abone olmak icin bir sebep verilmemis, yalnizca tek bir video gosterilmis.
+
+Sabit olmasi bilincli: seri kimligi videodan videoya degisirse kimlik
+olmaz. Degisen kisim (`plan.description`) altinda kaliyor.
+"""
+
+
 def kanca(metin: str) -> str:
     """Anlatimin ilk cumlesi — videonun izlenip izlenmeyecegini belirleyen yer."""
     ilk = re.split(r"(?<=[.!?])\s", metin.strip(), maxsplit=1)[0]
     return ilk.strip()
+
+
+def kapanis(metin: str) -> str:
+    """Anlatimin SON cumlesi — izleyicinin geri gelip gelmeyecegini belirleyen yer.
+
+    ⚠️ Kancanin ikizi ve ayni sebeple var. Olculdu (2026-08-14): tutunma
+    egrisi videonun sonunda %31-36'ya iniyor ve o noktaya kadar gelen
+    izleyici, kanalin var oldugunu bile ogrenmeden kayiyor. 1.115 izlenme
+    yalnizca 1 abone getirdi.
+    """
+    cumleler = [p.strip() for p in re.split(r"(?<=[.!?])\s", metin.strip()) if p.strip()]
+    return cumleler[-1] if cumleler else ""
+
+
+KAPANIS_ORTUSME_ORANI = 0.6
+"""Kapanis, onceki bir kapanisla bu orandan fazla kelime paylasirsa tekrar.
+
+⚠️ Bu esik SECILDI, olculmedi — kapanislar yeni kaydedilmeye basladi ve
+karsilastirilacak gecmis henuz yok. Veri birikince `kanal_rapor.py` ile
+gozden gecirilmeli. Burada yazili olmasi, ileride "bu sayi nereden geldi"
+sorusunun cevapsiz kalmamasi icin.
+"""
+
+
+def _kapanis_tekrari(senaryo: str, onceki_kapanislar: list[str]) -> bool:
+    """Kapanis, daha once kullanilmis bir kapanisi tekrarliyor mu.
+
+    ⚠️ Kanca tarafinda ogrenilen ders burada da gecerli (DW-94): modele
+    "tekrarlama" demek yetmiyor, KOD kontrol etmeli. Ve kapanista risk daha
+    buyuk — "geri gelmek icin sebep ver" talimati, dogal olarak modeli her
+    videoda AYNI cumleye itiyor. Ayni kapanisi ust uste duyan izleyici icin
+    bu bir seri kimligi degil, bir reklam kusagi.
+
+    ⚠️ KANCANIN KALIP OLCUSU BURADA CALISMIYOR ve sebebi ogretici:
+    `_kalip_iskeleti` bastaki BUYUK HARFLI diziyi atiyor. Kancada ozne bir
+    ozel ad oldugu icin bu dogru sonucu veriyor ("Mehmed II did not" →
+    `did not`). Kapanislar ise "The archive still holds..." bicimindeki
+    cumleler: yalnizca "The" atiliyor ve AYIRT EDICI isim kalibin icinde
+    kaliyor, yani yapisi ayni iki cumle farkli gorunuyor.
+
+    Bu yuzden olcu KELIME ORTUSMESI: "The archive still holds the rest of
+    that fleet" ile "The vault still holds the rest of that hoard" ortak
+    kelimelerin cogunu paylasiyor ve ozne degisse de ayni cumle.
+    """
+    kapanis_metni = kapanis(senaryo)
+    if not kapanis_metni or not onceki_kapanislar:
+        return False
+    kelimeler = _normalize_topic(kapanis_metni)
+    if len(kelimeler) < 3:
+        # Cok kisa kapanista ortusme orani gurultu; olcmeye degmez.
+        return False
+    for onceki in onceki_kapanislar:
+        oncekiler = _normalize_topic(onceki or "")
+        if not oncekiler:
+            continue
+        ortak = kelimeler & oncekiler
+        if len(ortak) / min(len(kelimeler), len(oncekiler)) >= KAPANIS_ORTUSME_ORANI:
+            return True
+    return False
+
+
+def _son_kapanislar(adet: int = 12) -> list[str]:
+    """Daha once kullanilmis kapanislar — `_son_kancalar`in ikizi."""
+    return [
+        k for k in (item.get("kapanis", "") for item in load_state().get("published", [])) if k
+    ][-adet:]
 
 
 def _son_kancalar(adet: int = 12) -> list[str]:
@@ -1718,6 +1801,17 @@ def generate_content_plan(
             "screen longer, so give each a distinct thing to show."
         )
 
+    # Gecmis KAPANISLAR da veriliyor — sebebi `_kapanis_tekrari`de: "geri
+    # gelmek icin sebep ver" talimati modeli dogal olarak her videoda ayni
+    # cumleye itiyor ve ust uste ayni kapanis, seri kimligi degil reklam
+    # kusagi olur.
+    if onceki_kapanislar := _son_kapanislar():
+        user += (
+            "\nThese closing lines were already used on this channel. Do not reuse them, "
+            "and do not reuse their sentence pattern:\n"
+            + json.dumps(onceki_kapanislar, ensure_ascii=False)
+        )
+
     # Gecmis acilislar HER IKI kipte de veriliyor: konu disaridan gelse bile
     # kanca modelin kalemi ve kalibina saplanabiliyor (DW-94).
     if onceki_kancalar := _son_kancalar():
@@ -1801,6 +1895,13 @@ def generate_content_plan(
                     f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
                     "channel. Keep the same subject but anchor the video on a different "
                     "concrete thing belonging to it."
+                )
+                continue
+            if yumusak_kapilar_acik and _kapanis_tekrari(plan.script, onceki_kapanislar):
+                user += (
+                    "\nThe closing line repeats the sentence pattern of an earlier video. "
+                    "End on a different kind of note: a different part of the archive, a "
+                    "different unanswered question, a different consequence."
                 )
                 continue
             if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
@@ -3426,7 +3527,12 @@ def run_cycle(
 
         task_id, video_path, _, review, credits = selected
         credits_text = format_commons_credits(credits)
-        description = plan.description
+        # ⚠️ Seri imzasi EN USTTE. Gerekcesi `SERI_IMZASI`nda: dagitim
+        # calisiyor ama donusum calismiyor ve izleyicinin gordugu hicbir
+        # yerde kanalin ne yaptigi yazmiyordu. YouTube aciklamanin yalnizca
+        # ilk satirlarini katlanmamis gosteriyor, o yuzden alta koymak
+        # yazmamakla ayni sey.
+        description = f"{SERI_IMZASI}\n\n{plan.description}"
         if credits_text:
             description = f"{description}\n\n{credits_text}"
         if dry_run:
@@ -3456,6 +3562,10 @@ def run_cycle(
             # Bir sonraki kosum bunu okuyup ayni acilisi tekrarlamayacak.
             # Kaydedilmezse `_son_kancalar` hep bos doner ve kalip kirilmaz.
             "hook": kanca(plan.script),
+            # Kancanin ikizi: `_son_kapanislar` bunu okuyup ayni kapanisi
+            # tekrarlatmiyor. Yazilmazsa kapanis kapisi hep bos liste gorur
+            # ve hicbir seyi engellemez.
+            "kapanis": kapanis(plan.script),
             "url": url,
             "task_id": task_id,
             "video_path": str(video_path),
