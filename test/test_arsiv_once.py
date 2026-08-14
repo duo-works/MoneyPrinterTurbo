@@ -71,10 +71,16 @@ def _hazirla(monkeypatch, tmp_path, incelemeler, arsiv_indirme):
     monkeypatch.setattr(
         "youtube_automation.review_source_materials", lambda *_, **__: next(sira)
     )
-    # Kapiyi gectikten sonraki adimlar (dikeye cevirme, seslendirme suresi,
+    # Kapiyi gectikten sonraki adimlar (kare yerlesimi, seslendirme suresi,
     # render) bu testin konusu degil; ilki gercek dosya ister.
+    #
+    # ⚠️ 2026-08-14: burada `dikeye_uydur_hepsi` taklit ediliyordu. Render
+    # yolu `kare_yerlesimi`ne gecince taklit ISLEVSIZ kaldi ve test gercek
+    # dosya acmaya calisip patladi. Taklidin adi, degisen kodla birlikte
+    # guncellenmeli — yoksa test kendi kurdugu yoldan sapar.
     monkeypatch.setattr(
-        "youtube_automation.dikeye_uydur_hepsi", lambda dosyalar, _hedef: dosyalar
+        "youtube_automation.kare_yerlesimi",
+        lambda birincil, _ikincil, _hedef: (list(birincil), len(birincil)),
     )
     monkeypatch.setattr("youtube_automation.anlatim_suresi", lambda _metin: 30.0)
     monkeypatch.setattr("youtube_automation.muzik_sec", lambda *_a, **_k: "")

@@ -65,8 +65,11 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(ya, "save_state", lambda _s: None)
     monkeypatch.setattr(ya.notion_kuyrugu, "kuyrugu_oku", lambda **_k: [])
     monkeypatch.setattr(ya, "generate_content_plan", lambda *_a, **_k: plan)
+    # ⚠️ Bes ogeli: son oge `tam_dolan_sahne` telemetrisi (kac sahnede iki
+    # AYRI arsiv gorseli bulundu). Taklit imzayi takip etmezse `run_cycle`
+    # acilirken patlar — tam da bu dosyanin yakalamak icin var oldugu kusur.
     monkeypatch.setattr(
-        ya, "run_generator", lambda p, a: ("gorev-1", video, tmp_path / "s.txt", [])
+        ya, "run_generator", lambda p, a: ("gorev-1", video, tmp_path / "s.txt", [], 0)
     )
     monkeypatch.setattr(ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg")
     # Gorsel skor 80'in USTUNDE: `should_abandon_topic` False doner, yani
@@ -91,10 +94,15 @@ def _hat(monkeypatch, tmp_path):
         ],
     )
     secim = iter([f"YENI-{i}.jpg" for i in range(1, 5)])
+    # ⚠️ `n` SAHNE numarasi, kare degil. Hakem "kare 6" diyor ve sahne
+    # basina iki kare oldugu icin (`KARE_YUVASI`) bu SAHNE 3 demek.
+    # 2026-08-14'e kadar burada 6 yaziyordu; kare duzeni degisince taklit
+    # var olmayan bir sahneyi secmeye calisti, onarim hicbir seyi
+    # degistirmedi ve akis sessizce yedek yola dustu.
     monkeypatch.setattr(
         ya,
         "_json_completion",
-        lambda s, u: {"picks": [{"n": 6, "source_file": next(secim)}]},
+        lambda s, u: {"picks": [{"n": ya.kareden_sahneye(6), "source_file": next(secim)}]},
     )
     return plan
 
@@ -106,7 +114,8 @@ def test_onarim_dali_NameError_vermeden_calisiyor(monkeypatch, tmp_path, capsys)
     sonuc = ya.run_cycle(kuyruktan=True, yedek_konu=True, dry_run=True)
 
     assert sonuc["status"] == "rejected"
-    assert plan.scenes[5]["kaynak_dosya"].startswith(
+    # "kare 6" -> sahne 3 -> dizide 2. sira.
+    assert plan.scenes[ya.kareden_sahneye(6) - 1]["kaynak_dosya"].startswith(
         "YENI-"
     ), "bozuk karenin gorseli degismeliydi"
     # Uc denemenin ucunde de onarim calisti: dal her turda yuruttuluyor.

@@ -920,10 +920,27 @@ def sorunlu_sahneler(review: QualityReview, toplam_sahne: int) -> list[int]:
     return sorted(birlesim) if birlesim else list(range(1, toplam_sahne + 1))
 
 
+def kareden_sahneye(kare: int) -> int:
+    """Hakemin kare numarasini sahne numarasina cevirir.
+
+    ⚠️ SAHNE BASINA IKI KARE var (`KARE_YUVASI`), yani kare 1-2 sahne 1,
+    kare 3-4 sahne 2... Bu esleme TEK YERDE tanimli olmali: kare duzeni
+    degisip cevrim degismezse hakemin isaretledigi kusur YANLIS sahneyi
+    onartir ve bozuk kare videoda kalir. Sessiz kirilmanin ders kitabi
+    ornegi — bu oturumda ayni sinif kusur uc uretim koşumunu oldurdu.
+    """
+    return (max(int(kare), 1) + KARE_YUVASI - 1) // KARE_YUVASI
+
+
 def agir_kusurlu_kareler(review: QualityReview) -> list[int]:
-    """Agir kusur metinlerinden kare numaralarini cikarir ("kare 6: ...")."""
+    """Agir kusurlu karelerin ait oldugu SAHNE numaralari ("kare 6: ...").
+
+    ⚠️ Doner deger SAHNE, kare degil: cagiran taraf (`kareyi_onar`)
+    `plan.scenes` uzerinde islem yapiyor. Iki kare ayni sahneyi
+    isaretlerse sahne bir kez doner.
+    """
     numaralar = {
-        int(eslesme.group(1))
+        kareden_sahneye(int(eslesme.group(1)))
         for kusur in review.agir_kusurlar
         if (eslesme := re.match(r"kare (\d+):", kusur))
     }
@@ -966,12 +983,16 @@ def kareyi_onar(
     if not aday_menu:
         return []
     gecerli = {girdi["dosya"] for girdi in aday_menu}
+    # ⚠️ Anahtar SAHNE numarasi, kare degil — `bozuk` da oyle. Hakem kare
+    # numarasi bildiriyor (sahne basina iki kare) ve cevrim burada da
+    # yapilmali; yapilmazsa kusur metni hicbir sahneye eslesmez ve model
+    # neyin bozuk oldugunu ogrenmeden secim yapar.
     kusur_metni = {n: [] for n in bozuk}
     for kusur in review.agir_kusurlar:
         if eslesme := re.match(r"kare (\d+): (.+)", kusur):
-            numara = int(eslesme.group(1))
-            if numara in kusur_metni:
-                kusur_metni[numara].append(eslesme.group(2))
+            sahne_no = kareden_sahneye(int(eslesme.group(1)))
+            if sahne_no in kusur_metni:
+                kusur_metni[sahne_no].append(eslesme.group(2))
     try:
         data = _json_completion(
             "Return JSON only: {\"picks\": [{\"n\": <scene number>, \"source_file\": "
@@ -1675,7 +1696,18 @@ def _menu_talimati(menu: list[dict[str, str]]) -> str:
         "Write the video FROM this menu, not the other way round. For each scene: pick "
         "one entry, copy its 'dosya' value EXACTLY into the scene's source_file field, "
         "and write narration that tells the story of the THING in that picture. A "
-        "different entry for every scene. Do not narrate a moment no entry depicts: if "
+        "different entry for every scene. "
+        # ⚠️ IKINCI GORSEL — kanal sahibinin karari (2026-08-14): her sahne
+        # iki kare gosteriyor, cunku tek gorsel altyazinin 2,5 kati yavas
+        # kaliyordu. Ikincisi ZORUNLU DEGIL: menu yetmezse bos birakilir ve
+        # o sahne birincil kareyi iki yuvada gosterir.
+        "ALSO pick a SECOND entry for each scene and copy its 'dosya' value into "
+        "source_file_2. It must show the same subject from another angle, another "
+        "moment or another detail, and it must fit the SAME narration — the viewer "
+        "sees both pictures while that sentence is spoken. Never reuse an entry that "
+        "any scene already cites, in either field. If the menu does not hold enough "
+        "distinct entries, leave source_file_2 empty rather than repeating one. "
+        "Do not narrate a moment no entry depicts: if "
         "nothing here shows the discovery, the battle, the storm or the person at work, "
         "that moment cannot be a scene, however important it is. Choose entries whose "
         "date suits the story, and do not describe a modern photograph as a historical "
@@ -1740,11 +1772,24 @@ def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
             "and its narration must describe what that file actually shows:\n"
             f"{json.dumps(menu, ensure_ascii=False)}"
         )
-    tekrar = sorted({ad for ad in alintilar if alintilar.count(ad) > 1})
+    # ⚠️ IKINCI alinti da ayni kumeye giriyor. Bos olmasi serbest (menu
+    # yetmeyebilir), ama DOLU ise gercek bir dosya olmali ve hicbir kare
+    # iki kez gorunmemeli — tekrar tam da duzeltmeye calistigimiz sikayet.
+    ikinciler = [str(sahne.get("kaynak_dosya_2", "")).strip() for sahne in plan.scenes]
+    uydurma = [sira for sira, ad in enumerate(ikinciler, 1) if ad and ad not in gecerli]
+    if uydurma:
+        return (
+            f"scenes {uydurma} cite a source_file_2 that does not exist in this "
+            "subject's archive. Copy it EXACTLY from the menu, or leave it empty:\n"
+            f"{json.dumps(menu, ensure_ascii=False)}"
+        )
+    hepsi = alintilar + [ad for ad in ikinciler if ad]
+    tekrar = sorted({ad for ad in hepsi if hepsi.count(ad) > 1})
     if tekrar:
         return (
-            f"the same archive file is cited by more than one scene ({tekrar}). Each "
-            "scene must cite a different file so the video does not repeat an image."
+            f"the same archive file is cited more than once ({tekrar}). Every "
+            "source_file and source_file_2 across all scenes must be a different "
+            "file so the video never repeats an image."
         )
     return ""
 
@@ -1919,6 +1964,10 @@ def generate_content_plan(
                     # Menuden secilen dosya. Bos kalabilir: menusu olmayan
                     # konularda hat eskisi gibi aramayla calisiyor.
                     "kaynak_dosya": str(scene.get("source_file", "")).strip(),
+                    # Sahnenin IKINCI karesi. Bos kalabilir ve bu bir kusur
+                    # degil: menu yetmediginde o sahne birincil kareyi iki
+                    # yuvada gosterir (bkz. `kare_yerlesimi`).
+                    "kaynak_dosya_2": str(scene.get("source_file_2", "")).strip(),
                 }
                 for scene in data.get("scenes", [])
                 if isinstance(scene, dict)
@@ -2048,6 +2097,73 @@ SHORTS_BOY = 1920
 AZAMI_KIRPMA = 0.35
 
 
+def kirpma_orani(en: int, boy: int, hedef_en: int = 0, hedef_boy: int = 0) -> float:
+    """Kirp-doldur uygulanirsa kaynagin ne kadari atilir (0-1).
+
+    Hedef verilmezse tam Shorts karesi (1080x1920) varsayilir. `dikeye_yapistir`
+    yarim kare (1080x960) icin ayni hesabi istiyor — iki ayri kopya olsaydi
+    esikler zamanla birbirinden kayardi.
+    """
+    hedef_oran = (hedef_en or SHORTS_EN) / (hedef_boy or SHORTS_BOY)
+    oran = en / boy
+    if oran > hedef_oran:
+        kalan = (boy * hedef_oran) / en  # genislikten kirpilir
+    else:
+        kalan = (en / hedef_oran) / boy  # yukseklikten kirpilir
+    return 1 - kalan
+
+
+def bant_ister(kaynak: Path) -> bool:
+    """Gorsel tam ekrana kirpilamiyor mu — yani bulanik bant yoluna mi duser.
+
+    `dikeye_yapistir` kararinin girdisi: yalnizca BANT ISTEYEN iki gorsel
+    alt alta konur. Kirpilabilen gorsel tek basina tam ekran daha iyi
+    duruyor, ikiye bolmek onu kucultmek olurdu.
+    """
+    with Image.open(kaynak) as ham:
+        en, boy = ham.size
+    return kirpma_orani(en, boy) > AZAMI_KIRPMA
+
+
+def dikeye_yapistir(ust: Path, alt: Path, hedef: Path) -> Path:
+    """Iki yatay gorseli ALT ALTA koyup 1080x1920'yi bant birakmadan doldurur.
+
+    ⚠️ NEDEN — kanal sahibinin karari (2026-08-14): "oyle fotograflarda alt
+    alta iki tane koyalim ekrana." Sikayet bulanik bantli karelerin "cok
+    kalitesiz" durmasiydi.
+
+    Bu, 11 Agustos'taki DW-123 kararinin (bantli gercek fotograf, tam ekran
+    AI'a tercih edilir) yerini ALMIYOR — onu daha iyi bir cozumle asiyor.
+    Tek bir 16:9 fotograf tam kareye kirpilamaz (%60'tan fazlasi gider), ama
+    IKISI yarim kareye (1080x960) yalnizca ~%37 kirpmayla sigiyor. Yani
+    ekran doluyor, iki gercek fotograf birden gorunuyor ve bant kalmiyor.
+
+    ⚠️ Bant yolu TAMAMEN kalkmadi: eslesecek ikinci yatay gorsel
+    bulunamayan sahnede `dikeye_uydur` eskisi gibi bulanik bant kullaniyor.
+    Arsiv arzini cokertmemek icin bilincli (olculdu, DW-123: eski oran
+    filtresi 80 kullanilabilir gorselden yalnizca 24'unu geciriyordu).
+    """
+    yarim = SHORTS_BOY // 2
+    tuval = Image.new("RGB", (SHORTS_EN, SHORTS_BOY))
+    for sira, kaynak in enumerate((ust, alt)):
+        with Image.open(kaynak) as ham:
+            parca = ImageOps.fit(
+                ham.convert("RGB"), (SHORTS_EN, yarim), method=Image.Resampling.LANCZOS
+            )
+        tuval.paste(parca, (0, sira * yarim))
+
+    # ⚠️ Parlaklik tabani BURADA da uygulaniyor — `dikeye_uydur` ile ayni
+    # gerekce: her sahne karesi bu yollardan BIRINDEN geciyor ve yalnizca
+    # birine koymak digerini acik birakir.
+    tuval, gama = gorsel_olcum.karanligi_ac(tuval)
+    if gama is not None:
+        print(f"karanlik kare acildi: {hedef.name} (gama {gama})", flush=True)
+
+    hedef.parent.mkdir(parents=True, exist_ok=True)
+    tuval.save(hedef, format="JPEG", quality=92)
+    return hedef
+
+
 def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
     """Gorseli 1080x1920'ye getirir — siyah bant birakmadan.
 
@@ -2076,15 +2192,7 @@ def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
     with Image.open(kaynak) as ham:
         gorsel = ham.convert("RGB")
         en, boy = gorsel.size
-        hedef_oran = SHORTS_EN / SHORTS_BOY
-        oran = en / boy
-
-        # Kirp-doldur uygulanirsa kaynagin ne kadari atilir?
-        if oran > hedef_oran:
-            kalan = (boy * hedef_oran) / en  # genislikten kirpilir
-        else:
-            kalan = (en / hedef_oran) / boy  # yukseklikten kirpilir
-        kirpma = 1 - kalan
+        kirpma = kirpma_orani(en, boy)
 
         if kirpma <= AZAMI_KIRPMA:
             sonuc = ImageOps.fit(
@@ -2124,6 +2232,57 @@ def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
         dikeye_uydur(dosya, hedef_dizin / f"sahne-{sira:02d}.jpg")
         for sira, dosya in enumerate(dosyalar, 1)
     ]
+
+
+KARE_YUVASI = 2
+"""Sahne basina kac kare yuvasi.
+
+⚠️ SABIT olmasi zorunlu, "elden geldiginde iki" degil. MPT her materyale
+ESIT `clip_duration` veriyor; bir sahne iki yuva, digeri tek yuva alsaydi
+iki yuvali sahne ayni ses icin iki kat ekran suresi yer ve gorsel
+anlatimdan kayardi. Ikinci gorsel yoksa BIRINCISI iki yuvaya konuyor —
+o sahne bugunku haliyle birebir ayni gorunur, zamanlama bozulmaz.
+"""
+
+
+def kare_yerlesimi(
+    birincil: list[Path], ikincil: list[Path | None], hedef_dizin: Path
+) -> tuple[list[Path], int]:
+    """Sahne basina IKI kare uretir; kareler ve tam dolan sahne sayisi doner.
+
+    ⚠️ NEDEN — kanal sahibinin sesli notu (2026-08-14): "Fotograflar cok uzun
+    sure kaliyor ekranda, yazi degistikce fotografla degismesi gerekiyor" ve
+    "kesinlikle gorsel sayisi artirilmali". Olculdu: sahne basina 1 gorsel,
+    suresi `ses ÷ sahne` (~5 sn), altyazi ise ~2 sn'de bir degisiyordu —
+    gorsel altyazinin 2,5 kati yavasti.
+
+    Uc yol var ve secim GORSELIN KENDISINE bagli:
+
+    - iki gorsel de kirpilabiliyor  -> [A, B] ardisik, ikisi de tam ekran
+    - ikisi de bant isterdi         -> [AB, AB] alt alta yapistirilmis
+    - ikinci gorsel yok             -> [A, A] bugunku davranis, tek fark yok
+
+    ⚠️ Karisik durum (biri kirpilir digeri bant ister) ardisik gosteriliyor:
+    yapistirmak kirpilabilen gorseli gereksiz yere yariya indirirdi.
+    """
+    kareler: list[Path] = []
+    tam_dolan = 0
+    for sira, birinci in enumerate(birincil, 1):
+        ikinci = ikincil[sira - 1] if sira - 1 < len(ikincil) else None
+        if ikinci is None:
+            tek = dikeye_uydur(birinci, hedef_dizin / f"sahne-{sira:02d}a.jpg")
+            kareler.extend([tek, tek])
+            continue
+        tam_dolan += 1
+        if bant_ister(birinci) and bant_ister(ikinci):
+            birlesik = dikeye_yapistir(
+                birinci, ikinci, hedef_dizin / f"sahne-{sira:02d}-yapistirma.jpg"
+            )
+            kareler.extend([birlesik, birlesik])
+        else:
+            kareler.append(dikeye_uydur(birinci, hedef_dizin / f"sahne-{sira:02d}a.jpg"))
+            kareler.append(dikeye_uydur(ikinci, hedef_dizin / f"sahne-{sira:02d}b.jpg"))
+    return kareler, tam_dolan
 
 
 def create_source_montage(
@@ -2877,6 +3036,11 @@ def run_generator(
         / f"{publication_slot_key()}-{konu_slug(plan.topic)}-attempt-{attempt}"
     )
     try:
+        # Havuz BIR KEZ cozuluyor: hem birincil gecis hem ikinci gorsel
+        # gecisi ayni kategoriye bakiyor, iki kez sorgulamak bosuna istek.
+        kategori_havuzu = wikimedia_materials.kategori_havuzunu_coz(
+            plan.visual_anchor, plan.topic
+        )
         material_files, credits = download_scene_materials(
             plan.topic,
             plan.scenes,
@@ -2886,6 +3050,7 @@ def run_generator(
             # yanlis: bulunan gercek fotograflar korunur, yalnizca delikler
             # AI ile doldurulur (DW-97).
             kismi=AI_VISUAL_FALLBACK_ENABLED,
+            kategori_havuzu=kategori_havuzu,
         )
     except MaterialsUnavailableError as exc:
         if not AI_VISUAL_FALLBACK_ENABLED:
@@ -3040,16 +3205,36 @@ def run_generator(
     # kaynak gorselin kendisini degerlendirmeli, kirpilmis halini degil. Ama
     # render'a giden dosyalar Shorts oraninda olmali, yoksa video servisi
     # siyah bant ekliyor (DW-93).
-    material_files = dikeye_uydur_hepsi(material_files, material_dir / "dikey")
+    # ⚠️ IKINCI GORSEL burada indiriliyor — kaynak kapisindan SONRA. Kapi
+    # birincil kareleri yargiliyor; ikincil gorsel bir iyilestirme ve
+    # reddedilen bir plan icin indirilmesi bosa istek olurdu.
+    ikincil_dosyalar, ikincil_krediler = wikimedia_materials.ikincil_gorseller(
+        plan.scenes,
+        material_dir / "ikincil",
+        kategori_havuzu,
+        used_titles={str(k.get("title", "")) for k in credits},
+    )
+    credits = list(credits) + ikincil_krediler
+    material_files, tam_dolan_sahne = kare_yerlesimi(
+        material_files, ikincil_dosyalar, material_dir / "dikey"
+    )
+    print(
+        f"kare duzeni: {len(plan.scenes)} sahne × {KARE_YUVASI} yuva = "
+        f"{len(material_files)} kare · {tam_dolan_sahne} sahnede iki AYRI gorsel",
+        flush=True,
+    )
 
     # ⚠️ Klip suresi ARTIK SABIT DEGIL. Sabit 5 sn, sahne sayisi × 5 < ses
     # oldugunda MPT'ye bastan bir klibi tekrar ettiriyordu — gerekce
     # `klip_suresi` docstring'inde.
     ses_saniye = anlatim_suresi(plan.script)
-    klip = klip_suresi(ses_saniye, len(plan.scenes))
+    # ⚠️ Bolen KARE sayisi, sahne sayisi degil. Sahne basina iki yuva var
+    # (`KARE_YUVASI`) ve MPT her materyale ESIT sure veriyor; sahneye
+    # bolmek her kareyi iki kat uzun tutar ve videonun yarisini kaybederdik.
+    klip = klip_suresi(ses_saniye, len(material_files))
     print(
-        f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne · "
-        f"klip {klip} sn (toplam {klip * len(plan.scenes):.2f} sn)",
+        f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne × {KARE_YUVASI} "
+        f"yuva · klip {klip} sn (toplam {klip * len(material_files):.2f} sn)",
         flush=True,
     )
 
@@ -3173,7 +3358,10 @@ def run_generator(
     if not video_path.is_absolute():
         video_path = (ROOT / video_path).resolve()
     script_path = ROOT / "storage" / "tasks" / task_id / "script.json"
-    return task_id, video_path, script_path, credits
+    # `tam_dolan_sahne` telemetri icin doner: kac sahnede IKI AYRI arsiv
+    # gorseli bulunabildi. Kayda yazilmazsa hangi videonun hangi duzende
+    # uretildigi sonradan bilinemez.
+    return task_id, video_path, script_path, credits, tam_dolan_sahne
 
 
 def montaj_izgarasi(kare_sayisi: int) -> tuple[int, int]:
@@ -3245,11 +3433,20 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             # (bkz. `create_review_montage`). Eslemeyi soylemek onemli:
             # soylenmediginde hakem ayni sahnenin iki ornegini "duplicate"
             # sanip skoru dusuruyordu.
-            f"The image is a {len(plan.scenes)}-frame chronological montage from a vertical "
-            "Short, read left to right and top to bottom. There is exactly ONE frame per "
-            "scene: frame 1 is scene 1, frame 2 is scene 2, and so on, each sampled from the "
-            "middle of its scene. Two frames are therefore never the same scene, and any "
-            "trailing blank cell is padding, not a scene. "
+            f"The image is a {len(plan.scenes) * KARE_YUVASI}-frame chronological montage "
+            "from a vertical Short, read left to right and top to bottom. There are exactly "
+            f"{KARE_YUVASI} frames per scene: frames 1-2 are scene 1, frames 3-4 are scene 2, "
+            "and so on. Both frames of a scene illustrate the SAME sentence, so they show "
+            "the same subject twice — that is intended, not repetition. "
+            # ⚠️ Ayni karenin iki yuvada gorunmesi KASITLI: ikinci arsiv
+            # gorseli bulunamadigi ya da iki yatay fotograf tek kareye alt
+            # alta yapistirildigi durumlarda oyle oluyor. Soylenmezse hakem
+            # bunu "agir tekrar" sayip skoru dusuruyor — ayni kusur sahne
+            # basina tek kare orneklenirken de olculmustu.
+            "If the two frames of one scene are identical, that is a deliberate layout "
+            "choice, not duplicated footage; do not report it as repetition. A frame that "
+            "shows two stacked photographs is also deliberate. Only report repetition when "
+            "DIFFERENT scenes reuse the same image. Any trailing blank cell is padding. "
             "Judge whether visuals match the narration and historical period, whether captions are readable, and whether footage is repetitive. "
             "Historically grounded AI illustrations are acceptable; do not reject them merely for not being archival photographs, but reject misleading or historically inconsistent details. "
             "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
@@ -3476,7 +3673,13 @@ def run_cycle(
         ] | None = None
         for attempt in range(1, 4):
             try:
-                task_id, video_path, script_path, credits = run_generator(plan, attempt)
+                (
+                    task_id,
+                    video_path,
+                    script_path,
+                    credits,
+                    tam_dolan_sahne,
+                ) = run_generator(plan, attempt)
             except SourceMaterialRejected as exc:
                 review = exc.review
                 rejected_topic = plan.topic
@@ -3535,7 +3738,12 @@ def run_cycle(
                         )
                         break
                 continue
-            montage = create_review_montage(video_path, task_id, len(plan.scenes))
+            # ⚠️ Sahne degil KARE sayisi: sahne basina iki kare var ve
+            # sahneye gore ornekleyen montaj her sahnenin TAM ORTASINDAN
+            # kare alirdi — yani iki gorselin EK YERINDEN.
+            montage = create_review_montage(
+                video_path, task_id, len(plan.scenes) * KARE_YUVASI
+            )
             review = review_video(plan, montage)
             reviews.append(
                 {
@@ -3646,6 +3854,12 @@ def run_cycle(
             # bilinemez ve tutunma karsilastirmasi yapilamaz — ayni korluk
             # bu oturumda bir kez yasandi (sahne duzeyi telemetri yoktu).
             "sahne_sayisi": len(plan.scenes),
+            # ⚠️ Sahne basina kac kare yuvasi ve kacinda IKI AYRI gorsel
+            # oldugu. Yazilmazsa hangi videonun hangi duzende uretildigi
+            # sonradan bilinemez — ayni korluk sahne sayisi deneyinde bir
+            # kez yasandi ve kollar geriye donuk ayirt edilemedi.
+            "kare_duzeni": KARE_YUVASI,
+            "iki_gorselli_sahne": tam_dolan_sahne,
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,

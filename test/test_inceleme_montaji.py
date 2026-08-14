@@ -109,17 +109,29 @@ def test_kare_cogaltma_kapali(monkeypatch, tmp_path):
 
 
 def test_istem_kare_sayisini_ve_eslemeyi_soyluyor():
-    """Hakem esleme soylenmezse ayni sahnenin iki ornegini kopya sanardi."""
+    """Hakem esleme soylenmezse ayni sahnenin iki ornegini kopya sanardi.
+
+    ⚠️ 2026-08-14'te esleme DEGISTI: sahne basina iki kare var
+    (`KARE_YUVASI`), yani kare 1-2 sahne 1. Eski istem "exactly ONE frame
+    per scene" diyordu; kare duzeni degisip istem degismeseydi hakem her
+    sahneyi iki ayri sahne sanar ve tekrar sikayeti uydururdu.
+    """
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
     govde = kaynak[kaynak.index("def review_video(") :][:4000]
 
     assert "8-frame chronological montage" not in govde, "sayi sabit yazilmamali"
-    assert "{len(plan.scenes)}-frame" in govde
-    assert "ONE frame per" in govde
+    assert "{len(plan.scenes) * KARE_YUVASI}-frame" in govde
+    assert "{KARE_YUVASI} frames per scene" in govde
+    # Ayni karenin iki yuvada gorunmesi kasitli; tekrar sayilmamali.
+    assert "deliberate layout" in govde
 
 
-def test_montaj_cagrisi_sahne_sayisini_geciyor():
-    """Baglanti testi — fonksiyon dogru olsa bile cagri eksikse kusur surer."""
+def test_montaj_cagrisi_KARE_sayisini_geciyor():
+    """⚠️ Baglanti testi — fonksiyon dogru olsa bile cagri eksikse kusur surer.
+
+    Sahne sayisi gecilseydi montaj her sahnenin TAM ORTASINDAN kare
+    alirdi, yani iki gorselin EK YERINDEN.
+    """
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert "create_review_montage(video_path, task_id, len(plan.scenes))" in kaynak
+    assert "len(plan.scenes) * KARE_YUVASI" in kaynak

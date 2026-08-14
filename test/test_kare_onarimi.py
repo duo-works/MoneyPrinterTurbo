@@ -53,16 +53,34 @@ def _review(*kusurlar: str) -> ya.QualityReview:
 # --- Kare numarasi cikarma ------------------------------------------------
 
 
-def test_kare_numaralari_okunuyor():
+def test_kare_numarasi_SAHNEYE_cevriliyor():
+    """⚠️ 2026-08-14: sahne basina IKI kare var (`KARE_YUVASI`).
+
+    Hakem KARE numarasi bildiriyor, onarim ise `plan.scenes` uzerinde
+    calisiyor. Cevrim yapilmazsa hakemin isaretledigi kusur YANLIS sahneyi
+    onartir ve bozuk kare videoda kalir.
+
+        kare 1-2 -> sahne 1 · kare 3-4 -> sahne 2 · kare 5-6 -> sahne 3
+    """
     review = _review("kare 6: konuyla ilgisiz modern goruntu", "kare 2: donem uyusmuyor")
 
-    assert ya.agir_kusurlu_kareler(review) == [2, 6]
+    assert ya.agir_kusurlu_kareler(review) == [1, 3]
+
+
+def test_kareden_sahneye_esleme_tablosu():
+    assert [ya.kareden_sahneye(k) for k in (1, 2, 3, 4, 5, 6)] == [1, 1, 2, 2, 3, 3]
+
+
+def test_AYNI_SAHNENIN_iki_karesi_bir_kez_sayiliyor():
+    review = _review("kare 3: donem uyusmuyor", "kare 4: konuyla ilgisiz modern goruntu")
+
+    assert ya.agir_kusurlu_kareler(review) == [2]
 
 
 def test_ayni_kare_iki_kusurla_bir_kez_sayiliyor():
     review = _review("kare 3: donem uyusmuyor", "kare 3: konuyla ilgisiz modern goruntu")
 
-    assert ya.agir_kusurlu_kareler(review) == [3]
+    assert ya.agir_kusurlu_kareler(review) == [2]
 
 
 def test_kusur_yoksa_bos():
@@ -79,7 +97,10 @@ def test_bozuk_karenin_gorseli_degisiyor(monkeypatch):
     )
     plan = _plan("A.jpg", "B.jpg")
 
-    degisen = ya.kareyi_onar(plan, _review("kare 2: konuyla ilgisiz modern goruntu"))
+    # ⚠️ "kare 3" -> SAHNE 2 (sahne basina iki kare). Eski test "kare 2"
+    # diyordu ve o artik sahne 1 demek; sayiyi guncellemek testin ne
+    # olctugunu degistirmez, cevrimin yerinde oldugunu dogrular.
+    degisen = ya.kareyi_onar(plan, _review("kare 3: konuyla ilgisiz modern goruntu"))
 
     assert degisen == [2]
     assert plan.scenes[1]["kaynak_dosya"] == "YENI.jpg"

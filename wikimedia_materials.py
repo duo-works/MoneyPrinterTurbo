@@ -964,6 +964,86 @@ def _tekrar_mi(yol: Path, izler: list[Any]) -> bool:
 _UZANTI = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 
+def kategori_havuzunu_coz(visual_anchor: str, topic: str) -> list[dict[str, Any]]:
+    """Konunun Commons KATEGORISINDEKI dosyalar.
+
+    Tam metin aramasi bir sahneyi bulamayinca AI'ya gitmeden once buraya
+    bakiliyor (DW-122). Kategori bir kez cozuluyor; sahne basina istek yok.
+
+    ⚠️ Ayri fonksiyon oldu cunku ikinci gorsel gecisi (`ikincil_gorseller`)
+    ayni havuzu istiyor. Her gecis kendi cozseydi ayni video icin iki kez
+    kategori sorgusu atilirdi.
+    """
+    for aday_konu in (visual_anchor.strip(), topic.strip()):
+        if not aday_konu:
+            continue
+        kategori = commons_kategorisi(aday_konu)
+        if not kategori:
+            continue
+        havuz = kategori_gorselleri(kategori)
+        if havuz:
+            print(
+                f"ℹ️ Commons kategorisi: {kategori} ({len(havuz)} dosya) — {aday_konu}",
+                flush=True,
+            )
+            return havuz
+    return []
+
+
+def ikincil_gorseller(
+    scenes: list[dict[str, str]],
+    target_dir: Path,
+    kategori_havuzu: list[dict[str, Any]],
+    used_titles: set[str] | None = None,
+) -> tuple[list[Path | None], list[dict[str, Any]]]:
+    """Sahnelerin IKINCI alintisini indirir; bulunamayan sahne icin None.
+
+    ⚠️ YEDEK ZINCIRI YOK, bilincli. Birincil gorselin zincirinde (Met →
+    Commons arama → kategori → Europeana) her adim "sahne bos kalmasin"
+    icin var. Ikincil gorsel ise bir IYILESTIRME: bulunamazsa o sahne
+    birincil kareyi iki yuvada gosterir ve bugunku haliyle birebir ayni
+    durur. Yedek aramak, ikinci gorseli anlatimla ilgisiz bir kareye
+    dondurme riskini bedava kabul etmek olurdu.
+
+    ⚠️ `used_titles` birincil gecisin kullandigi basliklari tasimali —
+    yoksa ayni gorsel bir sahnenin iki yuvasinda birden cikar ve tam da
+    sikayet edilen tekrari uretiriz ("cok fazla benzer gorseller").
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    kullanilan = set(used_titles or set())
+    dosyalar: list[Path | None] = []
+    krediler: list[dict[str, Any]] = []
+    for index, scene in enumerate(scenes, 1):
+        alinti = str(scene.get("kaynak_dosya_2", "")).strip()
+        if not alinti:
+            dosyalar.append(None)
+            continue
+        aday = _alinti_adayi(alinti, kategori_havuzu, kullanilan)
+        if aday is None:
+            dosyalar.append(None)
+            continue
+        hedef = target_dir / f"scene-{index:02d}b{_UZANTI[aday['mime']]}"
+        try:
+            _download(aday["url"], hedef)
+        except requests.HTTPError:
+            dosyalar.append(None)
+            continue
+        kullanilan.add(aday["title"])
+        dosyalar.append(hedef)
+        # ⚠️ Kredi ZORUNLU: CC BY gorsellerinde atif hukuki yukumluluk.
+        # Ikincil gorsel de videoda gorunuyor, yani birincilden farki yok.
+        krediler.append(
+            {
+                "scene": index,
+                "title": aday["title"],
+                "source_url": aday["source_url"],
+                "license": aday["license"],
+                "artist": aday["artist"],
+            }
+        )
+    return dosyalar, krediler
+
+
 def _alinti_adayi(
     baslik: str,
     kategori_havuzu: list[dict[str, Any]],
@@ -1021,6 +1101,7 @@ def download_scene_materials(
     excluded_titles: set[str] | None = None,
     excluded_met_ids: set[int] | None = None,
     kismi: bool = False,
+    kategori_havuzu: list[dict[str, Any]] | None = None,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
     """Sahne gorsellerini arsivlerden indirir.
 
@@ -1060,21 +1141,8 @@ def download_scene_materials(
     # Konunun Commons KATEGORISI — tam metin aramasi bir sahneyi bulamayinca
     # AI'ya gitmeden once buraya bakiliyor (DW-122). Kategori bir kez
     # cozuluyor; sahne basina istek yok.
-    kategori_havuzu: list[dict[str, Any]] = []
-    for aday_konu in (visual_anchor.strip(), topic.strip()):
-        if not aday_konu:
-            continue
-        kategori = commons_kategorisi(aday_konu)
-        if not kategori:
-            continue
-        kategori_havuzu = kategori_gorselleri(kategori)
-        if kategori_havuzu:
-            print(
-                f"ℹ️ Commons kategorisi: {kategori} "
-                f"({len(kategori_havuzu)} dosya) — {aday_konu}",
-                flush=True,
-            )
-            break
+    if kategori_havuzu is None:
+        kategori_havuzu = kategori_havuzunu_coz(visual_anchor, topic)
     for index, scene in enumerate(scenes, 1):
         term = scene.get("search_term", "").strip()
         queries = build_search_queries(topic, term)
