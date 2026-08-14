@@ -2404,6 +2404,67 @@ def create_source_montage(
     return montage
 
 
+FOTOGRAF_OLMAYAN_TURLER = frozenset({"map", "diagram", "document"})
+"""Sahneyi degistirmeyi gerektiren kare turleri.
+
+⚠️ `artwork` BILEREK DISARIDA. Gravur, tablo ve cizim bu kanalin
+gorsel dilinin merkezinde: fotografin var olmadigi donemlerde tek
+gercek arsiv kaynagi onlar. Onlari elemek konu havuzunun yarisini
+kapatirdi.
+
+⚠️ Olculdu (2026-08-14): Tunguska menusunun **%50'si** fotograf degil
+(3 harita, 2 pul/kapak, 2 diyagram), Persepolis'in %29'u harita.
+Uretilen Tunguska videosunda 18 karenin 3'u harita, 2'si pul, biri
+kitap kapagi cikti — kanal sahibinin sikayeti birebir buydu.
+"""
+
+KONU_TURU_ISTISNASI = re.compile(
+    r"\bmap\b|\bmaps\b|\bchart\b|\batlas\b|\bmanuscript\b|\bcodex\b|\bscroll\b"
+    r"|\bdocument\b|\bletter\b|\bdiagram\b|\bblueprint\b|\bstamp\b",
+    re.IGNORECASE,
+)
+"""Konunun KENDISI bir harita/belge oldugunda tur kurali uygulanmaz.
+
+⚠️ Bu istisna olmadan kural kanalin KENDI YAYINLADIGI videoyu
+oldururdu: "Piri Reis Map: Did It Show Antarctica?" (2026-08-14,
+`wzXuZKVGuro`) bastan sona bir haritayi anlatiyor ve karelerinin
+harita olmasi DOGRU. Ayni sey Rosetta Stone, Voynich Manuscript,
+Antikythera mekanizmasinin semasi icin de gecerli.
+"""
+
+
+def belge_kareleri(kareler: list[dict[str, Any]], plan: ContentPlan, sahne_sayisi: int) -> list[int]:
+    """Turu fotograf/artwork olmayan sahne numaralari — KOD karar verir.
+
+    ⚠️ Karar burada, hakemde degil (DW-87). Hakeme "bu kare ne" diye OLGU
+    soruluyor; "harita kabul edilebilir mi" sorusu ona birakilirsa konudan
+    konuya keyfi cevap verir.
+
+    Konunun kendisi harita/belge ise (Piri Reis Map, Rosetta Stone) kural
+    uygulanmiyor — bkz. `KONU_TURU_ISTISNASI`.
+    """
+    if KONU_TURU_ISTISNASI.search(f"{plan.topic} {plan.visual_anchor} {plan.title}"):
+        return []
+    numaralar = set()
+    for kare in kareler:
+        # ⚠️ Suzgec BURADA da var, cagiran tarafta oldugu halde: fonksiyon
+        # dogrudan cagrildiginda (test, ileride baska bir kapi) bozuk bir
+        # girdi onu patlatmamali. Kapinin isi yanlisi yakalamak, bicimi
+        # bozuk veriyle koşumu oldurmek degil.
+        if not isinstance(kare, dict):
+            continue
+        tur = str(kare.get("kind", "")).strip().lower()
+        if tur not in FOTOGRAF_OLMAYAN_TURLER:
+            continue
+        try:
+            numara = int(kare.get("n", 0))
+        except (TypeError, ValueError):
+            continue
+        if 1 <= numara <= sahne_sayisi:
+            numaralar.add(numara)
+    return sorted(numaralar)
+
+
 def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
     prompt = {
         "topic": plan.topic,
@@ -2441,10 +2502,32 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
             # anilinca model olcmeyi birakip esigin bir tik altina oy yaziyor.
             "visual_alignment_score is a measurement of this contact sheet, not a verdict: 0 means no image matches its scene, 50 means about half of the images match, 100 means every image matches its scene cleanly. Score what you actually see. "
             "For every scene number in problem_scene_numbers, add one concrete anchor-specific replacement query to revised_search_terms, in the same order, and one concrete issue describing what is wrong."
+            # ⚠️ TUR SORULUYOR, KARAR SORULMUYOR (DW-87). Hakem "bu kare ne"
+            # diye olgu bildiriyor; harita/belge kabul edilebilir mi sorusuna
+            # KOD karar veriyor (`belge_kareleri`). Modele "harita kotu mu"
+            # diye sorulsaydi konuya gore keyfi cevap verirdi.
+            " Additionally return a `frames` array with one object per scene: "
+            '{"n": <scene number>, "kind": one of "photo", "map", "diagram", '
+            '"artwork", "document" — what the image actually IS, not what it '
+            "depicts. A photograph of a museum display case is a photo; a "
+            "scanned page, book cover, postage stamp or printed label is a "
+            'document; a drawn plan or cross-section is a diagram}.'
         ),
     }
     data = _vision_json(prompt, montage)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
+    kareler = data.get("frames")
+    kareler = [k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else []
+    sorunlu = [
+        int(number)
+        for number in data.get("problem_scene_numbers", [])
+        if str(number).isdigit() and 1 <= int(number) <= len(plan.scenes)
+    ]
+    # Hakemin isaretlemedigi ama TURU foto olmayan sahneler de sorunlu
+    # sayiliyor; sirasi korunuyor ki asagidaki terim eslemesi bozulmasin.
+    for numara in belge_kareleri(kareler, plan, len(plan.scenes)):
+        if numara not in sorunlu:
+            sorunlu.append(numara)
     return QualityReview(
         # ⚠️ `yayina_uygun` DEGIL — o, render SONRASI video kapisinin esigini
         # kullanir. Kaynak on-kapisi kendi (daha gevsek) sabitiyle karar
@@ -2455,11 +2538,8 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
         subtitle_readability_score=100,
         issues=[str(issue) for issue in data.get("issues", [])],
         revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
-        problem_scene_numbers=[
-            int(number)
-            for number in data.get("problem_scene_numbers", [])
-            if str(number).isdigit() and 1 <= int(number) <= len(plan.scenes)
-        ],
+        problem_scene_numbers=sorunlu,
+        kareler=kareler,
     )
 
 
