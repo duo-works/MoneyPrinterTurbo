@@ -1267,7 +1267,20 @@ def generate_video(
         return bgm_mix_succeeded
 
 
-def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
+def preprocess_video(materials: List[MaterialInfo], clip_duration=4, zoom=True):
+    """Duragan gorselleri klibe cevirir.
+
+    `zoom=True` (varsayilan) bugunku davranis: her gorsele yavas bir buyutme
+    uygulanir. ⚠️ Varsayilan BILEREK degistirilmedi — webui ayni servisi
+    kullaniyor ve davranisini topyekun degistirmek tek bir hattin tercihini
+    herkese dayatmak olurdu.
+
+    `zoom=False` gorseli duragan birakir. Iki sebeple isteniyor (2026-08-14,
+    kanal sahibinin sesli notu): zoom'un kendisi begenilmedi, ve sahne basina
+    iki kare duzeninde dikey yapistirilmis bir kare iki yuvaya birden
+    konuyor — her gorsel kendi mp4'u oldugu ve zoom her klip sinirinda %100'e
+    sifirlandigi icin ek yerinde gorunur bir sicrama olurdu.
+    """
     # WebUI 在某些二次生成场景下可能传入空素材列表，这里直接返回空结果，避免抛出 NoneType 异常。
     if not materials:
         return []
@@ -1342,13 +1355,18 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4):
                 # The zoom effect starts from the original size and gradually scales up to 120%.
                 # t represents the current time, and clip.duration is the total duration of the clip (3 seconds).
                 # Note: 1 represents 100% size, so 1.2 represents 120% size.
-                zoom_clip = clip.resized(
-                    lambda t: 1 + (clip_duration * 0.03) * (t / clip.duration)
-                )
+                # ⚠️ `clip` YENIDEN ATANMIYOR: asagidaki `close_clip(clip)`
+                # orijinal ImageClip'i kapatmali, sarmalayiciyi degil.
+                if zoom:
+                    render_clip = clip.resized(
+                        lambda t: 1 + (clip_duration * 0.03) * (t / clip.duration)
+                    )
+                else:
+                    render_clip = clip
 
                 # Optionally, create a composite video clip containing the zoomed clip.
                 # This is useful when you want to add other elements to the video.
-                final_clip = CompositeVideoClip([zoom_clip])
+                final_clip = CompositeVideoClip([render_clip])
 
                 # Output the video to a file.
                 video_file = f"{material_source_path}.mp4"

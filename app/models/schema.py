@@ -86,6 +86,11 @@ class VideoParams(BaseModel):
     # klibi tekrar ediyor ya da son sahneyi hic gostermiyor. Tamsayi kisiti
     # ikisinden birini kacinilmaz kiliyordu (bkz. cli.py --video-clip-duration).
     video_clip_duration: Optional[float] = 5
+    # ⚠️ Varsayilan True: webui ayni servisi kullaniyor, bugunku davranis
+    # (duragan gorsele yavas buyutme) korunuyor. Yalnizca Shorts hatti
+    # kapatiyor — kanal sahibi 2026-08-14'te zoom'u begenmedigini soyledi, ve
+    # sahne basina iki kare duzeni zoom acikken ek yerinde sicrama uretiyor.
+    video_zoom: Optional[bool] = True
     video_clip_speed: Optional[float] = 1.0
     match_materials_to_script: bool = False
     video_count: Optional[int] = 1

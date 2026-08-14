@@ -3081,6 +3081,10 @@ def run_generator(
         "none",
         "--video-clip-duration",
         str(klip),
+        # ⚠️ Zoom KAPALI (2026-08-14, kanal sahibinin sesli notu: "su zoom
+        # olayi hosuma gitmiyor"). Bayrak yalnizca bu hattı etkiliyor;
+        # webui ve varsayilan davranis degismedi.
+        "--no-video-zoom",
         "--voice-name",
         SES_ADI,
         "--voice-rate",

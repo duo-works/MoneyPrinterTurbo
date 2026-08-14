@@ -272,6 +272,17 @@ Output and exit status:
         ),
     )
     video_group.add_argument(
+        # ⚠️ Yalnizca KAPATMA bayragi var; varsayilan `None` birakiliyor ki
+        # verilmediginde VideoParams'in kendi varsayilani (zoom acik)
+        # gecerli kalsin. Webui ayni servisi kullaniyor.
+        "--no-video-zoom",
+        dest="video_zoom",
+        action="store_const",
+        const=False,
+        default=None,
+        help="disable the slow zoom applied to still images",
+    )
+    video_group.add_argument(
         "--match-materials-to-script",
         default=None,
         action=argparse.BooleanOptionalAction,
@@ -543,6 +554,7 @@ def build_video_params(args: argparse.Namespace) -> VideoParams:
         "video_concat_mode",
         "video_transition_mode",
         "video_clip_duration",
+        "video_zoom",
         "match_materials_to_script",
         "n_threads",
         "voice_volume",
