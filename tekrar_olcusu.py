@@ -25,6 +25,14 @@ kapanislar 2026-08-14'te kaydedilmeye baslandi ve karsilastirilacak
 gecmis henuz yoktu. Veri birikince `--tekrar` ciktisiyla gozden gecir.
 """
 
+SINIFLANMAYAN = frozenset({"diger", "soru/diger"})
+"""Bunlar bir KALIP degil, siniflandiramadigimiz sey — tekrar sayilmazlar.
+
+⚠️ `soru/diger` de buraya ait: "Whose ...?" ve "Whom ...?" ayni kovaya
+duser ama ayni kalip DEGILLER. Onlari tekrar saymak birbirinden farkli iki
+basligi reddeder ve bir uretim denemesini bosuna yakardi.
+"""
+
 SORU_KELIMELERI = frozenset(
     {
         "why", "how", "who", "what", "when", "where", "which",
@@ -39,10 +47,14 @@ _DURAK = frozenset(
 )
 
 
-def _kelimeler(metin: str) -> set[str]:
-    return {
-        k for k in re.findall(r"[a-z']{3,}", str(metin).lower()) if k not in _DURAK
-    }
+def kelimeler(metin: str) -> set[str]:
+    """Olcumde sayilan kelimeler — kapi ve rapor AYNI ayikaliciyi kullansin.
+
+    ⚠️ Acik (public) olmasi bilerek: `_kapanis_tekrari` kisa metin gurultu
+    esigini bu kumeye gore kuruyor. Ayri bir ayiklayici kullansaydi "uc
+    kelimeden kisa" tanimi kapida ve raporda farkli seyler demek olurdu.
+    """
+    return {k for k in re.findall(r"[a-z']{3,}", str(metin).lower()) if k not in _DURAK}
 
 
 def kelime_ortusmesi(birinci: str, ikinci: str) -> float:
@@ -52,7 +64,7 @@ def kelime_ortusmesi(birinci: str, ikinci: str) -> float:
     kapanisi tamamen icerse Jaccard bunu dusuk gosterir ama izleyici icin
     o iki cumle aynidir. `_kapanis_tekrari` da ayni olcuyu kullaniyor.
     """
-    a, b = _kelimeler(birinci), _kelimeler(ikinci)
+    a, b = kelimeler(birinci), kelimeler(ikinci)
     if not a or not b:
         return 0.0
     return len(a & b) / min(len(a), len(b))

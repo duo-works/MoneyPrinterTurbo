@@ -129,6 +129,39 @@ def test_yazdirma_patlamiyor(capsys):
     assert "kanca" in cikti.lower()
 
 
+def test_KAPI_ve_RAPOR_ayni_cetveli_kullaniyor():
+    """⚠️ Bu testin varlik sebebi gercek bir kusur.
+
+    Ilk surumde `_kapanis_tekrari` kendi esigini (`0.6`) ve kendi kelime
+    ayiklayicisini (`_normalize_topic`) kullaniyordu; `--tekrar` raporu ise
+    `tekrar_olcusu`nunkileri. Iki sabit, iki ayiklayici — yani rapor
+    "tekrar yok" derken kapi BASKA bir cetvelle calisiyordu ve tetik,
+    engellenen seyden baskasini olcuyordu. Tam da `tekrar_olcusu`
+    docstring'inin uyardigi sapma, birinci gunden.
+    """
+    import youtube_automation as ya
+    import tekrar_olcusu
+
+    assert ya.KAPANIS_ORTUSME_ORANI == tekrar_olcusu.ORTUSME_ESIGI
+
+    # Ayni cift, iki yoldan: kapi tekrar demeliyse rapor da esigi gecmeli.
+    a = "The archive still holds the rest of that fleet."
+    b = "The vault still holds the rest of that hoard."
+
+    assert ya._kapanis_tekrari(f"Bir sey oldu. {b}", [a])
+    assert tekrar_olcusu.kelime_ortusmesi(a, b) >= tekrar_olcusu.ORTUSME_ESIGI
+
+
+def test_siniflanmayan_bicimler_tekrar_sayilmiyor():
+    """"Whose ...?" ve "Whom ...?" ayni kovaya duser ama ayni kalip degil."""
+    import youtube_automation as ya
+
+    assert ya._baslik_bicimi("Whose Tomb Was It? #Shorts") == "soru/diger"
+    assert not ya._baslik_bicimi_tekrari(
+        "Whom Did It Serve? #Shorts", ["Whose Tomb Was It? #Shorts"]
+    )
+
+
 def test_cli_tekrar_bayragi_var():
     kaynak = Path(kanal_rapor.__file__).read_text(encoding="utf-8")
 

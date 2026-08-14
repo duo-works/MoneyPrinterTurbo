@@ -1439,13 +1439,18 @@ def kapanis(metin: str) -> str:
     return cumleler[-1] if cumleler else ""
 
 
-KAPANIS_ORTUSME_ORANI = 0.6
+KAPANIS_ORTUSME_ORANI = tekrar_olcusu.ORTUSME_ESIGI
 """Kapanis, onceki bir kapanisla bu orandan fazla kelime paylasirsa tekrar.
 
 ⚠️ Bu esik SECILDI, olculmedi — kapanislar yeni kaydedilmeye basladi ve
-karsilastirilacak gecmis henuz yok. Veri birikince `kanal_rapor.py` ile
-gozden gecirilmeli. Burada yazili olmasi, ileride "bu sayi nereden geldi"
-sorusunun cevapsiz kalmamasi icin.
+karsilastirilacak gecmis henuz yok. Veri birikince `kanal_rapor.py --tekrar`
+ciktisiyla gozden gecirilmeli.
+
+⚠️ TEK KAYNAKTAN geliyor ve gelmeli. Ilk surumde burada `0.6` yaziyordu ve
+`--tekrar` raporu kendi esigiyle olcuyordu: iki sabit, iki ayri kelime
+ayiklayici. Rapor "tekrar yok" derken kapi baska bir cetvelle calisiyordu —
+yani tetik, engellenen seyden baskasini olcuyordu. Ayni sebeple ORAN da
+`tekrar_olcusu.kelime_ortusmesi` ile hesaplaniyor.
 """
 
 
@@ -1472,18 +1477,13 @@ def _kapanis_tekrari(senaryo: str, onceki_kapanislar: list[str]) -> bool:
     kapanis_metni = kapanis(senaryo)
     if not kapanis_metni or not onceki_kapanislar:
         return False
-    kelimeler = _normalize_topic(kapanis_metni)
-    if len(kelimeler) < 3:
+    if len(tekrar_olcusu.kelimeler(kapanis_metni)) < 3:
         # Cok kisa kapanista ortusme orani gurultu; olcmeye degmez.
         return False
-    for onceki in onceki_kapanislar:
-        oncekiler = _normalize_topic(onceki or "")
-        if not oncekiler:
-            continue
-        ortak = kelimeler & oncekiler
-        if len(ortak) / min(len(kelimeler), len(oncekiler)) >= KAPANIS_ORTUSME_ORANI:
-            return True
-    return False
+    return any(
+        tekrar_olcusu.kelime_ortusmesi(kapanis_metni, onceki or "") >= KAPANIS_ORTUSME_ORANI
+        for onceki in onceki_kapanislar
+    )
 
 
 TEKRAR_PENCERESI = 40
@@ -1560,9 +1560,9 @@ def _baslik_bicimi_tekrari(baslik: str, onceki_basliklar: list[str]) -> bool:
     trafik Shorts akisindan). Yasaklanan sey ust uste AYNI soru kelimesi.
     """
     bicim = _baslik_bicimi(baslik)
-    # ⚠️ "diger" bir kalip degil, siniflandiramadigimiz sey. Onu tekrar
-    # saymak birbirinden tamamen farkli iki basligi reddederdi.
-    if bicim == "diger" or not onceki_basliklar:
+    # ⚠️ Siniflanmayan kovalar bir kalip degil. Onlari tekrar saymak
+    # birbirinden tamamen farkli iki basligi reddederdi.
+    if bicim in tekrar_olcusu.SINIFLANMAYAN or not onceki_basliklar:
         return False
     return any(_baslik_bicimi(onceki) == bicim for onceki in onceki_basliklar)
 
