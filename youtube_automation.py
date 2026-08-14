@@ -125,6 +125,29 @@ EDITORIAL_ANCHOR_POOL = [
     "Book of Kells",            # 33
     "Staffordshire Hoard",      # 33
     "Tutankhamun",              # 29
+    # ⚠️ 2026-08-14 ikinci tur — havuz SIFIRLANMISTI. Olculdu: 34 capanin
+    # 34'u de kullanilmis, `eligible_anchors` bos donuyor ve yedek kipteki
+    # koşumlar "could not generate a sufficiently distinct topic" ile
+    # oluyordu. 20:05 koşumu tam bu yuzden video uretmedi.
+    #
+    # Ayni olcut (Commons menusunde 12+ kullanilabilir gorsel) 32 adaya
+    # uygulandi, 10'u gecti. Yeni kare duzeninde esik zaten 6 sahne x 2
+    # yuva = 12, yani olcut kendiliginden dogru sayida.
+    #
+    # Elenenler kayda geciyor ki tekrar denenmesin: Meteora 11, Nazca
+    # Lines 11, Machu Picchu 11, Sutton Hoo helmet 11, Carnac stones 7,
+    # Karnak Temple 7, Chand Baori 6, Teotihuacan 5, Leptis Magna 4,
+    # Skara Brae 3, Vasa ship 2, Ggantija 1.
+    "Angkor Thom",              # 14
+    "Mont Saint-Michel",        # 14
+    "Alhambra",                 # 32
+    "Bagan",                    # 40
+    "Pompeii",                  # 12
+    "Herculaneum",              # 38
+    "Terracotta Army",          # 12
+    "Bayeux Tapestry",          # 15
+    "Eiffel Tower",             # 12
+    "Trevi Fountain",           # 27
 ]
 
 

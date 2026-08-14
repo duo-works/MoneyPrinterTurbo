@@ -80,10 +80,25 @@ def test_havuz_olculmus_capalar_tasiyor():
     olculdu ve yalnizca 12+ kullanilabilir gorseli olanlar alindi. Ayni
     olcumde elenenler: Pompeii 0, Leptis Magna 0, Teotihuacan 2, Sutton
     Hoo 7 — sonuncusu bu hattin secip 25 aldigi konuydu.
+
+    ⚠️ POMPEII 2026-08-14'te YENIDEN OLCULDU ve 12 cikti; havuza alindi.
+    Iki olcum celisiyor ve yenisine guveniliyor cunku ARADA MENU KODU
+    DEGISTI: `arsiv_menusu` artik kategori ve tam metin aramasini
+    birlestiriyor, `_alinti_adayi` bos havuz kaydinda dosyayi tek istekle
+    yeniden cekiyor (MediaWiki ~50 dosyadan sonrasini bos donduruyordu) ve
+    `_aciklamayi_seyrelt` ayni aciklamali yiginlari kiriyor. Ayni gun ayni
+    sebeple Terracotta Army 4'ten 14'e cikti.
+
+    Guven gerekcesi tek bir sayi degil UYUM: ayni yeniden-olcumde Leptis
+    Magna 4, Teotihuacan 5, Sutton Hoo 11 ciktI — ucu de yine esigin
+    altinda. Yani yeni olcum eskiyi genel olarak DOGRULUYOR, yalnizca
+    kodun duzeldigi yerde ayrisiyor.
     """
     havuz = ya.EDITORIAL_ANCHOR_POOL
 
     assert len(havuz) >= 30, "havuz tukenmeye cok yakin"
     assert len(set(havuz)) == len(havuz), "havuzda tekrar var"
-    for elenen in ("Pompeii", "Leptis Magna", "Teotihuacan", "Sutton Hoo"):
+    # ⚠️ Pompeii listeden CIKARILDI (yukaridaki gerekce). Kalan ucu bugun
+    # yeniden olculdu ve hala eleniyor.
+    for elenen in ("Leptis Magna", "Teotihuacan", "Sutton Hoo"):
         assert elenen not in havuz, f"{elenen} olcumde elendi, havuza girmemeli"
