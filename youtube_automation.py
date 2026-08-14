@@ -3585,7 +3585,24 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             '"authentic_subject": <true when the thing shown IS the real subject, its '
             "surviving remains, or a genuine historical depiction of it, even if the "
             'photograph itself was taken recently>, '
-            '"modern": <true when the frame is a present-day photograph or footage>}. '
+            '"modern": <true when the frame is a present-day photograph or footage>, '
+            # ⚠️ Bu iki alan TELEMETRI, kapi degil (2026-08-14). Yazi
+            # sorusu istemde ZATEN vardi ama cevap duzyazi `issues`a
+            # gidiyordu; kod onu guvenilir okuyamiyor, dolayisiyla
+            # olcemiyordu. Kanal sahibinin sesli notundaki iki madde tam
+            # da bunlar: "cok fazla harita, ustune yazi olan fotograf".
+            #
+            # Olculdu (2026-08-14, Tunguska koşumu): 18 karenin 3'u harita,
+            # 1'i kitap kapagi, 2'si pul, birkaci muze etiketi — hepsi
+            # yazili. Video reddedildi ama SKOR uzerinden; hangi karenin
+            # neden kotu oldugu sayiyla degil duzyaziyla biliniyordu.
+            #
+            # Esik veri birikince konacak. Once olc, sonra kapi kur.
+            '"lettering": <true when readable words appear INSIDE the picture — a sign, '
+            "plaque, caption, book cover, stamp, map label or nameplate — not counting the "
+            'subtitle burned along the bottom, which is intended>, '
+            '"kind": one of "photo", "map", "diagram", "artwork", "document" — what the '
+            "frame actually is}. "
             "Answer what you can actually see. A recent photograph of the genuine "
             "surviving object is authentic_subject true and period correct; a recent "
             "photograph of something else entirely is not."

@@ -82,6 +82,56 @@ def test_bozuk_kare_verisi_patlatmiyor(monkeypatch):
         assert ya.review_video(plan, Path("m.jpg")).kareler == []
 
 
+def test_istem_YAZI_ve_TUR_alanlarini_istiyor():
+    """⚠️ Sesli notun iki maddesi bu iki alanla olculebilir hale geliyor.
+
+    "cok fazla harita" ve "ustune yazi olan fotograf" — hakem yazi
+    sorusunu ZATEN cevapliyordu ama duzyazi `issues` alaninda; kod onu
+    guvenilir okuyamiyor, dolayisiyla olcemiyordu.
+
+    Olculdu (2026-08-14, Tunguska koşumu): 18 karenin 3'u harita, 1'i
+    kitap kapagi, 2'si pul, birkaci muze etiketi. Video reddedildi ama
+    SKOR uzerinden; hangi karenin neden kotu oldugu sayiyla bilinmiyordu.
+
+    ⚠️ TELEMETRI, KAPI DEGIL. Esik veri birikince konacak.
+    """
+    # ⚠️ SABIT KARAKTER PENCERESI KULLANILMIYOR. Bu oturumda ayni tuzak
+    # uc kez isirdi: metin buyuyunce pencere aranan satiri disarida
+    # birakiyor ve test kodun degistigini degil penceresinin kaydigini
+    # soyluyor. Sinir bir SONRAKI tanimin kendisi.
+    i = KAYNAK.index("def review_video(")
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 1)]
+
+    assert '"lettering"' in govde
+    assert '"kind"' in govde
+    assert '"map"' in govde
+    # Esik ANILMIYOR (DW-87): hakem olcer, kod karar verir. Yalnizca
+    # ISTEM metni sinaniyor — asagisi kodun kendisi ve orada
+    # `publishable=` gecmesi dogru.
+    istem = govde[: govde.index("data = _vision_json")]
+    assert "publishable" not in istem
+
+
+def test_yazi_ve_tur_KAPI_DEGIL(monkeypatch):
+    """Yazili harita bildiren kare tek basina yayini engellemiyor."""
+    monkeypatch.setattr(
+        ya,
+        "_vision_json",
+        lambda *_a, **_k: {
+            "visual_alignment_score": 92,
+            "subtitle_readability_score": 95,
+            "frames": [{"n": 1, "lettering": True, "kind": "map"}],
+        },
+    )
+    plan = ya.ContentPlan("konu", "capa", "baslik", "metin", [], "aciklama", ["a"])
+
+    review = ya.review_video(plan, Path("m.jpg"))
+
+    assert review.agir_kusurlar == [], "veri birikmeden kapi kurulmamali"
+    assert review.publishable, "yuksek skorlu video yazi yuzunden dusmemeli"
+    assert review.kareler[0]["kind"] == "map"
+
+
 def test_kareler_KAYDA_yaziliyor():
     """⚠️ `asdict(review)` ile gidiyor; alan eklenmezse kayit yine bos kalirdi."""
     review = ya.QualityReview(True, 90, 90, kareler=[{"n": 1, "lettering": "none"}])
