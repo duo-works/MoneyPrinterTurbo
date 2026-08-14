@@ -208,6 +208,102 @@ def vikipedi_ozeti(konu: str, *, timeout: int = 15) -> str:
     return str(veri.get("extract") or "").strip()
 
 
+TAM_METIN_AZAMI_KELIME = 6000
+"""Modele verilen kaynak metnin tavani.
+
+15 dakikalik bir video ~2.000 kelime konusuyor; kaynagin ondan belirgin
+genis olmasi gerekiyor ki model SECEBILSIN, ama sinirsiz da olmamali —
+uzun makaleler (Roman aqueduct 7.539 kelime) baglami ve maliyeti bosuna
+sisirir.
+"""
+
+# Makalenin GOVDESI disindaki bolumler: modele olgu vermiyorlar, yer
+# kapliyorlar ve kaynakca satirlari senaryoya sizabiliyor.
+_ATILACAK_BOLUMLER = (
+    "references",
+    "external links",
+    "see also",
+    "further reading",
+    "bibliography",
+    "notes",
+    "citations",
+    "sources",
+)
+
+
+def vikipedi_tam_metin(
+    konu: str, *, azami_kelime: int = TAM_METIN_AZAMI_KELIME, timeout: int = 20
+) -> str:
+    """Konunun Vikipedi makalesinin TAM govdesi. Bulunamazsa BOS DONER.
+
+    ⚠️ NEDEN OZET YETMIYOR — olculdu (2026-08-15):
+
+        konu                ozet      tam makale
+        Roman aqueduct        39        7.539     (193x)
+        Herculaneum           32        3.207     (100x)
+        Egyptian pyramids     56        3.208      (57x)
+        Bayeux Tapestry      102        6.456      (63x)
+
+    `vikipedi_ozeti` yalnizca giris paragrafini veriyor: 32-102 kelime.
+    80-120 kelimelik bir Shorts senaryosuna yetiyor, ama uzun format
+    ~2.000 kelime konusuyor ve model 56 kelimelik bir ozetten 2.000
+    kelime yazmak zorunda kalirsa aradaki farki UYDURUR.
+
+    Uydurma riski bu hatta olculmus ve belgelenmis bir kusur
+    (`vikipedi_ozeti` docstring'i, DW-114: Scanagatta "Italian opera"
+    diye anlatildi). Uzun formatta ayni risk kelime basina degil, kelime
+    SAYISIYLA olcekleniyor.
+
+    ⚠️ Kaynakca/dis baglanti bolumleri ATILIYOR: modele olgu vermiyorlar
+    ve "Retrieved 12 March 2019" gibi satirlarin anlatima sizmasi, bu
+    hatta zaten olculmus bir kusur sinifinin (kaynagin kendisini
+    anlatmak) besleyicisi olurdu.
+    """
+    ad = (konu or "").strip()
+    if not ad:
+        return ""
+    try:
+        yanit = _get_with_retry(
+            VIKIPEDI_API_URL,
+            timeout=timeout,
+            max_attempts=2,
+            params={
+                "action": "query",
+                "prop": "extracts",
+                "explaintext": "1",
+                "redirects": "1",
+                "titles": ad,
+                "format": "json",
+            },
+        )
+    except (requests.RequestException, RuntimeError):
+        return ""
+    try:
+        sayfalar = yanit.json()["query"]["pages"]
+    except (ValueError, KeyError, TypeError):
+        return ""
+    metin = ""
+    for sayfa in sayfalar.values():
+        if isinstance(sayfa, dict) and sayfa.get("extract"):
+            metin = str(sayfa["extract"])
+            break
+    if not metin.strip():
+        return ""
+
+    # `explaintext` bolum basliklarini "== Baslik ==" biciminde birakiyor.
+    govde: list[str] = []
+    atlaniyor = False
+    for satir in metin.splitlines():
+        if baslik := re.fullmatch(r"\s*=+\s*(.+?)\s*=+\s*", satir):
+            atlaniyor = baslik.group(1).strip().lower() in _ATILACAK_BOLUMLER
+            continue
+        if not atlaniyor:
+            govde.append(satir)
+
+    kelimeler = " ".join(govde).split()
+    return " ".join(kelimeler[:azami_kelime]).strip()
+
+
 def is_safe_license(value: str) -> bool:
     """Kosulsuz kullanilabilir mi — PD ya da CC0."""
     normalized = (value or "").strip().lower()
