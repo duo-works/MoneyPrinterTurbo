@@ -3346,7 +3346,9 @@ def run_cycle(
                 # gorselini degistirmek hem ucuz hem de olculmus kazanc:
                 # Roman Dodecahedron 89 aldi ve sekiz karenin YEDISI temizdi.
                 # Gerekce `kareyi_onar` docstring'inde.
-                if onarilan := kareyi_onar(plan, review, konu or ""):
+                if onarilan := kareyi_onar(
+                    plan, review, aday.baslik if aday else ""
+                ):
                     print(
                         f"ℹ️ kare onarımı: sahne {onarilan} görseli menüden değiştirildi",
                         flush=True,

@@ -159,12 +159,18 @@ def test_ISTEMDEKI_menuye_bakiyor(monkeypatch):
 # --- Hatta baglanti --------------------------------------------------------
 
 
-def test_onarim_video_donguSUNE_bagli():
-    """⚠️ Fonksiyon dogru olsa bile cagrilmazsa video yine cope gider."""
+def test_eski_yol_YEDEK_olarak_duruyor():
+    """Menusu olmayan konularda tek care arama terimlerini revize etmek."""
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
-    i = kaynak.index("def run_cycle(")
-    govde = kaynak[i:]
+    govde = kaynak[kaynak.index("def run_cycle(") :]
 
-    assert "kareyi_onar(plan, review" in govde
-    # Eski yol yedek olarak KALMALI: menusu olmayan konularda tek care o.
     assert "refine_search_terms(plan, review)" in govde
+
+
+# ⚠️ Cagri yerinin GERCEKTEN calistigi `test_onarim_dali_calisiyor.py`de
+# yuruttulerek dogrulaniyor, burada dize arayarak DEGIL. Sebep olculdu
+# (2026-08-14): bu dosyada eskiden `"kareyi_onar(plan, review" in govde`
+# diye bir kontrol vardi; dize DOGRUYDU ama cagriya `konu` diye var olmayan
+# bir degisken veriliyordu. Test yesil kaldi, uc uretim koşumu video render
+# edip `NameError` ile coktu. Kaynak metninde dize aramak, kodun
+# calistigini kanitlamaz.
