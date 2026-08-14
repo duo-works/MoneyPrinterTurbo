@@ -2588,10 +2588,16 @@ KLIP_PAYI = 1.02
 Neden 1,02: `n × klip >= ses` olmali (yoksa MPT acigi kapatmak icin bastan bir
 klibi TEKRAR ediyor) ama ayni anda `(n-1) × klip < ses` olmali (yoksa dongu
 sure dolunca erken kirilir ve SON SAHNE videoya hic girmez). Pay `p` icin ikinci
-kosul `p·(n-1)/n < 1`, yani `n < p/(p-1)`; %2 payda `n < 51` — sahne sayisi
-6-10 oldugu icin fazlasiyla guvenli. MPT'nin ses suresine ekledigi 0,10 sn
-emniyet payi da kapsanir (`0,02 × ses >= 0,10` → ses >= 5 sn; bizim videolar
-~36 sn).
+kosul `p·(n-1)/n < 1`, yani `n < p/(p-1)`; %2 payda `n < 51`.
+
+⚠️ Buradaki `n` KLIP sayisi, sahne sayisi degil — 2026-08-14'te ikisi
+ayristi. Sahne basina iki kare var (`KARE_YUVASI`), yani `n` artik 12-20
+(6-10 sahne × 2). Sinir hala fazlasiyla uzak, ama gerekce "sahne sayisi
+6-10" diye yazili kalsaydi biri sahne sayisini artirmaya bakip guvende
+sanirdi; asil kisit kare sayisi.
+
+MPT'nin ses suresine ekledigi 0,10 sn emniyet payi da kapsanir
+(`0,02 × ses >= 0,10` → ses >= 5 sn; bizim videolar ~36 sn).
 """
 
 
