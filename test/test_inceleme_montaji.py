@@ -124,6 +124,12 @@ def test_istem_kare_sayisini_ve_eslemeyi_soyluyor():
     assert "{KARE_YUVASI} frames per scene" in govde
     # Ayni karenin iki yuvada gorunmesi kasitli; tekrar sayilmamali.
     assert "deliberate layout" in govde
+    # ⚠️ Istem TUTAMAYACAGI SOZ VERMEMELI. Olculdu (2026-08-14, Lycurgus
+    # Cup): "iki kare AYNI CUMLEYI resmediyor" denince hakem bunu
+    # dogrulamaya calisti ve hizasizligi kusur yazdi. Altyazi sese gore
+    # zamanlanir, kare suresi `ses ÷ kare`; ikisi tanim geregi ortusmez.
+    assert "not to these frame boundaries" in govde
+    assert "illustrate the SAME sentence" not in govde
 
 
 def test_montaj_cagrisi_KARE_sayisini_geciyor():

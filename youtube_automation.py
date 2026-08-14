@@ -3527,8 +3527,19 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             f"The image is a {len(plan.scenes) * KARE_YUVASI}-frame chronological montage "
             "from a vertical Short, read left to right and top to bottom. There are exactly "
             f"{KARE_YUVASI} frames per scene: frames 1-2 are scene 1, frames 3-4 are scene 2, "
-            "and so on. Both frames of a scene illustrate the SAME sentence, so they show "
-            "the same subject twice — that is intended, not repetition. "
+            "and so on. The two frames of a scene both illustrate that scene's narration, "
+            "so they show the same subject twice — that is intended, not repetition. "
+            # ⚠️ ALTYAZI KARE SINIRINA HIZALANMAZ ve bunu soylemek zorunlu.
+            # Olculdu (2026-08-14, Lycurgus Cup): istem "iki kare AYNI
+            # CUMLEYI resmediyor" diyordu; hakem bunu dogrulamaya calisti ve
+            # "frame 2 already reads 'Made in fourth century Rome'" diye
+            # kusur yazdi. Kusur videoda degil ISTEMDEYDI: altyazi sese gore
+            # zamanlaniyor, kare suresi ise `ses ÷ kare` — ikisi tanim
+            # geregi ortusmuyor. Istem tutamayacagi bir soz verince hakem
+            # onu bozuk sayiyor.
+            "Subtitles are timed to the spoken audio, not to these frame boundaries, so a "
+            "caption often starts or ends part-way through a frame. That is normal; judge "
+            "captions only on whether they are readable. "
             # ⚠️ Ayni karenin iki yuvada gorunmesi KASITLI: ikinci arsiv
             # gorseli bulunamadigi ya da iki yatay fotograf tek kareye alt
             # alta yapistirildigi durumlarda oyle oluyor. Soylenmezse hakem
