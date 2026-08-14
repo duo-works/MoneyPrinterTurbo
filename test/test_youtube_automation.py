@@ -989,7 +989,7 @@ def test_run_cycle_records_source_rejections_and_tries_new_topics(monkeypatch, t
     monkeypatch.setattr("youtube_automation.publication_slot_key", lambda *_, **__: "2026-07-30-02")
     exclusion_calls = []
 
-    def next_plan(exclusions=None, konu=None):
+    def next_plan(exclusions=None, konu=None, **_kw):
         exclusion_calls.append(list(exclusions or []))
         # Kuyruksuz kipte konu HER ZAMAN None olmali; aksi halde hat sessizce
         # huniye baglanmis demektir (DW-89).
@@ -1027,7 +1027,7 @@ def test_run_cycle_returns_quality_rejection_when_distinct_topics_are_exhausted(
     plan = valid_plan()
     calls = 0
 
-    def next_plan(_exclusions=None, konu=None):
+    def next_plan(_exclusions=None, konu=None, **_kw):
         nonlocal calls
         calls += 1
         assert konu is None, "kuyruksuz kipte konu disaridan gelmemeli"

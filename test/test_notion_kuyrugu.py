@@ -194,7 +194,7 @@ def test_kuyruktaki_konu_plana_gecuyor(hat, monkeypatch):
     monkeypatch.setattr(nk, "adayi_kap", lambda *a, **k: None)
     gecen = {}
 
-    def sahte_plan(_exclusions=None, konu=None):
+    def sahte_plan(_exclusions=None, konu=None, **_kw):
         gecen["konu"] = konu
         raise hat.DistinctTopicUnavailableError("dur")
 

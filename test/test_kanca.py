@@ -78,8 +78,12 @@ def test_kanca_listesi_sinirli(monkeypatch):
 def test_uretilen_kayda_kanca_yaziliyor():
     """Kaydedilmezse `_son_kancalar` hep bos doner ve kalip hic kirilmaz."""
     kaynak = KAYNAK.read_text(encoding="utf-8")
-    i = kaynak.index('record = {')
-    govde = kaynak[i : i + 800]
+    i = kaynak.index("record = {")
+    # ⚠️ Sinir bir sonraki ALANA baglaniyor, karakter sayisina degil: sabit
+    # pencere (800) araya eklenen her alanla daraliyor ve testi KENDI kusuru
+    # yuzunden dusuruyor. Bu oturumda ucuncu kez oldu — `sahne_sayisi` alani
+    # eklenince pencere `"hook"`u disarida birakti.
+    govde = kaynak[i : kaynak.index('"quality": asdict(review)', i)]
 
     assert '"hook": kanca(plan.script)' in govde
 

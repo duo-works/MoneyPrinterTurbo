@@ -560,13 +560,26 @@ def kanca_kusuru(metin: str) -> str:
     return ""
 
 
-def validate_content_plan(plan: ContentPlan) -> None:
+def validate_content_plan(plan: ContentPlan, sahne_sayisi: int | None = None) -> None:
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
     if kusur := kanca_kusuru(plan.script):
         raise ValueError(kusur)
     if not 80 <= word_count <= 120:
         raise ValueError(f"script must contain 80-120 words, got {word_count}")
-    if not 6 <= len(plan.scenes) <= 10:
+    # ⚠️ `sahne_sayisi` verilirse aralik degil TAM SAYI zorunlu. Sebep bir
+    # deney: klip suresi `ses ÷ sahne` oldugu icin sahne sayisi, ilk kesmenin
+    # NE ZAMAN geldigini belirliyor. Olculdu (2026-08-14, `audienceWatchRatio`):
+    # izleyicinin ucte biri tam ilk sahne degisiminde gidiyor (Anita 41sn/8 =
+    # 5,1sn, Chaco 33sn/8 = 4,1sn — dusus iki videoda da orada basliyor).
+    # Modelin 6 ile 10 arasinda serbestce secmesi, deneyin iki kolunu
+    # birbirine karistirirdi.
+    if sahne_sayisi is not None:
+        if len(plan.scenes) != sahne_sayisi:
+            raise ValueError(
+                f"content plan must contain exactly {sahne_sayisi} scenes, "
+                f"got {len(plan.scenes)}"
+            )
+    elif not 6 <= len(plan.scenes) <= 10:
         raise ValueError("content plan must contain 6-10 scenes")
     if not plan.topic.strip() or not plan.title.strip():
         raise ValueError("topic and title are required")
@@ -1596,7 +1609,9 @@ def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
 
 
 def generate_content_plan(
-    extra_exclusions: list[str] | None = None, konu: str | None = None
+    extra_exclusions: list[str] | None = None,
+    konu: str | None = None,
+    sahne_sayisi: int | None = None,
 ) -> ContentPlan:
     """Video planini uretir; `konu` verilirse KONUYU SECMEZ, verileni isler.
 
@@ -1693,6 +1708,16 @@ def generate_content_plan(
             + "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
         )
 
+    # Sahne sayisi sabitlendiyse istem de bunu SOYLEMELI: yalnizca
+    # dogrulamaya birakmak, modelin 8 yazip her seferinde reddedilmesi ve
+    # bes denemenin bosa gitmesi demek olurdu.
+    if sahne_sayisi is not None:
+        user += (
+            f"\nThis video must have EXACTLY {sahne_sayisi} scenes, not more and not "
+            "fewer. Fit the story to that number: fewer scenes means each one is on "
+            "screen longer, so give each a distinct thing to show."
+        )
+
     # Gecmis acilislar HER IKI kipte de veriliyor: konu disaridan gelse bile
     # kanca modelin kalemi ve kalibina saplanabiliyor (DW-94).
     if onceki_kancalar := _son_kancalar():
@@ -1745,7 +1770,7 @@ def generate_content_plan(
                 scene["search_term"], plan.visual_anchor
             )
         try:
-            validate_content_plan(plan)
+            validate_content_plan(plan, sahne_sayisi)
         except ValueError as exc:
             user += (
                 "\nThe last JSON plan was invalid: "
@@ -3158,6 +3183,7 @@ def run_cycle(
     not_before: str | None = None,
     kuyruktan: bool = False,
     yedek_konu: bool = False,
+    sahne_sayisi: int | None = None,
 ) -> dict[str, Any]:
     slot = publication_slot_key()
     state = load_state()
@@ -3232,7 +3258,11 @@ def run_cycle(
         exclusions: list[str] = []
         reviews: list[dict[str, Any]] = []
         try:
-            plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
+            plan = generate_content_plan(
+                exclusions,
+                konu=aday.baslik if aday else None,
+                sahne_sayisi=sahne_sayisi,
+            )
         except DistinctTopicUnavailableError as exc:
             reviews.append(
                 {
@@ -3292,7 +3322,11 @@ def run_cycle(
                 save_state(state)
                 if attempt < 3:
                     try:
-                        plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
+                        plan = generate_content_plan(
+                            exclusions,
+                            konu=aday.baslik if aday else None,
+                            sahne_sayisi=sahne_sayisi,
+                        )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -3345,7 +3379,11 @@ def run_cycle(
                 save_state(state)
                 if attempt < 3:
                     try:
-                        plan = generate_content_plan(exclusions, konu=aday.baslik if aday else None)
+                        plan = generate_content_plan(
+                            exclusions,
+                            konu=aday.baslik if aday else None,
+                            sahne_sayisi=sahne_sayisi,
+                        )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -3406,6 +3444,12 @@ def run_cycle(
             # Hangi kip uretti: huni adayi mi, model-secimli yedek mi.
             # Arayuz ve `uretim rapor` bu alanla kirilim yapiyor.
             "kaynak": kaynak,
+            # ⚠️ DENEY KOLU. Sahne sayisi, klip suresini (`ses ÷ sahne`) ve
+            # dolayisiyla ilk kesmenin ne zaman geldigini belirliyor. Bu alan
+            # yazilmazsa hangi videonun hangi kolda oldugu SONRADAN
+            # bilinemez ve tutunma karsilastirmasi yapilamaz — ayni korluk
+            # bu oturumda bir kez yasandi (sahne duzeyi telemetri yoktu).
+            "sahne_sayisi": len(plan.scenes),
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,
@@ -3477,13 +3521,26 @@ def main() -> None:
             "bayrak verilmezse davranış değişmez ve koşum durur."
         ),
     )
+    parser.add_argument(
+        "--sahne-sayisi",
+        type=int,
+        metavar="N",
+        help=(
+            "Sahne sayısını tam olarak N yap (varsayılan: model 6-10 arasında "
+            "seçer). Klip süresi `ses ÷ sahne` olduğu için bu, ilk kesmenin ne "
+            "zaman geldiğini belirler; tutunma deneyinin kolu budur."
+        ),
+    )
     args = parser.parse_args()
+    if args.sahne_sayisi is not None and not 6 <= args.sahne_sayisi <= 10:
+        parser.error("--sahne-sayisi 6 ile 10 arasında olmalı")
     result = run_cycle(
         dry_run=args.dry_run,
         privacy=args.privacy,
         not_before=args.not_before,
         kuyruktan=args.from_notion,
         yedek_konu=args.yedek_konu,
+        sahne_sayisi=args.sahne_sayisi,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
