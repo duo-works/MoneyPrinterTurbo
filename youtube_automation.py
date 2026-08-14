@@ -1680,7 +1680,52 @@ def sahne_kaydi(
     ]
 
 
-def _menu_talimati(menu: list[dict[str, str]]) -> str:
+def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
+    """Menu her sahneye IKI AYRI dosya verebilir mi.
+
+    ⚠️ OLCULDU (2026-08-14) ve bir GERILEME kapatiyor. Ikinci alinti
+    eklenince istem her sahne icin iki dosya istiyordu; menusu kucuk
+    konularda bu imkansiz bir talep oldu. Yedek capa havuzunun 14
+    girdisinden 5'i 6 sahne icin gereken 12 ayri dosyayi veremiyor:
+
+        Newgrange 7 · Notre Dame 5 · Sigiriya 8 · Sacsayhuaman 11 ·
+        Hadrian's Wall 11
+
+    Model imkansiz talebi karsilamak icin dosya tekrar ediyordu, tekrar
+    kapisi PLANIN TAMAMINI reddediyordu ve bes deneme boşa gidiyordu —
+    18:05 zamanlanmis koşumu tam bu yuzden hic video uretmeden dustu
+    (materyal dizini bile olusmadi).
+    """
+    return len(menu) >= sahne_sayisi * KARE_YUVASI
+
+
+def ikincil_alintilari_temizle(plan: ContentPlan, menu_konusu: str = "") -> int:
+    """Gecersiz ya da tekrarlayan IKINCI alintilari siler; silinen sayisi doner.
+
+    ⚠️ NEDEN REDDETMEK DEGIL TEMIZLEMEK: ikinci gorsel bir IYILESTIRME.
+    Birincil alinti sahnenin anlatimini tasiyor ve yanlissa video yanlis
+    olur — orada reddetmek dogru. Ikinci gorsel ise yoksa sahne birincil
+    kareyi iki yuvada gosterir ve bugunku haliyle birebir ayni durur.
+    Iyilestirme ugruna calisan bir plani cope atmak, kazanci maliyetten
+    kucuk bir takas.
+    """
+    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    gecerli = {girdi["dosya"] for girdi in menu} if menu else set()
+    gorulen = {str(s.get("kaynak_dosya", "")).strip() for s in plan.scenes}
+    silinen = 0
+    for sahne in plan.scenes:
+        ad = str(sahne.get("kaynak_dosya_2", "")).strip()
+        if not ad:
+            continue
+        if (menu and ad not in gecerli) or ad in gorulen:
+            sahne["kaynak_dosya_2"] = ""
+            silinen += 1
+            continue
+        gorulen.add(ad)
+    return silinen
+
+
+def _menu_talimati(menu: list[dict[str, str]], sahne_sayisi: int = 0) -> str:
     """Menuyu isteme koyan metin. Kapinin (`alinti_kusuru`) sozlu karsiligi.
 
     Metin tek bir sey soyluyor: ONCE goruntuyu sec, SONRA onun uzerine cumle
@@ -1697,17 +1742,28 @@ def _menu_talimati(menu: list[dict[str, str]]) -> str:
         "one entry, copy its 'dosya' value EXACTLY into the scene's source_file field, "
         "and write narration that tells the story of the THING in that picture. A "
         "different entry for every scene. "
-        # ⚠️ IKINCI GORSEL — kanal sahibinin karari (2026-08-14): her sahne
-        # iki kare gosteriyor, cunku tek gorsel altyazinin 2,5 kati yavas
-        # kaliyordu. Ikincisi ZORUNLU DEGIL: menu yetmezse bos birakilir ve
-        # o sahne birincil kareyi iki yuvada gosterir.
-        "ALSO pick a SECOND entry for each scene and copy its 'dosya' value into "
-        "source_file_2. It must show the same subject from another angle, another "
-        "moment or another detail, and it must fit the SAME narration — the viewer "
-        "sees both pictures while that sentence is spoken. Never reuse an entry that "
-        "any scene already cites, in either field. If the menu does not hold enough "
-        "distinct entries, leave source_file_2 empty rather than repeating one. "
-        "Do not narrate a moment no entry depicts: if "
+        # ⚠️ IKINCI GORSEL YALNIZCA MENU YETIYORSA isteniyor — kanal
+        # sahibinin karari (2026-08-14): her sahne iki kare gosteriyor,
+        # cunku tek gorsel altyazinin 2,5 kati yavas kaliyordu.
+        #
+        # ⚠️ Kosul OLCULEREK kondu: ilk surum menu boyutuna bakmadan her
+        # sahne icin iki dosya istiyordu ve kucuk menulu konularda bu
+        # imkansiz bir talepti (`ikinci_gorsel_istenebilir`). Model
+        # imkansizi karsilamak icin dosya tekrar ediyor, plan reddediliyor
+        # ve koşum hic video uretmeden dusuyordu.
+        + (
+            "ALSO pick a SECOND entry for each scene and copy its 'dosya' value into "
+            "source_file_2. It must show the same subject from another angle, another "
+            "moment or another detail, and it must fit the SAME narration — the viewer "
+            "sees both pictures while that sentence is spoken. Never reuse an entry that "
+            "any scene already cites, in either field. If you cannot find a distinct "
+            "second entry for a scene, leave its source_file_2 empty rather than "
+            "repeating one. "
+            if ikinci_gorsel_istenebilir(menu, sahne_sayisi or len(menu))
+            else "Leave source_file_2 empty for every scene: this archive is too small "
+            "to give each scene a second distinct picture. "
+        )
+        + "Do not narrate a moment no entry depicts: if "
         "nothing here shows the discovery, the battle, the storm or the person at work, "
         "that moment cannot be a scene, however important it is. Choose entries whose "
         "date suits the story, and do not describe a modern photograph as a historical "
@@ -1772,25 +1828,26 @@ def alinti_kusuru(plan: ContentPlan, menu_konusu: str = "") -> str:
             "and its narration must describe what that file actually shows:\n"
             f"{json.dumps(menu, ensure_ascii=False)}"
         )
-    # ⚠️ IKINCI alinti da ayni kumeye giriyor. Bos olmasi serbest (menu
-    # yetmeyebilir), ama DOLU ise gercek bir dosya olmali ve hicbir kare
-    # iki kez gorunmemeli — tekrar tam da duzeltmeye calistigimiz sikayet.
-    ikinciler = [str(sahne.get("kaynak_dosya_2", "")).strip() for sahne in plan.scenes]
-    uydurma = [sira for sira, ad in enumerate(ikinciler, 1) if ad and ad not in gecerli]
-    if uydurma:
-        return (
-            f"scenes {uydurma} cite a source_file_2 that does not exist in this "
-            "subject's archive. Copy it EXACTLY from the menu, or leave it empty:\n"
-            f"{json.dumps(menu, ensure_ascii=False)}"
-        )
-    hepsi = alintilar + [ad for ad in ikinciler if ad]
-    tekrar = sorted({ad for ad in hepsi if hepsi.count(ad) > 1})
+    tekrar = sorted({ad for ad in alintilar if alintilar.count(ad) > 1})
     if tekrar:
         return (
-            f"the same archive file is cited more than once ({tekrar}). Every "
-            "source_file and source_file_2 across all scenes must be a different "
-            "file so the video never repeats an image."
+            f"the same archive file is cited by more than one scene ({tekrar}). Each "
+            "scene must cite a different file so the video does not repeat an image."
         )
+    # ⚠️ IKINCI ALINTI BURADA DENETLENMIYOR ve bu bilincli bir karar.
+    #
+    # Ilk surum ikinci alintiyi da ayni sertlikte denetliyordu: uydurma ya
+    # da tekrarlayan bir `source_file_2` PLANIN TAMAMINI reddediyordu.
+    # Olculdu (2026-08-14): yedek capa havuzunun 14 girdisinin 5'i 6 sahne
+    # icin gereken 12 ayri dosyayi veremiyor (Newgrange 7, Notre Dame 5,
+    # Sigiriya 8, Sacsayhuaman 11, Hadrian's Wall 11). Model imkansiz
+    # talebi karsilamak icin dosya tekrar ediyor, plan reddediliyor, bes
+    # deneme yaniyordu — 18:05 zamanlanmis koşumu hic video uretmeden
+    # dustu.
+    #
+    # Dogru davranis `ikincil_alintilari_temizle`de: bozuk ikinci alinti
+    # SILINIYOR, plan yasiyor. Ikinci gorsel bir iyilestirme; yoksa sahne
+    # birincil kareyi iki yuvada gosterir ve bugunku haliyle ayni durur.
     return ""
 
 
@@ -1882,7 +1939,11 @@ def generate_content_plan(
         # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
         # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
         if envanter := arsiv_envanteri(konu):
-            user += _menu_talimati(envanter)
+            # Sahne sayisi verilmemisse (model 6-10 arasi secer) en KOTU
+            # ihtimale gore karar veriliyor: 10 sahne icin yeterli degilse
+            # ikinci gorsel istenmiyor. Iyimser davranip sonra temizlemek,
+            # modelin bosuna dosya uydurmasini davet ederdi.
+            user += _menu_talimati(envanter, sahne_sayisi or 10)
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
@@ -1994,6 +2055,15 @@ def generate_content_plan(
         if yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu or "")):
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
+        # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
+        # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
+        # tekrarlayan ikinci alintilar siliniyor; plan yasiyor.
+        if silinen := ikincil_alintilari_temizle(plan, konu or ""):
+            print(
+                f"ℹ️ {silinen} ikinci alıntı temizlendi (uydurma ya da tekrar); "
+                "o sahneler birincil kareyi iki yuvada gösterecek",
+                flush=True,
+            )
         # ⚠️ ACILIS ve KAPANIS kapilari HER IKI KIPTE de calisiyor.
         #
         # Ikisi de 2026-08-14'e kadar `if konu:` dalinin ICINDEYDI, yani

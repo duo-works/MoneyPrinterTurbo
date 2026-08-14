@@ -81,9 +81,10 @@ def test_ayni_dosya_iki_sahnede_reddediliyor(monkeypatch):
     kusur = ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "A.jpg"))
 
     assert "A.jpg" in kusur
-    # ⚠️ Mesaj 2026-08-14'te genisledi: `source_file_2` de ayni kumede
-    # sayiliyor, yani dogru ifade "iki sahne" degil "birden fazla kez".
-    assert "cited more than once" in kusur
+    # ⚠️ Bu kapi BIRINCIL alintiya ozel kaldi. Kisa bir sure `source_file_2`
+    # de ayni sertlikte denetlendi, ama olculdu ki kucuk menulu konularda
+    # bu plani tumden oldururyor (bkz. test_ikincil_alinti_esnek).
+    assert "more than one scene" in kusur
 
 
 def test_menu_sahne_sayisindan_kucukse_capa_reddediliyor(monkeypatch):
