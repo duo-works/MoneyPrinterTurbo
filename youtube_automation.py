@@ -3304,6 +3304,9 @@ def run_generator(
         material_dir / "ikincil",
         kategori_havuzu,
         used_titles={str(k.get("title", "")) for k in credits},
+        # Yalnizca bant isteyen sahnelere esleme yedegi aciliyor; gerekcesi
+        # `ikincil_gorseller`de. Eksik sahne (kismi kip) False sayiliyor.
+        esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
     )
     credits = list(credits) + ikincil_krediler
     material_files, tam_dolan_sahne = kare_yerlesimi(

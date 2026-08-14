@@ -995,6 +995,7 @@ def ikincil_gorseller(
     target_dir: Path,
     kategori_havuzu: list[dict[str, Any]],
     used_titles: set[str] | None = None,
+    esleme_gerekli: list[bool] | None = None,
 ) -> tuple[list[Path | None], list[dict[str, Any]]]:
     """Sahnelerin IKINCI alintisini indirir; bulunamayan sahne icin None.
 
@@ -1014,11 +1015,24 @@ def ikincil_gorseller(
     dosyalar: list[Path | None] = []
     krediler: list[dict[str, Any]] = []
     for index, scene in enumerate(scenes, 1):
-        alinti = str(scene.get("kaynak_dosya_2", "")).strip()
-        if not alinti:
-            dosyalar.append(None)
-            continue
-        aday = _alinti_adayi(alinti, kategori_havuzu, kullanilan)
+        aday = None
+        if alinti := str(scene.get("kaynak_dosya_2", "")).strip():
+            aday = _alinti_adayi(alinti, kategori_havuzu, kullanilan)
+        # ⚠️ ESLESTIRME YEDEGI — yalnizca birincil gorsel BANT ISTIYORSA.
+        #
+        # Olculdu (2026-08-14, son 4 koşumun 24 gorseli): **%54'u** tam
+        # kareye kirpilamiyor, yani plan ikinci dosya vermediginde o sahne
+        # bulanik bant yoluna dusuyor — kanal sahibinin "ekrani kaplamayan
+        # gorseller olmamali, cok kalitesiz duruyor" dedigi sey. Lycurgus
+        # Cup koşumunda 12 karenin 2'si boyle cikti ve hakem de yazdi.
+        #
+        # Kategori havuzundan esleme guvenli: uyeligi Commons'in kendi
+        # kuratoryasi belirliyor, yani OZNE garantili. Kirpilabilen bir
+        # birincil icin bu yapilmiyor — o kare zaten tam ekran ve iyi
+        # duruyor, ikiye bolmek onu kucultmek olurdu.
+        if aday is None and kategori_havuzu and (esleme_gerekli or [])[index - 1 : index] == [True]:
+            adaylar = _kategori_adaylari(kategori_havuzu, kullanilan)
+            aday = adaylar[0] if adaylar else None
         if aday is None:
             dosyalar.append(None)
             continue
