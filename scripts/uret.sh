@@ -48,9 +48,26 @@ fi
 CIKTI_DOSYASI="$(mktemp)"
 trap 'rm -f "$CIKTI_DOSYASI"' EXIT
 
+# ⚠️ DENEY KOLU SAATE GORE DONUSUMLU. Yoksa deney hic olusmaz: zamanlayici
+# bayraksiz kosar, model her seferinde 6-10 arasindan kendi secer ve iki kol
+# birbirine karisir.
+#
+# Olculdu (2026-08-14, `audienceWatchRatio`): izleyicinin ucte biri ILK SAHNE
+# DEGISIMINDE gidiyor ve klip suresi `ses ÷ sahne`, yani sahne sayisi o
+# kesmenin ne zaman geldigini belirliyor. Karsilastirilacak sey bu.
+#
+# 0/6/12/18 → 6 sahne (uzun klip) · 3/9/15/21 → 8 sahne (mevcut davranis)
+# Gunde 4'er deneme, yani kol basina haftada ~28 sans.
+SAAT="$(date +%-H)"
+if (( (SAAT / 3) % 2 == 0 )); then
+  SAHNE=6
+else
+  SAHNE=8
+fi
+
 cd "$KOK" || exit 1
 .venv/bin/python youtube_automation.py \
-  --from-notion --yedek-konu --privacy public \
+  --from-notion --yedek-konu --privacy public --sahne-sayisi "$SAHNE" \
   >"$CIKTI_DOSYASI" 2>&1
 KOD=$?
 
