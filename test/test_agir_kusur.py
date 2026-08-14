@@ -205,4 +205,4 @@ def test_KON_TIKI_kaydi_artik_yayinlanabilir():
     agir = agir_kusurlari_ayikla(kareler)
 
     assert agir == []
-    assert should_publish(QualityReview(True, 86, 91, [], agir)) is True
+    assert should_publish(QualityReview(True, 86, 91, agir_kusurlar=agir)) is True

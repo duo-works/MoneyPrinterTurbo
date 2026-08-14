@@ -905,6 +905,101 @@ def sorunlu_sahneler(review: QualityReview, toplam_sahne: int) -> list[int]:
     return sorted(birlesim) if birlesim else list(range(1, toplam_sahne + 1))
 
 
+def agir_kusurlu_kareler(review: QualityReview) -> list[int]:
+    """Agir kusur metinlerinden kare numaralarini cikarir ("kare 6: ...")."""
+    numaralar = {
+        int(eslesme.group(1))
+        for kusur in review.agir_kusurlar
+        if (eslesme := re.match(r"kare (\d+):", kusur))
+    }
+    return sorted(numaralar)
+
+
+def kareyi_onar(
+    plan: ContentPlan, review: QualityReview, menu_konusu: str = ""
+) -> list[int]:
+    """Hakemin isaretledigi karelerin GORSELINI degistirir; degisen sahneler doner.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-14, Roman Dodecahedron). Video gorsel 89,
+    altyazi 88 aldi (kanalin yayinlanmis en iyi videosu 90) ve SEKIZ karenin
+    YEDISI temizdi. Tek kusur 6. karedeydi: dodekahedron yerine faseti
+    taslar. Montaj gozle de dogrulandi, hakem hakliydi.
+
+    Hat o videoyu cope atip konuyu bastan planliyordu. Yeniden deneme daha
+    kotusunu uretti (88, uc kusur). Oysa hakem hangi karenin bozuk oldugunu
+    ZATEN soyluyor; yapilacak sey videoyu atmak degil o kareyi degistirmek.
+
+    ⚠️ ANLATIM DEGISMIYOR, GORSEL DEGISIYOR. Ses `plan.script`ten uretiliyor
+    ve zaten kayitli; sahnenin `narration` alani yalnizca o anda NE
+    SOYLENDIGINI tarif ediyor. Yani problem "bu cumleye hangi resim uyar"
+    sorusu ve secim menudeki gercek dosyalar arasindan yapiliyor. Rastgele
+    bir dosya koymak, kapatilan kusuru (anlatim-gorsel uyusmazligi) geri
+    acardi.
+
+    Menu yoksa ya da kullanilmamis dosya kalmadiysa BOS DONER — cagiran
+    taraf eski davranisa (arama terimlerini revize etme) duser.
+    """
+    bozuk = agir_kusurlu_kareler(review)
+    bozuk = [n for n in bozuk if 1 <= n <= len(plan.scenes)]
+    if not bozuk:
+        return []
+    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    if not menu:
+        return []
+    kullanilan = {str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes}
+    aday_menu = [girdi for girdi in menu if girdi["dosya"] not in kullanilan]
+    if not aday_menu:
+        return []
+    gecerli = {girdi["dosya"] for girdi in aday_menu}
+    kusur_metni = {n: [] for n in bozuk}
+    for kusur in review.agir_kusurlar:
+        if eslesme := re.match(r"kare (\d+): (.+)", kusur):
+            numara = int(eslesme.group(1))
+            if numara in kusur_metni:
+                kusur_metni[numara].append(eslesme.group(2))
+    try:
+        data = _json_completion(
+            "Return JSON only: {\"picks\": [{\"n\": <scene number>, \"source_file\": "
+            "\"<exact dosya value from the menu>\"}]}. For each scene choose the archive "
+            "file that best illustrates the sentence spoken during it. Copy the file name "
+            "exactly. Never choose the same file for two scenes, and never invent a name.",
+            json.dumps(
+                {
+                    "subject": plan.visual_anchor,
+                    "scenes": [
+                        {
+                            "n": numara,
+                            "spoken_line": plan.scenes[numara - 1].get("narration", ""),
+                            "what_was_wrong": kusur_metni.get(numara, []),
+                        }
+                        for numara in bozuk
+                    ],
+                    "menu": aday_menu,
+                },
+                ensure_ascii=False,
+            ),
+        )
+    except Exception:
+        # ⚠️ Onarim bir IYILESTIRME; cikarim dusserse kosum devam etmeli.
+        return []
+    secilen: set[str] = set()
+    degisen: list[int] = []
+    for secim in data.get("picks", []):
+        if not isinstance(secim, dict):
+            continue
+        try:
+            numara = int(secim.get("n", 0))
+        except (TypeError, ValueError):
+            continue
+        dosya = str(secim.get("source_file", "")).strip()
+        if numara not in bozuk or dosya not in gecerli or dosya in secilen:
+            continue
+        secilen.add(dosya)
+        plan.scenes[numara - 1]["kaynak_dosya"] = dosya
+        degisen.append(numara)
+    return sorted(degisen)
+
+
 def should_abandon_topic(review: QualityReview) -> bool:
     # Eskiden ucuncu bir kosul daha vardi: "publishable false ama iki skor da
     # esigi geciyor" — modelin gerekcesiz reddi. `publishable` artik skorlardan
@@ -3246,7 +3341,18 @@ def run_cycle(
                         )
                         break
             else:
-                plan = refine_search_terms(plan, review)
+                # ⚠️ ONCE KAREYI ONAR. Hakem hangi karenin bozuk oldugunu
+                # zaten soyluyor; videoyu bastan uretmek yerine o karenin
+                # gorselini degistirmek hem ucuz hem de olculmus kazanc:
+                # Roman Dodecahedron 89 aldi ve sekiz karenin YEDISI temizdi.
+                # Gerekce `kareyi_onar` docstring'inde.
+                if onarilan := kareyi_onar(plan, review, konu or ""):
+                    print(
+                        f"ℹ️ kare onarımı: sahne {onarilan} görseli menüden değiştirildi",
+                        flush=True,
+                    )
+                else:
+                    plan = refine_search_terms(plan, review)
 
         if not selected:
             result = {"status": "rejected", "slot": slot, "topic": plan.topic, "reviews": reviews}
