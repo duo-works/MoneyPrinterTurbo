@@ -88,9 +88,25 @@ else
 fi
 
 cd "$KOK" || exit 1
+
+# ⚠️ URETIMDEN ONCE KUYRUGU BESLE. Olculdu (2026-08-14): uretim iki kez
+# durdu ve ikisinde de sebep hattin kendisi degil beslenmemesiydi —
+# `Secildi` kuyrugu 1-2 adaya dusmustu, `Yeni`de 100+ aday bekliyordu ve
+# yedek capa havuzu tukenmisti (kalan 0). Yedek havuz EMNIYET SUPABI
+# olmali, ana kaynak degil.
+#
+# ⚠️ Cikis kodu BILEREK yok sayiliyor (`|| true`): besleme bir
+# IYILESTIRME adimi, on kosul degil. Notion erisilemezse bile uretim
+# denenmeli — kuyrukta aday varsa ya da yedek capa kaldiysa video cikar.
+# Besleme hatasi uretimi oldururse, tek bir ag kesintisi butun gunu
+# bosa gecirirdi.
+# Ilk yazim `>`: ayni slotta yeniden denenirse eski gunluk uzerine
+# eklenmesin, uretim ciktisi asagida `>>` ile bunun ardina gelsin.
+.venv/bin/python huni_besle.py >"$CIKTI_DOSYASI" 2>&1 || true
+
 .venv/bin/python youtube_automation.py \
   --from-notion --yedek-konu --privacy public --sahne-sayisi "$SAHNE" \
-  >"$CIKTI_DOSYASI" 2>&1
+  >>"$CIKTI_DOSYASI" 2>&1
 KOD=$?
 
 case "$KOD" in
