@@ -179,5 +179,8 @@ def test_seri_imzasi_aciklamanin_BASINDA():
     """YouTube aciklamanin yalnizca ilk satirlarini katlanmamis gosteriyor."""
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert 'description = f"{SERI_IMZASI}\\n\\n{plan.description}"' in kaynak
+    # ⚠️ Atama artik `aciklamayi_kirp` uzerinden geciyor (2026-08-15, YouTube
+    # 5.000 karakter siniri). Aranan sey degismedi: IMZA once, aciklama sonra
+    # — sira bozulursa kanalin ne yaptigi katlanmis kisimda kalir.
+    assert 'f"{SERI_IMZASI}\\n\\n{plan.description}"' in kaynak
     assert "Shemz" in ya.SERI_IMZASI

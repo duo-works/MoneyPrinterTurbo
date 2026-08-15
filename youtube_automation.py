@@ -1064,6 +1064,67 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
     return baslik + "\n" + "\n".join(satirlar)
 
 
+YOUTUBE_ACIKLAMA_SINIRI = 5000
+"""YouTube `videos.insert` aciklama sinirI, karakter."""
+
+
+def aciklamayi_kirp(
+    ust: str, kunyeler: str, sinir: int = YOUTUBE_ACIKLAMA_SINIRI
+) -> str:
+    """Aciklamayi YouTube sinirina sigdirir — atifi SONDAN keserek.
+
+    ⚠️ OLCULDU (2026-08-15, DW-51 denetimi): `format_commons_credits` her
+    benzersiz kaynak icin bir satir yaziyor ve UST SINIR YOK. Satir ici
+    kisitlar var (`AZAMI_KAYNAK_BASLIGI = 70`, `AZAMI_SANATCI = 45`) ama
+    satir SAYISINA yok.
+
+        Shorts  : 6-10 kaynak   ≈ 1.000 karakter
+        uzun    : 24-45 kaynak  ≈ 3.000-5.400 karakter
+
+    CC BY varsa o satirlar ayrica tam Commons adresini tasiyor (yuzde-kodlu,
+    100-150 karakter) — fonksiyonun kendi belgesi "uc gorsel aciklamanin
+    1200 karakterini yiyordu" diyor.
+
+    ⚠️ Kusur EN PAHALI anda patliyordu: `videos.insert` 400
+    `invalidDescription` doner ve bu, render ile IKI kalite kapisindan SONRA
+    olur. Kirpma render'dan once, bu fonksiyonda.
+
+    ⚠️ SIRA HUKUKI: CC BY satirlari atif ZORUNLULUGU tasiyor, kamu mali /
+    CC0 satirlari nezaket (bkz. `format_commons_credits`). O yuzden once
+    serbest lisansli satirlar dusuyor; zorunlu atiflar sona kadar kaliyor.
+    Bu asimetri fonksiyonun kendi gerekcesiyle ayni: gereksiz atif zarar
+    vermiyor, eksik atif lisans ihlali.
+    """
+    tam = f"{ust}\n\n{kunyeler}" if kunyeler else ust
+    if len(tam) <= sinir:
+        return tam
+    if not kunyeler:
+        # Kunye yoksa kisaltilacak tek sey metnin kendisi.
+        return ust[:sinir]
+
+    satirlar = kunyeler.split("\n")
+    baslik, kunye_satirlari = satirlar[0], satirlar[1:]
+    # Zorunlu atif = adres tasiyan satir (`format_commons_credits` yalnizca
+    # serbest OLMAYAN satirlara baglanti koyuyor).
+    zorunlu = [s for s in kunye_satirlari if "http" in s]
+    nezaket = [s for s in kunye_satirlari if "http" not in s]
+
+    not_satiri = "• …"
+    while nezaket or zorunlu:
+        tutulan = zorunlu + nezaket
+        govde = "\n".join([baslik, *tutulan, not_satiri])
+        aday = f"{ust}\n\n{govde}"
+        if len(aday) <= sinir:
+            return aday
+        if nezaket:
+            nezaket.pop()
+        else:
+            # ⚠️ Buraya duşulmesi lisans ihlali riski demek; yine de sessiz
+            # birakilmiyor, cunku alternatif yuklemenin tamamen dusmesi.
+            zorunlu.pop()
+    return f"{ust}\n\n{baslik}"[:sinir]
+
+
 def yayina_uygun(gorsel_skor: int, altyazi_skor: int) -> bool:
     """Esik kararini KOD verir; inceleyici modele sorulmaz.
 
@@ -1893,10 +1954,15 @@ def _recent_titles() -> list[str]:
 
 
 SERI_IMZASI = (
-    "Shemz — short documentaries built from public domain archives, "
+    "Shemz — documentaries built from public domain archives, "
     "one forgotten story at a time."
 )
 """Aciklamanin ilk satiri: kanalin NE OLDUGUNU soyleyen sabit cumle.
+
+⚠️ "short" kelimesi CIKARILDI (2026-08-15): hat artik 5-13 dakikalik uzun
+format da uretiyor ve o videolarin aciklamasinin ILK SATIRI "short
+documentaries" diyordu. Sabit iki bicimde de dogru olmali — kimlik cumlesi
+bicime gore degisirse kimlik olmaz (asagidaki gerekce).
 
 ⚠️ Olculdu (2026-08-14): 1.115 izlenme, **1 abone** (%0,09) ve trafigin
 %96'si Shorts akisi. Yani dagitim calisiyor, DONUSUM calismiyor —
@@ -5119,9 +5185,13 @@ def run_cycle(
         # yerde kanalin ne yaptigi yazmiyordu. YouTube aciklamanin yalnizca
         # ilk satirlarini katlanmamis gosteriyor, o yuzden alta koymak
         # yazmamakla ayni sey.
-        description = f"{SERI_IMZASI}\n\n{plan.description}"
-        if credits_text:
-            description = f"{description}\n\n{credits_text}"
+        # ⚠️ Kirpma YUKLEMEDEN once. Uzun formatta 24-45 kunye satiri
+        # aciklamayi YouTube'un 5.000 karakter sinirinin ustune tasiyor ve
+        # `videos.insert` 400 doner — render ile iki kalite kapisindan SONRA,
+        # yani en pahali anda. Gerekce `aciklamayi_kirp`ta.
+        description = aciklamayi_kirp(
+            f"{SERI_IMZASI}\n\n{plan.description}", credits_text
+        )
         if dry_run:
             url = ""
             status = "dry-run"
