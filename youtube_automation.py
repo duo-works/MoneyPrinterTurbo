@@ -4267,6 +4267,7 @@ def run_cycle(
     kuyruktan: bool = False,
     yedek_konu: bool = False,
     sahne_sayisi: int | None = None,
+    bicim: VideoBicimi = SHORTS_BICIMI,
 ) -> dict[str, Any]:
     slot = publication_slot_key()
     state = load_state()
@@ -4340,20 +4341,48 @@ def run_cycle(
     try:
         exclusions: list[str] = []
         reviews: list[dict[str, Any]] = []
-        try:
-            plan = generate_content_plan(
-                exclusions,
-                konu=aday.baslik if aday else None,
-                sahne_sayisi=sahne_sayisi,
+        # ⚠️ Arsiv uzun formati besleyemiyorsa koşum SHORTS'A DUSUYOR, olmuyor.
+        # Konu zaten kuyruktan kapilmis durumda; burada durmak o adayi ve o
+        # uretim slotunu birlikte yakmak olurdu. Uzun format bir IYILESTIRME,
+        # uretimin on kosulu degil.
+        #
+        # ⚠️ Geri dusus DONGUYLE yaziliyor, ic ice `try` ile degil: ilk hali
+        # yedek cagriyi `except` govdesinin ICINE koymustu ve oradan cikan
+        # `DistinctTopicUnavailableError` kardes `except`e ugramadan disari
+        # kacardi — yani nazikce reddedilecek bir koşum izlenmeyen bir
+        # istisnayla olurdu.
+        plan: ContentPlan | None = None
+        planlama_hatasi: DistinctTopicUnavailableError | None = None
+        denenecek = [bicim] if bicim.dikey else [bicim, SHORTS_BICIMI]
+        for aday_bicim in denenecek:
+            try:
+                plan = generate_content_plan(
+                    exclusions,
+                    konu=aday.baslik if aday else None,
+                    sahne_sayisi=sahne_sayisi,
+                    bicim=aday_bicim,
+                )
+                bicim = aday_bicim
+                break
+            except UzunFormatUygunDegilError as exc:
+                print(f"ℹ️ uzun format atlandi, Shorts'a dusuluyor: {exc}", flush=True)
+                continue
+            except DistinctTopicUnavailableError as exc:
+                # Konu sorunu bicim degistirerek cozulmez; denemeye devam
+                # etmek bes cikarim koşumunu daha yakmak olurdu.
+                planlama_hatasi = exc
+                break
+        if plan is None:
+            hata = planlama_hatasi or DistinctTopicUnavailableError(
+                "hicbir bicim icin plan uretilemedi"
             )
-        except DistinctTopicUnavailableError as exc:
             reviews.append(
                 {
                     "stage": "planning",
                     "topic": "",
                     "visual_anchor": "",
                     "task_id": None,
-                    "review": asdict(QualityReview(False, 0, 100, [str(exc)], [])),
+                    "review": asdict(QualityReview(False, 0, 100, [str(hata)], [])),
                     "video": "",
                 }
             )
@@ -4374,7 +4403,7 @@ def run_cycle(
                     script_path,
                     credits,
                     tam_dolan_sahne,
-                ) = run_generator(plan, attempt)
+                ) = run_generator(plan, attempt, bicim=bicim)
             except SourceMaterialRejected as exc:
                 review = exc.review
                 rejected_topic = plan.topic
@@ -4415,6 +4444,7 @@ def run_cycle(
                             exclusions,
                             konu=aday.baslik if aday else None,
                             sahne_sayisi=sahne_sayisi,
+                            bicim=bicim,
                         )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
@@ -4437,9 +4467,9 @@ def run_cycle(
             # sahneye gore ornekleyen montaj her sahnenin TAM ORTASINDAN
             # kare alirdi — yani iki gorselin EK YERINDEN.
             montage = create_review_montage(
-                video_path, task_id, len(plan.scenes) * KARE_YUVASI
+                video_path, task_id, len(plan.scenes) * bicim.kare_yuvasi, bicim=bicim
             )
-            review = review_video(plan, montage)
+            review = review_video(plan, montage, bicim=bicim)
             reviews.append(
                 {
                     "topic": plan.topic,
@@ -4477,6 +4507,7 @@ def run_cycle(
                             exclusions,
                             konu=aday.baslik if aday else None,
                             sahne_sayisi=sahne_sayisi,
+                            bicim=bicim,
                         )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
@@ -4500,8 +4531,18 @@ def run_cycle(
                 # gorselini degistirmek hem ucuz hem de olculmus kazanc:
                 # Roman Dodecahedron 89 aldi ve sekiz karenin YEDISI temizdi.
                 # Gerekce `kareyi_onar` docstring'inde.
+                # ⚠️ `ornekler` SART: uzun formatta hakem yalnizca 12 kare
+                # goruyor ve "kare 7" dedigi sey videonun 7. karesi degil,
+                # orneklemin 7. elemani. Gecirilmezse her onarim YANLIS
+                # sahnenin gorselini degistirir (bkz. `hakem_karesinden_sahne`).
                 if onarilan := kareyi_onar(
-                    plan, review, aday.baslik if aday else ""
+                    plan,
+                    review,
+                    aday.baslik if aday else "",
+                    bicim=bicim,
+                    ornekler=hakem_kareleri(
+                        len(plan.scenes) * bicim.kare_yuvasi, bicim
+                    ),
                 ):
                     print(
                         f"ℹ️ kare onarımı: sahne {onarilan} görseli menüden değiştirildi",
@@ -4553,7 +4594,13 @@ def run_cycle(
             # oldugu. Yazilmazsa hangi videonun hangi duzende uretildigi
             # sonradan bilinemez — ayni korluk sahne sayisi deneyinde bir
             # kez yasandi ve kollar geriye donuk ayirt edilemedi.
-            "kare_duzeni": KARE_YUVASI,
+            # ⚠️ HANGI KOL. Yazilmazsa izlenme saati raporunda uzun videoyla
+            # Short'u ayirt etmek imkansiz olur — ve uzun formatin varlik
+            # sebebi tam olarak o saatler, yani olcemezsek denemeyi
+            # degerlendiremeyiz. Ayni korluk sahne sayisi deneyinde bir kez
+            # yasandi ve kollar geriye donuk ayirt edilemedi.
+            "bicim": bicim.ad,
+            "kare_duzeni": bicim.kare_yuvasi,
             "iki_gorselli_sahne": tam_dolan_sahne,
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
@@ -4647,9 +4694,29 @@ def main() -> None:
             "zaman geldiğini belirler; tutunma deneyinin kolu budur."
         ),
     )
+    parser.add_argument(
+        "--uzun",
+        action="store_true",
+        help=(
+            "8-13 dakikalık YATAY belgesel üret (varsayılan: dikey Shorts). "
+            "İzlenme saati yalnızca bu koldan geliyor; Shorts saymıyor. Konu "
+            "zorunlu (--from-notion) ve arşiv 24 görselden azsa koşum "
+            "sessizce Shorts'a düşer."
+        ),
+    )
     args = parser.parse_args()
     if args.sahne_sayisi is not None and not 6 <= args.sahne_sayisi <= 10:
         parser.error("--sahne-sayisi 6 ile 10 arasında olmalı")
+    bicim = UZUN_BICIMI if args.uzun else SHORTS_BICIMI
+    # ⚠️ Uzun kip konuyu KUYRUKTAN almak zorunda: kaynak metin ve arsiv
+    # menusu yalnizca konu verildiginde isteme giriyor, yani konusuz uzun
+    # plan 2.000 kelimeyi hafizadan yazar (DW-114 riski, kelime SAYISIYLA
+    # olcekleniyor). `generate_content_plan` de ayni kurali uyguluyor;
+    # burada durmak kullaniciya anlasilir bir hata veriyor.
+    if args.uzun and not args.from_notion:
+        parser.error("--uzun için --from-notion gerekli: konusuz uzun plan uydurma riski taşır")
+    if args.uzun and args.sahne_sayisi is not None:
+        parser.error("--uzun ile --sahne-sayisi birlikte kullanılamaz (deney Shorts koluna ait)")
     result = run_cycle(
         dry_run=args.dry_run,
         privacy=args.privacy,
@@ -4657,6 +4724,7 @@ def main() -> None:
         kuyruktan=args.from_notion,
         yedek_konu=args.yedek_konu,
         sahne_sayisi=args.sahne_sayisi,
+        bicim=bicim,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":

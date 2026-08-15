@@ -283,4 +283,8 @@ def test_montaj_cagrisi_KARE_sayisini_geciyor():
     """
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert "len(plan.scenes) * KARE_YUVASI" in kaynak
+    # ⚠️ Sabit `KARE_YUVASI` degil BICIMIN yuvasi: uzun formatta sahne
+    # basina tek kare var ve sabit 2 ile carpmak montaji videoda olmayan
+    # kare numaralarindan ornekletirdi.
+    assert "len(plan.scenes) * bicim.kare_yuvasi" in kaynak
+    assert "len(plan.scenes) * KARE_YUVASI" not in kaynak

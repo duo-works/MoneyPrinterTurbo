@@ -69,7 +69,9 @@ def _hat(monkeypatch, tmp_path):
     # AYRI arsiv gorseli bulundu). Taklit imzayi takip etmezse `run_cycle`
     # acilirken patlar — tam da bu dosyanin yakalamak icin var oldugu kusur.
     monkeypatch.setattr(
-        ya, "run_generator", lambda p, a: ("gorev-1", video, tmp_path / "s.txt", [], 0)
+        ya,
+        "run_generator",
+        lambda p, a, **_: ("gorev-1", video, tmp_path / "s.txt", [], 0),
     )
     monkeypatch.setattr(ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg")
     # Gorsel skor 80'in USTUNDE: `should_abandon_topic` False doner, yani
