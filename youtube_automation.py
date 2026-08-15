@@ -430,6 +430,7 @@ UZUN_YONERGE = """
 THIS IS A LONG FORM DOCUMENTARY, NOT A SHORT, and the difference is not length alone. The viewer has chosen to sit down for eight to fifteen minutes; a Short's script stretched to that length is the one failure to avoid. No filler, no restating what was already said, no list of a monument's features.
 Build the script in parts: an opening that poses the question, then three to five thematic sections that each answer a different part of it, then a closing that takes a position. Each section must move the story somewhere the previous one did not; a section that could swap places with another is a section that should be cut.
 NEVER ANNOUNCE THE STRUCTURE. Do not write "in this section", "first we will look at", "as we saw earlier", or any other signposting. The viewer feels a new section through the change of subject, not through being told about it.
+AIM FOR ABOUT 1600 SPOKEN WORDS, not the minimum. A script that lands just under the floor is rejected outright and the entire plan is thrown away, so write comfortably inside the range rather than close to its edge.
 THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
 Length makes one failure far more expensive: inventing facts to fill time. When the source text runs out, write fewer scenes about what it does contain, never more scenes about what it does not."""
 """Uzun formata OZEL yonerge — Shorts sozlesmesinin ustune eklenir.
@@ -2034,6 +2035,56 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     return len(menu) >= sahne_sayisi * KARE_YUVASI
 
 
+def arama_terimlerini_tekillestir(plan: ContentPlan) -> int:
+    """Tekrarlayan arama terimlerini AYIRIR; onarilan sahne sayisi doner.
+
+    ⚠️ NEDEN REDDETMEK DEGIL ONARMAK — olculdu (2026-08-15, ilk Herculaneum
+    koşumu). Uzun formatta bes denemenin ucuncusu tam gecerli bir plandi:
+    1.353 kelime, 31 sahne, 31/31 gecerli arsiv alintisi. 31 terimin 3'u
+    benzestigi icin PLANIN TAMAMI reddedildi ve ~2 dakikalik bir uretim
+    cope gitti. Bes deneme boyunca ayni sinif kayip iki kez yasandi.
+
+    Kapinin ölçülmüş gerekcesi uzun formatta GECERLI DEGIL: o kapi (2026-08-13)
+    ayni terimin ayni sirali arama sonucunu getirmesine karsi kondu. Burada
+    sahne gorselini ARAMADAN degil ALINTIDAN aliyor — `ikincil_gorseller`
+    once `kaynak_dosya`yi indiriyor ve terim yalnizca alinti dustugunde
+    devreye giren bir yedek. Yani alintisi olan sahnede terim tekrari
+    gorsel tekrarina yol acmiyor.
+
+    Bu yuzden onarim SADECE alintisi olan sahnelerde yapiliyor; alintisiz
+    sahnede terim tek gorsel kaynagi oldugu icin sert kapi duruyor.
+
+    Ayirma yontemi: dosya adindaki, terimde HENUZ GECMEYEN kelimeler
+    ekleniyor — yani ayirt edici bilgi uydurulmuyor, alintilanan dosyadan
+    aliniyor. Ayni yaklasim `_ensure_visual_anchor`de de var (terim
+    yeniden yaziliyor, plan reddedilmiyor).
+    """
+    gorulen: set[str] = set()
+    onarilan = 0
+    for sahne in plan.scenes:
+        terim = str(sahne.get("search_term", "")).strip()
+        anahtar = " ".join(sorted(_normalize_topic(terim)))
+        if anahtar and anahtar not in gorulen:
+            gorulen.add(anahtar)
+            continue
+        dosya = str(sahne.get("kaynak_dosya", "")).strip()
+        if not dosya:
+            # Alintisiz sahnede terim tek gorsel kaynagi — sert kapi dursun.
+            continue
+        mevcut = _normalize_topic(terim)
+        ekler = [k for k in _normalize_topic(Path(dosya).stem) if k not in mevcut]
+        if not ekler:
+            continue
+        yeni = f"{terim} {' '.join(ekler[:3])}".strip()
+        yeni_anahtar = " ".join(sorted(_normalize_topic(yeni)))
+        if yeni_anahtar in gorulen:
+            continue
+        sahne["search_term"] = yeni
+        gorulen.add(yeni_anahtar)
+        onarilan += 1
+    return onarilan
+
+
 def ikincil_alintilari_temizle(
     plan: ContentPlan,
     menu_konusu: str = "",
@@ -2418,6 +2469,8 @@ def generate_content_plan(
     # yayina degil RENDER'a gonderilir — kalite kapisi (skor + agir kusur)
     # zaten arkada duruyor ve kotu videoyu orada durduruyor.
     YUMUSAK_KAPI_DENEMESI = 3
+    # Son dogrulama/kapi kusuru — hata mesajina giriyor (bkz. dongu sonu).
+    son_kusur = ""
     for deneme in range(1, 6):
         yumusak_kapilar_acik = deneme <= YUMUSAK_KAPI_DENEMESI
         data = _json_completion(system, user)
@@ -2452,9 +2505,22 @@ def generate_content_plan(
             scene["search_term"] = _ensure_visual_anchor(
                 scene["search_term"], plan.visual_anchor
             )
+        # ⚠️ ONARIM DOGRULAMADAN ONCE ve yalnizca uzun kipte. Gerekce
+        # `arama_terimlerini_tekillestir`de: tek bir yer hakkinda 30 sahnede
+        # benzer terim kacinilmaz, ama sahne gorselini ALINTIDAN aldigi icin
+        # bu gorsel tekrarina yol acmiyor. Shorts'ta kapi aynen sert kaliyor.
+        if bicim.kare_yuvasi == 1 and (
+            onarilan := arama_terimlerini_tekillestir(plan)
+        ):
+            print(
+                f"ℹ️ {onarilan} tekrarlayan arama terimi alıntılanan dosyadan "
+                "ayırt edildi",
+                flush=True,
+            )
         try:
             validate_content_plan(plan, sahne_sayisi, bicim=bicim)
         except ValueError as exc:
+            son_kusur = str(exc)
             user += (
                 "\nThe last JSON plan was invalid: "
                 f"{exc}. Return a completely corrected plan that follows every constraint."
@@ -2550,8 +2616,16 @@ def generate_content_plan(
         ):
             return plan
         user += "\nThe last suggestion was too similar. Choose a completely different event and era."
+    # ⚠️ SON KUSUR MESAJA GIRIYOR. Eski hali her zaman "konu yeterince farkli
+    # degil" diyordu — konu DISARIDAN sabitlenmisken bu cumle olgusal olarak
+    # yanlis ve teshisi yanlis yone gonderiyor. Olculdu (2026-08-15): ilk
+    # Herculaneum koşumu 9,6 dakika yandi ve log yalnizca bu cumleyi verdi;
+    # gercek sebep (kelime sayisi ve terim tekrari) ancak kapilar elle
+    # izlenerek bulundu. Ayni sinif korluk `parse_cli_result`te de vardi.
     raise DistinctTopicUnavailableError(
-        "could not generate a sufficiently distinct topic"
+        f"5 denemede gecerli plan uretilemedi; son kusur: {son_kusur or 'bilinmiyor'}"
+        if konu
+        else "could not generate a sufficiently distinct topic"
     )
 
 
