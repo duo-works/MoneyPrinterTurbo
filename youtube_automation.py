@@ -1160,7 +1160,32 @@ def kareden_sahneye(kare: int, yuva: int = KARE_YUVASI) -> int:
     return (max(int(kare), 1) + yuva - 1) // yuva
 
 
-def agir_kusurlu_kareler(review: QualityReview, yuva: int = KARE_YUVASI) -> list[int]:
+def hakem_karesinden_sahne(
+    sira: int, yuva: int = KARE_YUVASI, ornekler: list[int] | None = None
+) -> int:
+    """Hakemin MONTAJDA gordugu sira numarasini gercek sahne numarasina cevirir.
+
+    ⚠️ IKI AYRI CEVRIM UST USTE ve ikisini karistirmak sessiz bir kusur:
+
+      montaj sirasi  --(ornekler)-->  gercek kare  --(yuva)-->  sahne
+
+    Shorts'ta ilk cevrim kimlik (butun kareler montajda), o yuzden bugune
+    kadar yalnizca ikincisi vardi. Uzun formatta montaj yalnizca 12 kare
+    tasiyor (`HAKEM_ORNEK_TAVANI`): hakemin "kare 7" dedigi sey videonun
+    7. karesi DEGIL, orneklemin 7. elemani. Cevrim atlanirsa `kareyi_onar`
+    her seferinde YANLIS sahnenin gorselini degistirir ve kimse fark etmez —
+    hakem hakli, onarim yanlis yere gider.
+    """
+    p = max(int(sira), 1)
+    gercek_kare = ornekler[p - 1] if ornekler and p <= len(ornekler) else p
+    return kareden_sahneye(gercek_kare, yuva)
+
+
+def agir_kusurlu_kareler(
+    review: QualityReview,
+    yuva: int = KARE_YUVASI,
+    ornekler: list[int] | None = None,
+) -> list[int]:
     """Agir kusurlu karelerin ait oldugu SAHNE numaralari ("kare 6: ...").
 
     ⚠️ Doner deger SAHNE, kare degil: cagiran taraf (`kareyi_onar`)
@@ -1168,7 +1193,7 @@ def agir_kusurlu_kareler(review: QualityReview, yuva: int = KARE_YUVASI) -> list
     isaretlerse sahne bir kez doner.
     """
     numaralar = {
-        kareden_sahneye(int(eslesme.group(1)), yuva)
+        hakem_karesinden_sahne(int(eslesme.group(1)), yuva, ornekler)
         for kusur in review.agir_kusurlar
         if (eslesme := re.match(r"kare (\d+):", kusur))
     }
@@ -1181,6 +1206,7 @@ def kareyi_onar(
     menu_konusu: str = "",
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
+    ornekler: list[int] | None = None,
 ) -> list[int]:
     """Hakemin isaretledigi karelerin GORSELINI degistirir; degisen sahneler doner.
 
@@ -1203,7 +1229,7 @@ def kareyi_onar(
     Menu yoksa ya da kullanilmamis dosya kalmadiysa BOS DONER — cagiran
     taraf eski davranisa (arama terimlerini revize etme) duser.
     """
-    bozuk = agir_kusurlu_kareler(review, bicim.kare_yuvasi)
+    bozuk = agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler)
     bozuk = [n for n in bozuk if 1 <= n <= len(plan.scenes)]
     if not bozuk:
         return []
@@ -1224,7 +1250,9 @@ def kareyi_onar(
     kusur_metni = {n: [] for n in bozuk}
     for kusur in review.agir_kusurlar:
         if eslesme := re.match(r"kare (\d+): (.+)", kusur):
-            sahne_no = kareden_sahneye(int(eslesme.group(1)), bicim.kare_yuvasi)
+            sahne_no = hakem_karesinden_sahne(
+                int(eslesme.group(1)), bicim.kare_yuvasi, ornekler
+            )
             if sahne_no in kusur_metni:
                 kusur_metni[sahne_no].append(eslesme.group(2))
     try:
@@ -3912,12 +3940,60 @@ def run_generator(
     return task_id, video_path, script_path, credits, tam_dolan_sahne
 
 
-def montaj_izgarasi(kare_sayisi: int) -> tuple[int, int]:
-    """Kare sayisina gore sutun/satir. Iki satir sabit — dikey kareler yan yana."""
+HAKEM_ORNEK_TAVANI = 12
+"""Hakeme en fazla kac kare gosterilir.
+
+⚠️ Uzun formatin bedeli BURADA odeniyor ve durustce yazilmali: 45 karelik
+bir videoda HER SAHNE DENETLENMIYOR, esit aralikli bir ORNEKLEM
+denetleniyor. Alternatif denetimi tamamen kaybetmekti — `montaj_izgarasi`
+45 kareyi 23x2'lik bir serit yapardi ve hakem o seritte hicbir seyi
+okuyamazdi (kareler 480 piksel genisliginde, toplam ~11.000 piksel).
+
+12 secildi cunku Shorts montajlari 12-20 kareyle calisiyor ve hakem orada
+kare basina okunabilir yargi veriyor — yani bu, olculmus bir calisma
+noktasi.
+"""
+
+
+def hakem_kareleri(kare_sayisi: int, bicim: VideoBicimi = SHORTS_BICIMI) -> list[int]:
+    """Montaja girecek KARE numaralari (1-tabanli), videodaki sirayla.
+
+    ⚠️ SHORTS HIC ORNEKLENMIYOR, tavanin altinda kalsa bile. 10 sahnelik bir
+    Short 20 kare demek ve bugun hakem o 20 karenin HEPSINI goruyor; tavani
+    Shorts'a da uygulamak, olculerek kalibre edilmis bir kapinin gorus
+    alanini sessizce daraltmak olurdu. Orneklem uzun formatin bedeli, Shorts
+    icin bir iyilestirme degil.
+
+    Uzun formatta da tavanin altinda kalan videolar (24 sahne = 24 kare
+    degil, 12'den az kare) tam denetleniyor. Ilk ve son kare her zaman
+    iceride: kanca ve kapanis videonun en cok izlenen iki ani.
+    """
+    toplam = max(int(kare_sayisi), 1)
+    if bicim.dikey or toplam <= HAKEM_ORNEK_TAVANI:
+        return list(range(1, toplam + 1))
+    adim = (toplam - 1) / (HAKEM_ORNEK_TAVANI - 1)
+    return sorted({round(1 + sira * adim) for sira in range(HAKEM_ORNEK_TAVANI)})
+
+
+def montaj_izgarasi(kare_sayisi: int, dikey: bool = True) -> tuple[int, int]:
+    """Kare sayisina gore sutun/satir.
+
+    Dikey kareler yan yana dizilince iki satir yetiyor. YATAY kareler icin
+    ayni duzen cok genis bir serit uretirdi (12 kare = 6x2 = 2880 piksel),
+    o yuzden uc sutuna bolunuyor.
+    """
+    if not dikey:
+        return 3, max(math.ceil(kare_sayisi / 3), 1)
     return max(math.ceil(kare_sayisi / 2), 1), 2
 
 
-def create_review_montage(video_path: Path, task_id: str, scene_count: int) -> Path:
+def create_review_montage(
+    video_path: Path,
+    task_id: str,
+    scene_count: int,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> Path:
     """Sahne BASINA bir kare — 8 sabit degil.
 
     ⚠️ Montaj 2026-08-13'e kadar senaryoda kac sahne olursa olsun HER ZAMAN
@@ -3941,11 +4017,20 @@ def create_review_montage(video_path: Path, task_id: str, scene_count: int) -> P
         fps = float(clip.fps or 30.0) or 30.0
     kare_sayisi = max(int(scene_count), 1)
     klip = duration / kare_sayisi
+    # ⚠️ Dilim genisligi TOPLAM kare sayisindan hesaplaniyor, orneklem
+    # boyutundan degil: orneklenen kare hala kendi diliminin ORTASINDAN
+    # alinmali. Orneklem sayisina bolunseydi kareler videonun yanlis
+    # anlarindan cikardi ve hakem hicbir kusuru dogru sahneye baglayamazdi.
+    secilen = hakem_kareleri(kare_sayisi, bicim)
     kare_numaralari = [
-        max(int(round((sira + 0.5) * klip * fps)), 0) for sira in range(kare_sayisi)
+        max(int(round((sira - 0.5) * klip * fps)), 0) for sira in secilen
     ]
     secim = "+".join(rf"eq(n\,{numara})" for numara in kare_numaralari)
-    sutun, satir = montaj_izgarasi(kare_sayisi)
+    sutun, satir = montaj_izgarasi(len(secilen), bicim.dikey)
+    # ⚠️ Olcek DIKEY sabitti (270:480). Yatay karede o deger goruntuyu
+    # ezerdi — hakem bozuk en-boy oranini "kotu gorsel" diye cezalandirir,
+    # kusur ise videoda degil montajda olurdu.
+    olcek = "270:480" if bicim.dikey else "480:270"
     command = [
         get_ffmpeg_exe(),
         "-y",
@@ -3955,7 +4040,7 @@ def create_review_montage(video_path: Path, task_id: str, scene_count: int) -> P
         "-i",
         str(video_path),
         "-vf",
-        f"select='{secim}',scale=270:480,tile={sutun}x{satir}",
+        f"select='{secim}',scale={olcek},tile={sutun}x{satir}",
         "-frames:v",
         "1",
         # ⚠️ `select` ile birlikte sart: varsayilan kip eksik kareleri
@@ -3971,7 +4056,43 @@ def create_review_montage(video_path: Path, task_id: str, scene_count: int) -> P
     return montage
 
 
-def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
+def review_video(
+    plan: ContentPlan, montage: Path, *, bicim: VideoBicimi = SHORTS_BICIMI
+) -> QualityReview:
+    # ⚠️ ORNEKLEM HAKEME SOYLENIYOR. Uzun videoda montaj butun kareleri
+    # tasimiyor (`HAKEM_ORNEK_TAVANI`); soylenmezse hakem 12 karelik bir
+    # montaji 45 sahnelik senaryoyla eslestirmeye calisir ve "gorseller
+    # anlatimi takip etmiyor" der — kusur videoda degil, bizim ona
+    # verdigimiz eslemede olur.
+    toplam_kare = len(plan.scenes) * bicim.kare_yuvasi
+    ornekler = hakem_kareleri(toplam_kare, bicim)
+    ornek_sahneler = [kareden_sahneye(k, bicim.kare_yuvasi) for k in ornekler]
+    if bicim.kare_yuvasi >= 2:
+        kare_aciklamasi = (
+            f"The image is a {len(ornekler)}-frame chronological montage from a "
+            "vertical Short, read left to right and top to bottom. There are exactly "
+            f"{bicim.kare_yuvasi} frames per scene: frames 1-2 are scene 1, frames 3-4 "
+            "are scene 2, and so on. The two frames of a scene both illustrate that "
+            "scene's narration, so they show the same subject twice — that is "
+            "intended, not repetition. "
+            "If the two frames of one scene are identical, that is a deliberate layout "
+            "choice, not duplicated footage; do not report it as repetition. A frame "
+            "that shows two stacked photographs is also deliberate. "
+        )
+    else:
+        kare_aciklamasi = (
+            f"The image is a {len(ornekler)}-frame chronological montage from a "
+            "horizontal documentary, read left to right and top to bottom. The video "
+            f"has {len(plan.scenes)} scenes and this montage samples "
+            f"{len(ornekler)} of them, evenly spaced. Frame n shows scene "
+            f"{ornek_sahneler} respectively, so frame 1 is scene {ornek_sahneler[0]}, "
+            f"frame 2 is scene {ornek_sahneler[1] if len(ornek_sahneler) > 1 else ornek_sahneler[0]}, "
+            "and so on. Scenes that are not in this list were not sampled: do not "
+            "report them as missing, and do not treat the jump between sampled scenes "
+            "as a break in the story. Each frame illustrates its own scene's "
+            "narration and every frame shows a different scene, so any two frames "
+            "showing the same image ARE a real repetition defect. "
+        )
     prompt = {
         "topic": plan.topic,
         "script": plan.script,
@@ -3981,12 +4102,9 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             # (bkz. `create_review_montage`). Eslemeyi soylemek onemli:
             # soylenmediginde hakem ayni sahnenin iki ornegini "duplicate"
             # sanip skoru dusuruyordu.
-            f"The image is a {len(plan.scenes) * KARE_YUVASI}-frame chronological montage "
-            "from a vertical Short, read left to right and top to bottom. There are exactly "
-            f"{KARE_YUVASI} frames per scene: frames 1-2 are scene 1, frames 3-4 are scene 2, "
-            "and so on. The two frames of a scene both illustrate that scene's narration, "
-            "so they show the same subject twice — that is intended, not repetition. "
+            kare_aciklamasi
             # ⚠️ ALTYAZI KARE SINIRINA HIZALANMAZ ve bunu soylemek zorunlu.
+            +
             # Olculdu (2026-08-14, Lycurgus Cup): istem "iki kare AYNI
             # CUMLEYI resmediyor" diyordu; hakem bunu dogrulamaya calisti ve
             # "frame 2 already reads 'Made in fourth century Rome'" diye
@@ -4001,11 +4119,10 @@ def review_video(plan: ContentPlan, montage: Path) -> QualityReview:
             # gorseli bulunamadigi ya da iki yatay fotograf tek kareye alt
             # alta yapistirildigi durumlarda oyle oluyor. Soylenmezse hakem
             # bunu "agir tekrar" sayip skoru dusuruyor — ayni kusur sahne
-            # basina tek kare orneklenirken de olculmustu.
-            "If the two frames of one scene are identical, that is a deliberate layout "
-            "choice, not duplicated footage; do not report it as repetition. A frame that "
-            "shows two stacked photographs is also deliberate. Only report repetition when "
-            "DIFFERENT scenes reuse the same image. Any trailing blank cell is padding. "
+            # basina tek kare orneklenirken de olculmustu. Kipe bagli kismi
+            # `kare_aciklamasi` icinde; asagisi iki kipte de gecerli.
+            "Only report repetition when DIFFERENT scenes reuse the same image. "
+            "Any trailing blank cell is padding. "
             "Judge whether visuals match the narration and historical period, whether captions are readable, and whether footage is repetitive. "
             "Historically grounded AI illustrations are acceptable; do not reject them merely for not being archival photographs, but reject misleading or historically inconsistent details. "
             "Return JSON with visual_alignment_score (0-100), subtitle_readability_score (0-100), issues (array), and revised_search_terms (one concrete replacement query per problematic scene). "
