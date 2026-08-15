@@ -815,6 +815,7 @@ def validate_content_plan(
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
     konu: str = "",
+    sahne_tavani: int | None = None,
 ) -> None:
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
     if kusur := kanca_kusuru(plan.script):
@@ -837,6 +838,17 @@ def validate_content_plan(
             )
     else:
         sahne_en_az, sahne_en_cok = bicim.sahne_araligi
+        # ⚠️ TAVAN ARZA GORE DARALTILIYOR, ama TAM SAYI ISTENMIYOR.
+        #
+        # Olculdu (2026-08-15, ONUNCU koşum): tam sayi istemek bes denemenin
+        # ikisini tek basina yakti — model 35 istenirken 38 ve 34 yazdi, ve
+        # o iki plan baska her acidan GECERLIYDI (1.176 ve 1.444 kelime,
+        # dogru capa). Tam sayi, araliktan olculebilir sekilde daha zor.
+        #
+        # Tavan yine de gerekli: arsiv 38 dosya veriyorsa 41 sahnelik plan
+        # alinti kapisinda dusuyordu (dokuzuncu koşum).
+        if sahne_tavani is not None:
+            sahne_en_cok = min(sahne_en_cok, sahne_tavani)
         if not sahne_en_az <= len(plan.scenes) <= sahne_en_cok:
             raise ValueError(
                 f"content plan must contain {sahne_en_az}-{sahne_en_cok} scenes, "
@@ -2640,6 +2652,7 @@ def generate_content_plan(
     # huni kipinde cozemez, cunku konu sabit ve kapinin geri bildirimi
     # "baska bir seye capa at" diyor. Bes deneme yanar, koşum hic video
     # uretmeden duser. Burada maliyet sifir.
+    sahne_tavani: int | None = None
     if not bicim.dikey:
         on_menu = arsiv_envanteri(konu or "", sinir=envanter_sinir, bicim=bicim)
         if len(on_menu) < bicim.sahne_araligi[0]:
@@ -2665,16 +2678,17 @@ def generate_content_plan(
         # engelliyor (sahne sayisi deneyi Shorts koluna ait). Degisen sey
         # kodun kendi turettigi sayi.
         #
-        # ⚠️ ARZ PAYI: sahne sayisi menunun TAMAMI yapilmiyor. Her sahne
-        # menuden AYRI bir dosya secmek zorunda (`alinti_kusuru`); 38 menuye
-        # 38 sahne demek, modelin her dosyayi kullanmak zorunda kalmasi ve
-        # anlatiya uymayan bir gorseli bile atlayamamasi demek. Birkac
-        # yedek, secim ozgurlugu birakiyor.
-        if sahne_sayisi is None:
-            sahne_sayisi = max(
-                bicim.sahne_araligi[0],
-                min(bicim.sahne_araligi[1], len(on_menu) - ARZ_PAYI),
-            )
+        # ⚠️ TAVAN, TAM SAYI DEGIL. Ilk hali tam sayi istiyordu ve olculdu
+        # (onuncu koşum): bes denemenin ikisini tek basina yakti — 35
+        # istenirken model 38 ve 34 yazdi, ikisi de baska her acidan
+        # GECERLIYDI. Aralik modele nefes birakiyor, tavan arzi koruyor.
+        #
+        # ⚠️ Hedef sayi isteme AYRICA yaziliyor (`ARZ_PAYI` kadar tavanin
+        # altinda): her sahne menuden AYRI bir dosya secmek zorunda, yani
+        # tavana dayanan bir plan modelin her dosyayi kullanmasi demek ve
+        # anlatiya uymayan bir gorseli bile atlayamaz. Tavan KAPI, hedef
+        # TAVSIYE.
+        sahne_tavani = min(bicim.sahne_araligi[1], len(on_menu))
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = [
@@ -2763,7 +2777,7 @@ def generate_content_plan(
             # temizlemek, modelin bosuna dosya uydurmasini davet ederdi.
             user += _menu_talimati(
                 envanter,
-                sahne_sayisi or bicim.sahne_araligi[1],
+                sahne_sayisi or sahne_tavani or bicim.sahne_araligi[1],
                 bicim=bicim,
             )
     else:
@@ -2785,6 +2799,18 @@ def generate_content_plan(
             f"\nThis video must have EXACTLY {sahne_sayisi} scenes, not more and not "
             "fewer. Fit the story to that number: fewer scenes means each one is on "
             "screen longer, so give each a distinct thing to show."
+        )
+    elif sahne_tavani is not None:
+        # ⚠️ TAVAN kapi, HEDEF tavsiye. Tavana dayanan bir plan menudeki her
+        # dosyayi kullanmak zorunda kalir ve anlatiya uymayan bir gorseli
+        # bile atlayamaz; birkac yedek secim ozgurlugu birakiyor.
+        hedef = max(bicim.sahne_araligi[0], sahne_tavani - ARZ_PAYI)
+        user += (
+            f"\nThis archive can support at most {sahne_tavani} scenes, so write "
+            f"between {bicim.sahne_araligi[0]} and {sahne_tavani} scenes and never "
+            f"more. Aim for about {hedef}: every scene must cite a different file, so "
+            "a plan that uses the whole menu leaves you no room to skip an image that "
+            "does not fit what the narration says."
         )
 
     # Gecmis KAPANISLAR da veriliyor — sebebi `_kapanis_tekrari`de: "geri
@@ -2897,7 +2923,13 @@ def generate_content_plan(
                 flush=True,
             )
         try:
-            validate_content_plan(plan, sahne_sayisi, bicim=bicim, konu=konu or "")
+            validate_content_plan(
+                plan,
+                sahne_sayisi,
+                bicim=bicim,
+                konu=konu or "",
+                sahne_tavani=sahne_tavani,
+            )
         except ValueError as exc:
             son_kusur = str(exc)
             # ⚠️ HER DENEME yaziliyor, yalnizca sonuncusu degil. Olculdu

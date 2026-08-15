@@ -121,4 +121,6 @@ def test_uretim_cagrisi_KONUYU_geciriyor():
     govde = kaynak[kaynak.index("def generate_content_plan(") :]
     govde = govde[: govde.index("\ndef ", 10)]
 
-    assert "validate_content_plan(plan, sahne_sayisi, bicim=bicim, konu=konu or \"\")" in govde
+    # ⚠️ Cagri cok satirli oldu (`sahne_tavani=` eklendi); aranan sey telin
+    # kendisi — konunun dogrulamaya GECIRILMESI.
+    assert "konu=konu or \"\"" in govde

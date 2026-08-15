@@ -99,7 +99,7 @@ def test_dogrulama_HER_denemede_zorunlu():
     # oncesinde de geciyor (sabit tanimi ve gerekce yorumu) ve ilk gecisi
     # aramak testi yanlis yerden olcuyor.
     dongu = govde[govde.index("for deneme in range(1, 6):") :]
-    dogrulama = dongu.index("validate_content_plan(plan")
+    dogrulama = dongu.index("validate_content_plan(")
     ilk_yumusak_kapi = dongu.index("if yumusak_kapilar_acik")
 
     assert dogrulama < ilk_yumusak_kapi, "dogrulama yumusak kapilardan ONCE ve kosulsuz olmali"

@@ -24,6 +24,8 @@ Uc yapisal sebep vardi ve ucu de burada kilitleniyor:
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import youtube_automation as ya  # noqa: E402
@@ -98,7 +100,7 @@ def test_sahne_sayisi_KODDAN_geliyor():
     """Baglanti testi: turetme yoksa model yine aralik kenarinda dolasir."""
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert "min(bicim.sahne_araligi[1], len(on_menu) - ARZ_PAYI)" in kaynak
+    assert "sahne_tavani = min(bicim.sahne_araligi[1], len(on_menu))" in kaynak
 
 
 def test_CLI_yasagi_DURUYOR():
@@ -198,3 +200,64 @@ def test_onarim_TERIM_ONARIMINDAN_once():
     terim = kaynak.index("arama_terimlerini_tekillestir(plan)")
 
     assert capa < terim
+
+
+# --- C1b: TAVAN, tam sayi degil --------------------------------------------
+#
+# ⚠️ OLCULDU (2026-08-15, ONUNCU koşum). Ilk C1 tasarimi TAM SAYI istiyordu
+# ve bes denemenin ikisini TEK BASINA yakti:
+#
+#     2/5  tam 35 sahne gerekli, 38 geldi  (1.176 kelime, gecerli plan)
+#     4/5  tam 35 sahne gerekli, 34 geldi  (1.444 kelime, gecerli plan)
+#
+# Iki plan da baska her acidan gecerliydi. Tam sayi, araliktan olculebilir
+# sekilde daha zor; arzi korumaya TAVAN yetiyor.
+
+
+def _tavan_plani(sahne: int) -> ya.ContentPlan:
+    plan = _plan("Herculaneum", sahne)
+    plan.script = "Herculaneum was buried. " + "word " * 1200
+    return plan
+
+
+def test_TAVANIN_ALTINDAKI_sahne_sayilari_geciyor():
+    """Onuncu koşumun iki reddi de bu testle kapaniyor."""
+    for sahne in (34, 36, 38):
+        ya.validate_content_plan(
+            _tavan_plani(sahne), bicim=ya.UZUN_BICIMI, sahne_tavani=38
+        )
+
+
+def test_TAVANIN_USTU_reddediliyor():
+    """Arsiv 38 dosya veriyorsa 41 sahnelik plan alinti kapisinda duserdi."""
+    with pytest.raises(ValueError, match="24-38 scenes"):
+        ya.validate_content_plan(
+            _tavan_plani(39), bicim=ya.UZUN_BICIMI, sahne_tavani=38
+        )
+
+
+def test_tavan_BICIMIN_ust_sinirini_asamiyor():
+    """Menu bol olsa bile ritim tavani (39) baglayici kalmali."""
+    with pytest.raises(ValueError, match="24-39 scenes"):
+        ya.validate_content_plan(
+            _tavan_plani(45), bicim=ya.UZUN_BICIMI, sahne_tavani=60
+        )
+
+
+def test_TAM_SAYI_kipi_Shorts_icin_DURUYOR():
+    """⚠️ `--sahne-sayisi` deneyi Shorts koluna ait ve bozulmamali."""
+    kisa = ya.ContentPlan(
+        topic="konu",
+        visual_anchor="capa",
+        title="baslik #Shorts",
+        script="Capa vardi. " + "word " * 97,
+        scenes=[
+            {"narration": f"sahne {i}", "search_term": f"capa detay {i}"}
+            for i in range(1, 10)
+        ],
+        description="aciklama",
+        tags=["a", "b", "c"],
+    )
+
+    with pytest.raises(ValueError, match="exactly 8 scenes"):
+        ya.validate_content_plan(kisa, 8)
