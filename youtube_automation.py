@@ -1580,6 +1580,58 @@ def _openai_client() -> tuple[OpenAI, str]:
     return OpenAI(**kwargs), model
 
 
+# ⚠️ Uzun format JSON'u ~7.000 token. Tavan konmazsa saglayicinin varsayilani
+# geciyor ve cevap ORTASINDAN kesiliyor — hat bunu "eksik JSON" diye gorup
+# denemeyi yakiyor. Fatura URETILEN tokene gore, yani genis tavan bedava.
+AZAMI_CIKTI_TOKEN = 16000
+
+
+def _akil_yurutmeyi_kapat(base_url: str) -> dict[str, Any]:
+    """OpenRouter'da akil yurutmeyi kapatan govde eki.
+
+    ⚠️ OLCULDU (2026-08-15, DW-51) ve bu hattin uzun formatini tek basina
+    durduran kusur buydu. `moonshotai/kimi-k2.6` bir AKIL YURUTME modeli:
+    uzun format istemi ona butun cikti butcesini dusunmeye harcatiyor ve
+    `content` BOS donuyor.
+
+        max_tokens  2.000 -> reasoning_tokens 2.115, content None
+        max_tokens 16.000 -> reasoning_tokens 16.000, content None
+        Hermes'in 65.536'si -> 900 sn'de bile bitmiyor
+
+    Ayni istem `reasoning enabled=false` ile 163 sn'de 29.612 karakterlik
+    gecerli JSON donduruyor. `effort: "low"` YETMIYOR (15.999 akil token).
+    Kimi'nin gorulu diger surumleri de (k2.5, k2.7-code) ayni sekilde
+    dusunuyor, yani model degistirmek cozum degil.
+
+    ⚠️ Yalnizca OpenRouter'a gonderiliyor: `reasoning` OpenAI'nin kendi
+    ucunda taninmayan bir alan ve oraya yollanirsa istek reddedilir.
+    """
+    if "openrouter" not in base_url.lower():
+        return {}
+    return {"extra_body": {"reasoning": {"enabled": False}}}
+
+
+def _json_govdesi(icerik: str | None) -> dict[str, Any]:
+    """Modelin dondurdugu metni JSON'a cevirir; ```json cercevesini soyar.
+
+    ⚠️ `response_format={"type": "json_object"}` her saglayicida uyulan bir
+    soz DEGIL: olculdu (2026-08-15), OpenRouter uzerinden Kimi cevabi
+    ```json cercevesiyle donduruyor ve ciplak `json.loads` patliyor.
+    """
+    metin = (icerik or "").strip()
+    if metin.startswith("```"):
+        metin = re.sub(r"^```[a-zA-Z]*\s*", "", metin)
+        metin = re.sub(r"\s*```$", "", metin)
+    if not metin:
+        # ⚠️ Bos cevap SESSIZ gecmemeli: akil yurutme kusuru tam olarak
+        # boyle gorunuyordu ve `json.loads("")` mesaji sebebi gizliyordu.
+        raise RuntimeError(
+            "model bos cevap dondurdu — cikti butcesi akil yurutmeye gitmis "
+            "olabilir (bkz. _akil_yurutmeyi_kapat)"
+        )
+    return json.loads(metin)
+
+
 def _windows() -> bool:
     """Windows'ta miyiz — platform kontrolu bilerek TEK bir fonksiyonda.
 
@@ -1668,6 +1720,14 @@ def hermes_temel_komut() -> list[str]:
 CIKARIM_ZAMAN_ASIMI = 180
 """Kisa (Shorts) bir JSON cevabi icin ust sinir, saniye."""
 
+GORU_ZAMAN_ASIMI = 360
+"""Gorü (montaj okuma) cagrilari icin ust sinir, saniye.
+
+⚠️ `hermes` yolunda bu sayi 360 olarak GOMULUYDU; openai yolunda ise hic
+zaman asimi yoktu. Sabit hale getirildi ki iki yol ayni siniri paylassin —
+zaman asimsiz bir gorü cagrisi zamanlayici slotunu sessizce yer.
+"""
+
 UZUN_CIKARIM_ZAMAN_ASIMI = 600
 """Uzun format icin ust sinir.
 
@@ -1704,17 +1764,23 @@ def _json_completion(
     if INFERENCE_BACKEND != "openai":
         raise RuntimeError(f"unsupported inference backend: {INFERENCE_BACKEND}")
     client, model = _openai_client()
+    base_url = str(config.app.get("openai_base_url", "")).strip()
     response = client.chat.completions.create(
         model=model,
         temperature=0.65,
         response_format={"type": "json_object"},
+        max_tokens=AZAMI_CIKTI_TOKEN,
+        # ⚠️ Zaman asimi ISTEMCIYE de veriliyor. Verilmezse `hermes` yolunda
+        # yakalanan asilma burada SESSIZCE sonsuza kadar bekler ve
+        # zamanlayici slotunu yer.
+        timeout=float(zaman_asimi),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
+        **_akil_yurutmeyi_kapat(base_url),
     )
-    content = response.choices[0].message.content or ""
-    return json.loads(content)
+    return _json_govdesi(response.choices[0].message.content)
 
 
 def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
@@ -1737,7 +1803,7 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
                 "-q",
                 query,
             ],
-            360,
+            GORU_ZAMAN_ASIMI,
         )
         if result.returncode:
             raise RuntimeError(
@@ -1747,11 +1813,14 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
     if INFERENCE_BACKEND != "openai":
         raise RuntimeError(f"unsupported inference backend: {INFERENCE_BACKEND}")
     client, model = _openai_client()
+    base_url = str(config.app.get("openai_base_url", "")).strip()
     encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
     response = client.chat.completions.create(
         model=model,
         temperature=0.1,
         response_format={"type": "json_object"},
+        max_tokens=AZAMI_CIKTI_TOKEN,
+        timeout=float(GORU_ZAMAN_ASIMI),
         messages=[
             {
                 "role": "user",
@@ -1767,8 +1836,11 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
                 ],
             }
         ],
+        # ⚠️ Gorü yolunda da kapali: iki kalite kapisi da buradan geciyor ve
+        # akil yurutme butceyi yerse kapi BOS cevap alip sessizce duser.
+        **_akil_yurutmeyi_kapat(base_url),
     )
-    return json.loads(response.choices[0].message.content or "{}")
+    return _json_govdesi(response.choices[0].message.content)
 
 
 def _recent_titles() -> list[str]:
