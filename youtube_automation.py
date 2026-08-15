@@ -431,7 +431,7 @@ THIS IS A LONG FORM DOCUMENTARY, NOT A SHORT, and the difference is not length a
 Build the script in parts: an opening that poses the question, then three to five thematic sections that each answer a different part of it, then a closing that takes a position. Each section must move the story somewhere the previous one did not; a section that could swap places with another is a section that should be cut.
 NEVER ANNOUNCE THE STRUCTURE. Do not write "in this section", "first we will look at", "as we saw earlier", or any other signposting. The viewer feels a new section through the change of subject, not through being told about it.
 AIM FOR ABOUT 1600 SPOKEN WORDS, not the minimum. A script that lands just under the floor is rejected outright and the entire plan is thrown away, so write comfortably inside the range rather than close to its edge.
-DO THE ARITHMETIC BEFORE YOU WRITE, because the scene count decides the script length and getting this wrong is the most common way this plan is thrown away. Multiply the number of scenes you intend to write by the words you intend to put in each narration; if that product is under 1200 the plan is rejected. Roughly 45 words per narration at 35 scenes, 65 at 24 scenes, 36 at 45 scenes. A narration of 25-30 words is a Short's scene: at 35 scenes it lands near 1000 words, under the floor, and the whole plan is discarded.
+DO THE ARITHMETIC BEFORE YOU WRITE, because the scene count decides the script length and getting this wrong is the most common way this plan is thrown away. Multiply the number of scenes you intend to write by the words you intend to put in each narration; if that product is under the floor the plan is rejected. Roughly 45 words per narration at 35 scenes, 65 at 24 scenes, 36 at 45 scenes. A narration of 25-30 words is a Short's scene and lands well under the target.
 THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. This means the narrations together ARE the full script, not a summary of it: their combined word count must equal the script's, so a 1600 word script split into 35 scenes puts about 45 words in each. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
 Length makes one failure far more expensive: inventing facts to fill time. When the source text runs out, write fewer scenes about what it does contain, never more scenes about what it does not."""
 """Uzun formata OZEL yonerge — Shorts sozlesmesinin ustune eklenir.
@@ -762,12 +762,44 @@ UZUN_BICIMI = VideoBicimi(
     # Onceki not "~150 kelime/dk" diyordu; o sayi TEK bir Shorts orneginden
     # (Anita 41 sn / ~100 kelime) cikarilmisti ve olcum onu duzeltti. Ayni
     # koşum TTS'in 2.200 kelimeyi TEK PARCADA uretebildigini de gosterdi.
-    kelime_araligi=(1200, 2200),
+    #
+    # ⚠️ TABAN 1.200'DEN 900'E INDIRILDI (2026-08-15, kanal sahibinin karari).
+    # Sebep olculdu: dokuz koşumda model su uzunluklari uretti —
+    #
+    #     876 · 926 · 1.055 · 1.208 · 1.210 · 1.353
+    #
+    # yani ortalama ~1.100 ve 1.200 taban dagilimin TAM ORTASINI kesiyordu.
+    # Bes deneme bu yuzden yaniyordu: model kotu yazmiyordu, sozlesme
+    # modelin dogal ciktisinin ustune konmustu.
+    #
+    # ⚠️ 1.200 bir YouTube GEREGI DEGILDI, editoryal bir tercihti. Uzun
+    # format esigi 60 saniye; 900 kelime 170 kelime/dk ile 5,3 dakika eder
+    # ve fazlasiyla uzun formattir. Kanalin tutunma verisi de kisa lehine:
+    # izleyicinin ucte biri ILK SAHNE DEGISIMINDE gidiyor, yani 13 dakikalik
+    # bir ilk deneme kanitlanmamis bir bahis olurdu.
+    #
+    # Istemdeki "1600 hedefle" yonergesi KALIYOR: hedef yuksek, taban
+    # gercekci. Aralik artik 5,3-12,9 dakika.
+    kelime_araligi=(900, 2200),
     # ⚠️ Sahne sayisinin tavani ARSIV ARZINDAN geliyor, tercihten degil.
     # Olculdu (2026-08-15, menu siniri 60): Bagan 49, Herculaneum 37,
     # Alhambra 32, Egyptian pyramids 23 kullanilabilir gorsel. 45'in
     # ustunu istemek, arzin veremedigi videoyu istemek olurdu.
-    sahne_araligi=(24, 45),
+    #
+    # ⚠️ TAVAN 45'TEN 39'A INDI (2026-08-15), sebep RITIM. Kelime tabani
+    # 900'e inince en kotu durum su oluyordu:
+    #
+    #     900 kelime / 170 = 317 sn ses ; 317 / 45 sahne = 7,0 sn/kare
+    #
+    # ve belgesel ritmi icin taban 8 saniye (bkz. asagidaki hesap ve
+    # `test_sahne_basina_sure_belgesel_ritmi`). Kanalin olculen kusuru da
+    # tam burada: izleyicinin ucte biri ILK SAHNE DEGISIMINDE gidiyor, yani
+    # kesmeyi hizlandirmak en yanlis yon.
+    #
+    #     317 sn / 8 sn = 39 sahne
+    #
+    # Ust uc degismedi: 2.200 kelime / 24 sahne = 32 sn/kare.
+    sahne_araligi=(24, 39),
     # ⚠️ Uzun formatta sahne basina TEK kare. Shorts'ta iki yuva vardi
     # cunku 5 saniyelik bir kare altyazidan yavas kaliyordu; 15 saniyelik
     # bir belgesel karesinde ayni sorun yok ve ikiye bolmek gereken gorsel
@@ -2143,6 +2175,18 @@ Herculaneum 37, Alhambra 32, Egyptian pyramids 23. Yani sinir cogu konuda
 baglayici bile degil; asil sinir arsivin kendisi.
 """
 
+ARZ_PAYI = 3
+"""Sahne sayisi belirlenirken menuden birakilan yedek dosya sayisi.
+
+⚠️ Sahne sayisi menunun TAMAMI yapilmiyor. Her sahne menuden AYRI bir dosya
+secmek zorunda (`alinti_kusuru`), yani 38 dosyaya 38 sahne demek modelin her
+dosyayi kullanmak zorunda kalmasi ve anlatiya uymayan bir gorseli bile
+atlayamamasi demek. Birkac yedek, secim ozgurlugu birakiyor.
+
+Kucuk secildi: pay buyudukce video kisalir ve arsivin verebilecegi sahneleri
+bosa harcamis oluruz.
+"""
+
 
 def envanter_siniri(bicim: "VideoBicimi | None" = None) -> int:
     """Bicimin menu siniri. Tek yerden okunur ki kapi ile istem ayrisamasin."""
@@ -2262,6 +2306,40 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     (materyal dizini bile olusmadi).
     """
     return len(menu) >= sahne_sayisi * KARE_YUVASI
+
+
+def capayi_konuya_genislet(plan: ContentPlan, konu: str) -> str:
+    """Dar secilmis capayi KONUNUN kendisi yapar; eski capa doner, yoksa "".
+
+    ⚠️ NEDEN REDDETMEK DEGIL ONARMAK. Bu kapi once REDDEDIYORDU (2026-08-15)
+    ve olculdu ki dogru cevap ZATEN BELLI: konu disaridan sabit, capa da o
+    olmali. Modelden bunu yeniden uretmesini istemek, uzun formatta ~400
+    saniyelik bir cikarim koşumu demek.
+
+    ⚠️ Daha kotusu, iki kapi birbirine KARSI calisiyordu. `alinti_kusuru`
+    "capayi arsivi olan baska bir seye bagla" diyor, bu kapi "capa konunun
+    kendisi olmali" diyordu. Model birincisine uyup 'Villa of the Papyri'
+    yazdi, ikincisi reddetti (dokuzuncu koşum, 2->3 gecisi).
+
+    ⚠️ Terimler YENIDEN turetiliyor: eski capaya gore kurulmus terimler yeni
+    capayi tasimazsa `validate_content_plan`in sahne kapisi bu kez ONLARI
+    reddederdi. `_ensure_visual_anchor` capayi ekliyor ve sahnenin kendi
+    somut kelimesi duruyor — "Villa of the Papyri scrolls" bilgisini
+    kaybetmeden "Herculaneum ..." haline geliyor.
+
+    Yalnizca uzun kipte ve `konu` verildiginde cagriliyor. Shorts'ta dar capa
+    KASITLI (bkz. "Vassar College" gerekcesi).
+    """
+    konu_kelimeleri = _normalize_topic(konu)
+    if not konu_kelimeleri or (_normalize_topic(plan.visual_anchor) & konu_kelimeleri):
+        return ""
+    eski = plan.visual_anchor
+    plan.visual_anchor = konu.strip()
+    for sahne in plan.scenes:
+        sahne["search_term"] = _ensure_visual_anchor(
+            str(sahne.get("search_term", "")), plan.visual_anchor
+        )
+    return eski
 
 
 def arama_terimlerini_tekillestir(plan: ContentPlan) -> int:
@@ -2467,11 +2545,30 @@ def alinti_kusuru(
     if not menu:
         return ""
     if len(menu) < len(plan.scenes):
+        # ⚠️ GERI BILDIRIM BICIME GORE (2026-08-15). Eski metin her iki kipte
+        # de "capayi baska bir seye bagla" diyordu ve uzun formatta bu, capa
+        # kapisinin (`validate_content_plan`, "use the topic itself as the
+        # visual anchor") TAM YASAKLADIGI hamle.
+        #
+        # Olculdu (dokuzuncu koşum, 2->3 gecisi): model bu mesaja UYDU,
+        # capayi 'Villa of the Papyri'ye daraltti, oteki kapi reddetti. Iki
+        # kapi birbirine karsi deneme yakiyordu ve celiski buraya capa kapisi
+        # eklenirken girdi.
+        #
+        # Uzun formatta dogru cozum zaten belli: sahne sayisini indir. Konu
+        # DISARIDAN sabit, yani capa degistirilemez.
+        if not bicim or bicim.dikey:
+            return (
+                f"the archive holds only {len(menu)} usable images for "
+                f"{plan.visual_anchor!r}, fewer than the {len(plan.scenes)} scenes "
+                "this plan needs. Anchor the video on a different concrete thing that "
+                "archives actually photographed, and build the script around that."
+            )
         return (
             f"the archive holds only {len(menu)} usable images for "
             f"{plan.visual_anchor!r}, fewer than the {len(plan.scenes)} scenes this "
-            "plan needs. Anchor the video on a different concrete thing that archives "
-            "actually photographed, and build the script around that."
+            f"plan needs. Keep the same visual anchor and write at most {len(menu)} "
+            "scenes instead, each citing a different file from the menu."
         )
     gecerli = {girdi["dosya"] for girdi in menu}
     alintilar = [str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes]
@@ -2550,6 +2647,33 @@ def generate_content_plan(
                 f"{konu!r} icin arsivde {len(on_menu)} kullanilabilir gorsel var, "
                 f"uzun formatin gerektirdigi {bicim.sahne_araligi[0]} sahneden az; "
                 "bu konu Shorts olarak uretilmeli"
+            )
+        # ⚠️ SAHNE SAYISINI KOD BELIRLIYOR, model degil (2026-08-15).
+        #
+        # Istem zaten arzi soyluyordu ("this archive holds 38 usable images,
+        # so write at most 38 scenes") ve model 41 yazdi. Yani sayiyi
+        # SOYLEMEK yetmiyor — DW-87 dersinin aynisi, dogrulanabilir olguyu
+        # kod denetlemeli.
+        #
+        # Olculdu (dokuzuncu koşum): bes redden UCU bu tek karara bagliydi —
+        # 39 sahne (kelime tabanini tutturamadi), 41 sahne (arz 38), 35
+        # sahne (yine kelime). Sayi sabitlenince model bir tek seyi
+        # ayarliyor: sahne basina kelime.
+        #
+        # ⚠️ CLI'daki `--uzun ile --sahne-sayisi birlikte kullanilamaz`
+        # yasagi DURUYOR ve dokunulmadi: o yasak INSANIN elle sayi vermesini
+        # engelliyor (sahne sayisi deneyi Shorts koluna ait). Degisen sey
+        # kodun kendi turettigi sayi.
+        #
+        # ⚠️ ARZ PAYI: sahne sayisi menunun TAMAMI yapilmiyor. Her sahne
+        # menuden AYRI bir dosya secmek zorunda (`alinti_kusuru`); 38 menuye
+        # 38 sahne demek, modelin her dosyayi kullanmak zorunda kalmasi ve
+        # anlatiya uymayan bir gorseli bile atlayamamasi demek. Birkac
+        # yedek, secim ozgurlugu birakiyor.
+        if sahne_sayisi is None:
+            sahne_sayisi = max(
+                bicim.sahne_araligi[0],
+                min(bicim.sahne_araligi[1], len(on_menu) - ARZ_PAYI),
             )
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
@@ -2748,6 +2872,17 @@ def generate_content_plan(
         for scene in plan.scenes:
             scene["search_term"] = _ensure_visual_anchor(
                 scene["search_term"], plan.visual_anchor
+            )
+        # ⚠️ CAPA ONARIMI EN BASTA: terim onarimindan ONCE calismali, cunku
+        # terimler capaya gore yeniden turetiliyor. Sirasi ters olsaydi
+        # tekillestirilen terimler hemen ardindan uzerine yazilirdi.
+        if not bicim.dikey and konu and (
+            eski_capa := capayi_konuya_genislet(plan, konu)
+        ):
+            print(
+                f"ℹ️ çapa {eski_capa!r} → {plan.visual_anchor!r} genişletildi "
+                "(dar çapa arşivi tüketiyor)",
+                flush=True,
             )
         # ⚠️ ONARIM DOGRULAMADAN ONCE ve yalnizca uzun kipte. Gerekce
         # `arama_terimlerini_tekillestir`de: tek bir yer hakkinda 30 sahnede

@@ -69,15 +69,17 @@ def test_uzun_bicim_2000_kelimeyi_KABUL_ediyor():
 
 
 def test_uzun_bicimde_SHORTS_senaryosu_reddediliyor():
-    with pytest.raises(ValueError, match="1200-2200 words"):
+    with pytest.raises(ValueError, match="900-2200 words"):
         ya.validate_content_plan(_uzun_plan(100, 30), bicim=ya.UZUN_BICIMI)
 
 
 def test_uzun_bicim_sahne_araligi():
+    # ⚠️ Tavan 45 -> 39 (2026-08-15): kelime tabani 900'e inince 45 sahne
+    # 7,0 sn/kare veriyordu ve belgesel ritmi tabani 8 saniye.
     ya.validate_content_plan(_uzun_plan(1500, 24), bicim=ya.UZUN_BICIMI)
-    ya.validate_content_plan(_uzun_plan(1500, 45), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 39), bicim=ya.UZUN_BICIMI)
 
-    with pytest.raises(ValueError, match="24-45 scenes"):
+    with pytest.raises(ValueError, match="24-39 scenes"):
         ya.validate_content_plan(_uzun_plan(1500, 8), bicim=ya.UZUN_BICIMI)
 
 
@@ -104,18 +106,30 @@ def test_uzun_bicim_YATAY():
 
 
 def test_kelime_araligi_sureye_oturuyor():
-    """Olculen hizla 1.200-2.200 kelime = 7-13 dakika."""
+    """Olculen hizla 900-2.200 kelime = 5,3-12,9 dakika.
+
+    ⚠️ Taban 1.200'den 900'e INDI (2026-08-15, kanal sahibinin karari).
+    Sebep olculdu: model dokuz koşumda 876-1.353 kelime uretti, yani 1.200
+    dagilimin tam ortasini kesiyordu ve bes deneme bu yuzden yaniyordu.
+    1.200 bir YouTube geregi degildi; uzun format esigi 60 saniye.
+    """
     en_az, en_cok = ya.UZUN_BICIMI.kelime_araligi
 
-    assert 6 <= en_az / KONUSMA_HIZI <= 8
+    assert 5 <= en_az / KONUSMA_HIZI <= 6
     assert 11 <= en_cok / KONUSMA_HIZI <= 14
 
 
 def test_sahne_basina_sure_belgesel_ritmi():
     """En kotu durumda bile kare ekranda makul kaliyor mu.
 
-    1.200 kelime / 170 = 7,1 dk = 423 sn; 45 sahne -> ~9 sn/kare. Ust uc:
+    900 kelime / 170 = 5,3 dk = 317 sn; 39 sahne -> 8,1 sn/kare. Ust uc:
     2.200 kelime / 24 sahne -> ~32 sn. Ikisi de belgesel araliginda.
+
+    ⚠️ Bu testi 8 saniyede tutmak BILINCLI. Kelime tabani 900'e indirilince
+    45 sahne 7,0 sn/kare veriyordu; cozum esigi dusurmek DEGIL, sahne
+    tavanini 39'a indirmek oldu. Kanalin olculen kusuru tam burada:
+    izleyicinin ucte biri ILK SAHNE DEGISIMINDE gidiyor, yani kesmeyi
+    hizlandirmak en yanlis yon.
     """
     en_az_kelime, en_cok_kelime = ya.UZUN_BICIMI.kelime_araligi
     en_az_sahne, en_cok_sahne = ya.UZUN_BICIMI.sahne_araligi

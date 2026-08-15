@@ -144,7 +144,9 @@ def test_uzun_yonerge_CARPMAYI_istiyor():
     uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
 
     assert "Multiply the number of scenes" in uzun
-    assert "under 1200 the plan is rejected" in uzun
+    # ⚠️ Taban SAYI olarak yazilmiyor: kelime araligi bicimden geliyor ve
+    # 1.200 -> 900 degisiminde istem sessizce yanlis sayiyi tasirdi.
+    assert "under the floor the plan is rejected" in uzun
 
 
 def test_anlatimlar_SENARYONUN_KENDISI_oldugu_yaziyor():
@@ -310,9 +312,11 @@ def test_uzun_talimat_sahne_TAVANINI_menuden_soyluyor():
 
 def test_menu_tavani_sahne_ARALIGINI_asmiyor():
     """Menu bol olsa bile tavan bicimin ust siniri."""
-    talimat = ya._menu_talimati(_menu(60), 45, bicim=ya.UZUN_BICIMI)
+    # ⚠️ Tavan 45 -> 39 (2026-08-15, belgesel ritmi: 900 kelimede 45 sahne
+    # 7,0 sn/kare verir, taban 8 sn).
+    talimat = ya._menu_talimati(_menu(60), 39, bicim=ya.UZUN_BICIMI)
 
-    assert "between 24 and 45 scenes" in talimat
+    assert "between 24 and 39 scenes" in talimat
 
 
 def test_SHORTS_talimatinda_tavan_cumlesi_YOK():
