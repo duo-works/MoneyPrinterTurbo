@@ -184,8 +184,11 @@ def test_kismi_kip_hatta_baglanmis():
     `kismi=False` yazildiginda izole testlerin hicbiri dusmuyordu.
     """
     kaynak = KAYNAK.read_text(encoding="utf-8")
+    # ⚠️ SABIT UZUNLUKTA DILIM alinmiyor artik. Eskiden 2.500 karaktere
+    # bakiliyordu ve fonksiyona bir yorum eklenince (2026-08-15) test dustu —
+    # oysa olctugu sey hic bozulmamisti. Fonksiyonun TAMAMI aliniyor.
     i = kaynak.index("def run_generator(")
-    govde = kaynak[i : i + 2500]
+    govde = kaynak[i : kaynak.index("\ndef ", i + 10)]
 
     assert "kismi=AI_VISUAL_FALLBACK_ENABLED" in govde, "kismi kip hatta bagli olmali"
     assert "_delikleri_doldur(" in govde, "delikler doldurulmali"
@@ -333,4 +336,6 @@ def test_filtreler_secime_bagli():
     govde = kaynak[i : kaynak.index("def commons_kategorisi(", i)]
 
     assert "belge_taramasi(title)" in govde
-    assert "dikey_karede_yeterli(width, height)" in govde
+    # ⚠️ Suzgec KAREYE BAGLANDI (2026-08-15): `karede_yeterli` hedef orani
+    # da aliyor. Aranan sey degismedi — suzgecin aday seciminde CAGRILMASI.
+    assert "karede_yeterli(width, height, hedef_oran)" in govde

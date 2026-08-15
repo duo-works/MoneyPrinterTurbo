@@ -137,8 +137,10 @@ def test_filtre_secime_bagli_kaliyor():
     """Fonksiyon dogru olsa bile aday secimi cagirmazsa kusur surer."""
     kaynak = Path(wm.__file__).read_text(encoding="utf-8")
     govde = kaynak[kaynak.index("def _puanli_adaylar(") :]
-    assert "dikey_karede_yeterli(width, height)" in govde
-    assert "tam_ekran_doluyor(width, height)" in govde
+    # ⚠️ Suzgec KAREYE BAGLANDI (2026-08-15): `karede_yeterli` hedef orani
+    # da aliyor. Aranan sey degismedi — suzgecin aday seciminde CAGRILMASI.
+    assert "karede_yeterli(width, height, hedef_oran)" in govde
+    assert "tam_ekran_doluyor(width, height, hedef_oran)" in govde
 
 
 def test_render_bulanik_yolu_gercekten_kullaniyor():

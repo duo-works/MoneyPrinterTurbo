@@ -402,6 +402,23 @@ soruyor, "bu bir belge mi" diye degil.
 SHORTS_ORANI = 1080 / 1920
 """Dikey Shorts karesinin en/boy orani — `youtube_automation` ile ayni kare."""
 
+UZUN_ORANI = 1920 / 1080
+"""Yatay uzun format karesinin en/boy orani.
+
+⚠️ OLCULDU (2026-08-15, DW-51): bu modulun TAMAMI 9:16'ya sabitlenmisti ve
+uzun format da ondan besleniyordu. Kusur cokme uretmiyor — SESSIZ KALITE
+KAYBI uretiyor, ki daha kotusu. Sekizinci Herculaneum koşumunun sectigi 45
+gorselin dagilimi:
+
+    portre (16:9'da yan bant) : 22  (%48)
+    yatay  (16:9'a uygun)     : 20  (%44)
+    kare                      :   3
+
+Yani yatay belgeselin yarisi yan bantli portre gorsellerle dolacakti.
+Ustelik `UZUN_BICIMI.sahne_araligi` (24-45) de bu DIKEY SUZULMUS sayimdan
+turetilmisti — sahne tavani yanlis bir arz olcumune dayaniyordu.
+"""
+
 AZAMI_KIRPMA = 0.35
 """Bu kadar kirpma tam ekran sayiliyor; fazlasi bulanik arka plan yoluna duser.
 
@@ -449,38 +466,62 @@ def belge_taramasi(baslik: str) -> bool:
     return any(isaret in normal for isaret in BELGE_ISARETLERI)
 
 
-def tam_ekran_doluyor(width: int, height: int) -> bool:
+def tam_ekran_doluyor(
+    width: int, height: int, hedef_oran: float = SHORTS_ORANI
+) -> bool:
     """Render bu gorseli kirp-doldur ile TAM EKRAN basabilir mi.
 
     Bulanik arka plan yoluna dusenler `False` doner. Aday puanlamasi bunu
     kullaniyor: bulanik bantli gercek fotograf kabul ediliyor ama tam ekran
     olan her zaman tercih ediliyor.
+
+    ⚠️ Kural SIMETRIK: karenin KENDI yonunde daha uc olan gorsel her zaman
+    tam ekran doluyor, ters yondeki gorsel kirpma testine giriyor.
+
+        dikey kare  (0,5625): daha dik gorsel serbest, GENIS gorsel test
+        yatay kare  (1,7778): daha genis gorsel serbest, DIK gorsel test
+
+    Dikey daldaki davranis BIREBIR korunuyor — Shorts kalibrasyonu.
     """
     if width <= 0 or height <= 0:
         return False
     oran = width / height
-    if oran <= SHORTS_ORANI:
-        return True  # dikey ya da kare — kirp-doldur tam ekran verir
-    return 1 - (SHORTS_ORANI / oran) <= AZAMI_KIRPMA
+    if hedef_oran <= 1:
+        if oran <= hedef_oran:
+            return True  # dikey ya da kare — kirp-doldur tam ekran verir
+        return 1 - (hedef_oran / oran) <= AZAMI_KIRPMA
+    if oran >= hedef_oran:
+        return True  # yatay ya da daha genis — kirp-doldur tam ekran verir
+    return 1 - (oran / hedef_oran) <= AZAMI_KIRPMA
 
 
-def dikey_karede_yeterli(width: int, height: int) -> bool:
-    """Gorsel 9:16 karede kullanilabilir bir kare veriyor mu.
+def karede_yeterli(
+    width: int, height: int, hedef_oran: float = SHORTS_ORANI
+) -> bool:
+    """Gorsel bu karede kullanilabilir bir kare veriyor mu.
 
     Iki yol var ve ikisi de kabul ediliyor:
 
     - **Kirp-doldur** — tam ekran (`tam_ekran_doluyor`).
     - **Bulanik arka plan** — net gorsel ortada, kalani bulanik bant. Net
-      kismin kapladigi dikey oran `ASGARI_DIKEY_DOLULUK`'un altina duserse
+      kismin kapladigi oran `ASGARI_DIKEY_DOLULUK`'un altina duserse
       eleniyor.
+
+    ⚠️ Doluluk hesabi `ImageOps.contain` ile ayni: kucuk oran / buyuk oran.
+    Dikey karede bu `SHORTS_ORANI / (w/h)` ifadesine indirgeniyor, yani eski
+    davranis birebir korunuyor.
     """
     if width <= 0 or height <= 0:
         return False
-    if tam_ekran_doluyor(width, height):
+    if tam_ekran_doluyor(width, height, hedef_oran):
         return True
-    # Bulanik yolda net gorselin kapladigi dikey oran — `dikeye_uydur`
-    # `ImageOps.contain` ile ayni sonucu veriyor.
-    return SHORTS_ORANI / (width / height) >= ASGARI_DIKEY_DOLULUK
+    oran = width / height
+    return min(oran, hedef_oran) / max(oran, hedef_oran) >= ASGARI_DIKEY_DOLULUK
+
+
+def dikey_karede_yeterli(width: int, height: int) -> bool:
+    """9:16 karesi icin ince sarmalayici — `karede_yeterli`nin dikey hali."""
+    return karede_yeterli(width, height, SHORTS_ORANI)
 
 
 def delivery_url(source_url: str) -> str:
@@ -552,13 +593,16 @@ def select_candidate(
     used_titles: set[str],
     query: str = "",
     required_anchor: str = "",
+    hedef_oran: float = SHORTS_ORANI,
 ) -> dict[str, Any] | None:
-    adaylar = _puanli_adaylar(pages, used_titles, query, required_anchor)
+    adaylar = _puanli_adaylar(pages, used_titles, query, required_anchor, hedef_oran)
     return adaylar[0] if adaylar else None
 
 
 def _kategori_adaylari(
-    pages: list[dict[str, Any]], used_titles: set[str]
+    pages: list[dict[str, Any]],
+    used_titles: set[str],
+    hedef_oran: float = SHORTS_ORANI,
 ) -> list[dict[str, Any]]:
     """Kategori havuzunu puana gore siralar — capa ve sorgu kontrolu olmadan.
 
@@ -566,7 +610,7 @@ def _kategori_adaylari(
     donuyor: indirme dusebilir ya da aday tekrar cikabilir, o zaman
     sonrakine gecilmeli.
     """
-    return _puanli_adaylar(pages, used_titles, "", "")
+    return _puanli_adaylar(pages, used_titles, "", "", hedef_oran)
 
 
 def _puanli_adaylar(
@@ -574,6 +618,7 @@ def _puanli_adaylar(
     used_titles: set[str],
     query: str = "",
     required_anchor: str = "",
+    hedef_oran: float = SHORTS_ORANI,
 ) -> list[dict[str, Any]]:
     candidates: list[tuple[float, dict[str, Any]]] = []
     query_terms = _relevance_terms(query)
@@ -628,15 +673,23 @@ def _puanli_adaylar(
         height = int(image.get("height") or image.get("thumbheight") or 0)
         if width < 720 or height < 720:
             continue
-        if not dikey_karede_yeterli(width, height):
+        if not karede_yeterli(width, height, hedef_oran):
             continue
         # ⚠️ Bulanik bantli gorsel artik KABUL ediliyor (bkz.
         # `ASGARI_DIKEY_DOLULUK`) ama tam ekran olan her zaman ONCE gelmeli.
         # Bonus cozunurluk puaninin tavanindan (4,0) buyuk secildi: yoksa
         # buyuk bir panorama, kucuk ama tam ekran bir dikey fotografi
         # geceredi ve videolar bulanik bantla dolardi.
-        orientation_score = 2.0 if height >= width else 1.0
-        if tam_ekran_doluyor(width, height):
+        #
+        # ⚠️ YON BONUSU KAREYE GORE (2026-08-15, DW-51). Eskiden sabit
+        # "portre daha iyi" idi ve uzun format da bu siralamadan
+        # besleniyordu: yatay bir belgesel icin PORTRE gorseller ustte
+        # geliyordu. Olculdu — sekizinci koşumun 45 gorselinin 22'si portre,
+        # yani videonun yarisi yan bantli olacakti.
+        dikey_kare = hedef_oran <= 1
+        uygun_yon = height >= width if dikey_kare else width >= height
+        orientation_score = 2.0 if uygun_yon else 1.0
+        if tam_ekran_doluyor(width, height, hedef_oran):
             orientation_score += 5.0
         resolution_score = min(width * height / 1_000_000, 4.0)
         search_order_score = max(0.0, 2.0 - order * 0.1)
@@ -892,7 +945,9 @@ def dosya_sayfasi(baslik: str) -> dict[str, Any] | None:
 MENU_KATEGORI_SINIRI = 500
 
 
-def arsiv_menusu(konu: str, *, sinir: int = 40) -> list[dict[str, Any]]:
+def arsiv_menusu(
+    konu: str, *, sinir: int = 40, hedef_oran: float = SHORTS_ORANI
+) -> list[dict[str, Any]]:
     """Konu icin GERCEKTEN kullanilabilir arsiv gorsellerinin menusu.
 
     ⚠️ NEDEN VAR — olculdu (2026-08-14). Hat, plani yazan modele kategorinin
@@ -926,7 +981,7 @@ def arsiv_menusu(konu: str, *, sinir: int = 40) -> list[dict[str, Any]]:
     kategori = commons_kategorisi(konu)
     if kategori:
         havuz = kategori_gorselleri(kategori, limit=MENU_KATEGORI_SINIRI)
-    adaylar = _kategori_adaylari(havuz, set()) if havuz else []
+    adaylar = _kategori_adaylari(havuz, set(), hedef_oran) if havuz else []
     gorulen = {str(aday.get("title") or "") for aday in adaylar}
     try:
         aramadan = search_commons(konu, limit=50)
@@ -936,7 +991,7 @@ def arsiv_menusu(konu: str, *, sinir: int = 40) -> list[dict[str, Any]]:
     # ediyor, arama etmiyor ("Cutty Sark" sorgusu DLR istasyonunu da
     # getiriyor — bu oturumda bir videoya modern ulasim haritasi bu yoldan
     # girdi).
-    for aday in _puanli_adaylar(aramadan, set(), "", konu):
+    for aday in _puanli_adaylar(aramadan, set(), "", konu, hedef_oran):
         baslik = str(aday.get("title") or "")
         if baslik and baslik not in gorulen:
             gorulen.add(baslik)
@@ -1158,6 +1213,7 @@ def _alinti_adayi(
     baslik: str,
     kategori_havuzu: list[dict[str, Any]],
     used_titles: set[str],
+    hedef_oran: float = SHORTS_ORANI,
 ) -> dict[str, Any] | None:
     """Planin alintiladigi dosyayi indiricinin kendi suzgecinden gecirir.
 
@@ -1189,7 +1245,7 @@ def _alinti_adayi(
         sayfa for sayfa in kategori_havuzu if str(sayfa.get("title", "")) == tam_ad
     ]
     if sayfalar:
-        adaylar = _puanli_adaylar(sayfalar, used_titles, "", "")
+        adaylar = _puanli_adaylar(sayfalar, used_titles, "", "", hedef_oran)
         if adaylar:
             return adaylar[0]
     # Havuzda yok, ya da havuzdaki kayit eksik: tek istekle dosyanin kendisi.
@@ -1198,7 +1254,7 @@ def _alinti_adayi(
     sayfa = dosya_sayfasi(ad)
     if sayfa is None:
         return None
-    adaylar = _puanli_adaylar([sayfa], used_titles, "", "")
+    adaylar = _puanli_adaylar([sayfa], used_titles, "", "", hedef_oran)
     return adaylar[0] if adaylar else None
 
 
@@ -1212,6 +1268,7 @@ def download_scene_materials(
     excluded_met_ids: set[int] | None = None,
     kismi: bool = False,
     kategori_havuzu: list[dict[str, Any]] | None = None,
+    hedef_oran: float = SHORTS_ORANI,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
     """Sahne gorsellerini arsivlerden indirir.
 
@@ -1281,7 +1338,9 @@ def download_scene_materials(
         # teslim dusebilir ya da ayni gorsel baska sahnede kullanilmis
         # olabilir. Bu durumlarda asagidaki zincir eskisi gibi calisiyor.
         if alinti := str(scene.get("kaynak_dosya", "")).strip():
-            alinti_adayi = _alinti_adayi(alinti, kategori_havuzu, used_titles)
+            alinti_adayi = _alinti_adayi(
+                alinti, kategori_havuzu, used_titles, hedef_oran
+            )
             if alinti_adayi is not None:
                 alinti_hedefi = target_dir / f"scene-{index:02d}{_UZANTI[alinti_adayi['mime']]}"
                 try:
@@ -1345,6 +1404,7 @@ def download_scene_materials(
                     used_titles | failed_titles,
                     query=query,
                     required_anchor=visual_anchor,
+                    hedef_oran=hedef_oran,
                 )
                 if not candidate:
                     break
@@ -1399,7 +1459,9 @@ def download_scene_materials(
             # "Victoria Cross" iken "herhangi bir capa kelimesi" kurali
             # "Medal, campaign", "Medal, miniature" gibi 13 adsiz madalyayi
             # iceri aliyordu — DW-116'daki yanlis ozne kusurunun ta kendisi.
-            for aday in _kategori_adaylari(kategori_havuzu, used_titles | failed_titles):
+            for aday in _kategori_adaylari(
+                kategori_havuzu, used_titles | failed_titles, hedef_oran
+            ):
                 suffix = {
                     "image/jpeg": ".jpg",
                     "image/png": ".png",

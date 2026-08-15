@@ -268,7 +268,7 @@ def test_onbellek_SINIRA_gore_ayrisiyor(monkeypatch):
     ya._ENVANTER_ONBELLEGI.clear()
     istenen: list[int] = []
 
-    def sahte(konu, sinir):
+    def sahte(konu, sinir, **_):
         istenen.append(sinir)
         return [
             {"title": f"File:D{i}.jpg", "aciklama": "x", "tarih": ""}

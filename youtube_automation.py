@@ -1342,7 +1342,9 @@ def kareyi_onar(
     if not bozuk:
         return []
     menu = arsiv_envanteri(
-        menu_konusu.strip() or plan.visual_anchor, sinir=envanter_siniri(bicim)
+        menu_konusu.strip() or plan.visual_anchor,
+        sinir=envanter_siniri(bicim),
+        bicim=bicim,
     )
     if not menu:
         return []
@@ -2151,7 +2153,12 @@ _ENVANTER_ONBELLEGI: dict[tuple[str, int], list[dict[str, str]]] = {}
 ACIKLAMA_SINIRI = 140
 
 
-def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[dict[str, str]]:
+def arsiv_envanteri(
+    konu: str,
+    *,
+    sinir: int = ARSIV_ENVANTER_SINIRI,
+    bicim: "VideoBicimi | None" = None,
+) -> list[dict[str, str]]:
     """Konu icin kullanilabilir arsiv gorsellerinin MENUSU. Yoksa BOS DONER.
 
     Her girdi `{dosya, gosterdigi, tarih}`. Sahneler bu menuden secim yapmak
@@ -2180,11 +2187,14 @@ def arsiv_envanteri(konu: str, *, sinir: int = ARSIV_ENVANTER_SINIRI) -> list[di
     # sonraki uzun koşum 60 isteyip 40 alirdi — ve tersi de mumkun. Kapinin
     # modele gosterilenden BASKA bir listeye bakmasi, bu dosyada zaten
     # olculmus bir kusur sinifi (bkz. `alinti_kusuru`, "Jock Willis").
-    anahtar = (konu.strip().casefold(), sinir)
+    oran = kare_orani(bicim)
+    anahtar = (konu.strip().casefold(), sinir, round(oran, 4))
     if anahtar in _ENVANTER_ONBELLEGI:
         return _ENVANTER_ONBELLEGI[anahtar]
     try:
-        adaylar = wikimedia_materials.arsiv_menusu(konu, sinir=sinir)
+        adaylar = wikimedia_materials.arsiv_menusu(
+            konu, sinir=sinir, hedef_oran=oran
+        )
     except Exception:
         # ⚠️ Menu bir IYILESTIRME; cekilemezse uretim durmamali. Kategori ve
         # arama uclari 429/5xx donebiliyor ve o an plan asamasindayiz, yani
@@ -2309,6 +2319,7 @@ def ikincil_alintilari_temizle(
     menu_konusu: str = "",
     *,
     sinir: int = ARSIV_ENVANTER_SINIRI,
+    bicim: "VideoBicimi | None" = None,
 ) -> int:
     """Gecersiz ya da tekrarlayan IKINCI alintilari siler; silinen sayisi doner.
 
@@ -2319,7 +2330,9 @@ def ikincil_alintilari_temizle(
     Iyilestirme ugruna calisan bir plani cope atmak, kazanci maliyetten
     kucuk bir takas.
     """
-    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor, sinir=sinir)
+    menu = arsiv_envanteri(
+        menu_konusu.strip() or plan.visual_anchor, sinir=sinir, bicim=bicim
+    )
     gecerli = {girdi["dosya"] for girdi in menu} if menu else set()
     gorulen = {str(s.get("kaynak_dosya", "")).strip() for s in plan.scenes}
     silinen = 0
@@ -2415,6 +2428,7 @@ def alinti_kusuru(
     menu_konusu: str = "",
     *,
     sinir: int = ARSIV_ENVANTER_SINIRI,
+    bicim: "VideoBicimi | None" = None,
 ) -> str:
     """Her sahne menuden GERCEK bir dosya secmis mi — secmemisse kusur metni.
 
@@ -2447,7 +2461,9 @@ def alinti_kusuru(
     gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu kusurun
     kaynagina cevirir.
     """
-    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor, sinir=sinir)
+    menu = arsiv_envanteri(
+        menu_konusu.strip() or plan.visual_anchor, sinir=sinir, bicim=bicim
+    )
     if not menu:
         return ""
     if len(menu) < len(plan.scenes):
@@ -2528,7 +2544,7 @@ def generate_content_plan(
     # "baska bir seye capa at" diyor. Bes deneme yanar, koşum hic video
     # uretmeden duser. Burada maliyet sifir.
     if not bicim.dikey:
-        on_menu = arsiv_envanteri(konu or "", sinir=envanter_sinir)
+        on_menu = arsiv_envanteri(konu or "", sinir=envanter_sinir, bicim=bicim)
         if len(on_menu) < bicim.sahne_araligi[0]:
             raise UzunFormatUygunDegilError(
                 f"{konu!r} icin arsivde {len(on_menu)} kullanilabilir gorsel var, "
@@ -2616,7 +2632,7 @@ def generate_content_plan(
         # ⚠️ ARSIV MENUSU — gerekcesi `arsiv_envanteri`nde. Kaynak metni
         # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
         # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
-        if envanter := arsiv_envanteri(konu, sinir=envanter_sinir):
+        if envanter := arsiv_envanteri(konu, sinir=envanter_sinir, bicim=bicim):
             # Sahne sayisi verilmemisse (model bicimin araliginda secer) en
             # KOTU ihtimale gore karar veriliyor: aralikin USTU icin yeterli
             # degilse ikinci gorsel istenmiyor. Iyimser davranip sonra
@@ -2771,7 +2787,9 @@ def generate_content_plan(
         # yok ve ancak bu kapinin geri bildirimiyle geliyor. Gerekce
         # `alinti_kusuru` docstring'inde.
         if yumusak_kapilar_acik and (
-            kusur := alinti_kusuru(plan, konu or "", sinir=envanter_sinir)
+            kusur := alinti_kusuru(
+                plan, konu or "", sinir=envanter_sinir, bicim=bicim
+            )
         ):
             son_kusur = f"alinti kapisi: {kusur}"
             print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
@@ -2781,7 +2799,7 @@ def generate_content_plan(
         # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
         # tekrarlayan ikinci alintilar siliniyor; plan yasiyor.
         if silinen := ikincil_alintilari_temizle(
-            plan, konu or "", sinir=envanter_sinir
+            plan, konu or "", sinir=envanter_sinir, bicim=bicim
         ):
             print(
                 f"ℹ️ {silinen} ikinci alıntı temizlendi (uydurma ya da tekrar); "
@@ -2943,6 +2961,18 @@ def kare_olcusu(bicim: "VideoBicimi") -> tuple[int, int]:
 def en_boy_orani(bicim: "VideoBicimi") -> str:
     """MPT CLI'nin `--video-aspect` degeri."""
     return "9:16" if bicim.dikey else "16:9"
+
+
+def kare_orani(bicim: "VideoBicimi | None" = None) -> float:
+    """Bicimin sayisal en/boy orani — arsiv suzgeci ve siralamasi icin.
+
+    ⚠️ `kare_olcusu`den TURETILIYOR, ayri bir sabit degil: ikisi ayrisirsa
+    retrieval kendi render'indan farkli bir kare varsayar ve bu, bu dosyada
+    zaten olculmus bir kusur sinifi (`AZAMI_KIRPMA` iki modulde ayni olmak
+    ZORUNDA, bkz. `wikimedia_materials.AZAMI_KIRPMA`).
+    """
+    en, boy = kare_olcusu(bicim or SHORTS_BICIMI)
+    return en / boy
 
 # Merkezden kirpma bu orandan fazlasini atacaksa kirpmak yerine bulanik arka
 # plan kullanilir. 0.35 olculerek secildi: 2:3 AI gorselleri %16 kirpiliyor
@@ -4138,6 +4168,10 @@ def run_generator(
             # AI ile doldurulur (DW-97).
             kismi=AI_VISUAL_FALLBACK_ENABLED,
             kategori_havuzu=kategori_havuzu,
+            # ⚠️ Arsiv suzgeci ve SIRALAMASI kareye gore. Verilmezse yatay
+            # bir belgesel icin portre gorseller ustte gelir (bkz.
+            # `wikimedia_materials.UZUN_ORANI`).
+            hedef_oran=kare_orani(bicim),
         )
     except MaterialsUnavailableError as exc:
         if not AI_VISUAL_FALLBACK_ENABLED:
@@ -4214,6 +4248,7 @@ def run_generator(
                         for credit in credits
                         if credit.get("object_id") is not None
                     },
+                    hedef_oran=kare_orani(bicim),
                 )
             except MaterialsUnavailableError:
                 # Arsiv bu sahneleri besleyemedi; asagida AI devralir.

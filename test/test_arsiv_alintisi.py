@@ -134,7 +134,10 @@ def test_kapi_plan_donguSUNE_bagli():
     i = kaynak.index("def generate_content_plan(")
     govde = kaynak[i : kaynak.index("def refine_search_terms(", i)]
 
-    assert "alinti_kusuru(plan, konu" in govde
+    # ⚠️ Cagri cok satirli oldu (2026-08-15, `bicim=` eklendi); aranan sey
+    # telin kendisi, yazim bicimi degil.
+    assert "alinti_kusuru(" in govde
+    assert "bicim=bicim" in govde
 
 
 def test_menu_onbellekleniyor(monkeypatch):
