@@ -3546,6 +3546,57 @@ Ikisi ayrisirsa olculen sure gercek sesin suresi olmaz ve klip hesabi bozulur.
 VARSAYILAN_KLIP_SURESI = 5
 """Ses olculemediginde kullanilan sure — eski sabit davranis."""
 
+RENDER_ZAMAN_ASIMI = 1800
+"""Render alt sureci icin ust sinir, saniye — SHORTS olcusu.
+
+⚠️ Bu sayinin Shorts'a gore oldugunu soyleyen bir yorum YOKTU; olculdu
+(2026-08-15, `logs/2026-08-15-15-attempt-1.log`): 33,4 saniyelik bir Short
+115 saniyede render ediliyor, yani 1800 sn 15 kat pay demek. Kimse bunun
+uzun formata bakmadigini yazmamis cunku hic bakilmamis.
+"""
+
+UZUN_RENDER_ZAMAN_ASIMI = 5400
+"""Uzun formatta render siniri.
+
+Ayni koşumdan cikan olcum: render GERCEK ZAMANIN 3,4 KATI suruyor
+(115 sn / 33,4 sn). Uc gecis var ve her biri yeniden kodluyor —
+`preprocess_video` her kareyi ayri mp4 yaziyor, `combine_videos` her klibi
+`temp-clip-N.mp4` olarak birlestiriyor, `generate_video` altyaziyla final'i
+uretiyor.
+
+Uzun formatta ayni butceye giren yuk:
+    ses      423-775 sn  (`UZUN_BICIMI.kelime_araligi`, 170 kelime/dk)
+    kodlama  3,4 x 775 ≈ 2.635 sn
+    TTS      ayni surecin ICINDE, en kotu 3 x 660 = 1.980 sn
+
+⚠️ Yani bugunku TTS duzeltmesi (30 sn -> kelime x 0,3) tek basina eski
+1800'u tasiriyordu. Iki sabit birbirine bagli ve ayri ayri degistirilemez.
+
+⚠️ Bu sayi `KILIT_BAYATLAMA` ile BIRLIKTE dusunulmeli: zaman asimini
+yukseltip kilidi 4 saatte birakmak, iki koşumun ayni `state.json` uzerinde
+paralel calismasi demekti.
+"""
+
+
+def ffmpeg_is_parcaciklari() -> int:
+    """FFmpeg'e verilecek is parcacigi sayisi.
+
+    MPT varsayilani 2 ve hat bunu hic gecmiyordu. Bir cekirdek bilerek
+    birakiliyor: koşum zamanlayiciyla arka planda calisiyor.
+    """
+    return max((os.cpu_count() or 2) - 1, 2)
+
+
+def render_zaman_asimi(bicim: "VideoBicimi | None" = None) -> int:
+    """Bicime gore render siniri.
+
+    ⚠️ Varsayilan `None`: bu fonksiyon `SHORTS_BICIMI`den once cagrilabilir
+    ve varsayilan degerler `def` aninda hesaplaniyor.
+    """
+    if bicim is None or bicim.dikey:
+        return RENDER_ZAMAN_ASIMI
+    return UZUN_RENDER_ZAMAN_ASIMI
+
 KLIP_PAYI = 1.02
 """Klip suresine eklenen kucuk pay.
 
@@ -4270,6 +4321,16 @@ def run_generator(
         "none",
         "--video-clip-duration",
         str(klip),
+        # ⚠️ Is parcacigi sayisi ACIKCA veriliyor. MPT varsayilani 2
+        # (`app/models/schema.py`) ve hat bunu HIC gecmiyordu: 13 dakikalik
+        # bir 1080p video iki cekirdekle kodlaniyordu. Olculdu: render
+        # gercek zamanin 3,4 kati suruyor (`RENDER_ZAMAN_ASIMI`).
+        #
+        # ⚠️ Cekirdek sayisinin TAMAMI degil, biri BIRAKILIYOR: koşum
+        # zamanlayiciyla arka planda calisiyor ve makineyi tamamen doldurmak
+        # kanal sahibinin kendi isini yavaslatir.
+        "--n-threads",
+        str(ffmpeg_is_parcaciklari()),
         # ⚠️ Zoom KAPALI (2026-08-14, kanal sahibinin sesli notu: "su zoom
         # olayi hosuma gitmiyor"). Bayrak yalnizca bu hattı etkiliyor;
         # webui ve varsayilan davranis degismedi.
@@ -4346,7 +4407,7 @@ def run_generator(
         encoding="utf-8",
         errors="replace",
         capture_output=True,
-        timeout=1800,
+        timeout=render_zaman_asimi(bicim),
     )
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / f"{publication_slot_key()}-attempt-{attempt}.log"
@@ -4660,10 +4721,34 @@ def _wait_until_not_before(not_before: str) -> None:
         time.sleep(delay)
 
 
+KILIT_BAYATLAMA = 12 * 3600
+"""Kilit dosyasinin PID'i CANLIYKEN bile bayat sayilma suresi, saniye.
+
+⚠️ Eski deger 4 saatti ve mantik `expired or pid_is_dead` idi: sure dolunca
+kilit, sahibi CALISIYOR OLSA BILE siliniyordu. `macos_zamanlama.py`
+slotlari da tam 4 saat arayla (9, 13, 17, 21).
+
+Shorts koşumu dakikalar surdugu icin 4 saat erisilemez bir tavandi. Uzun
+formatta oyle degil: olculen dokuzuncu koşum tek basina 46,2 dakika surdu
+ve o render'a bile ulasmadi. `RENDER_ZAMAN_ASIMI`nin uzun karsiligiyla
+birlikte bir koşum saatlerce surebilir.
+
+⚠️ Bu yuzden zaman asimini yukseltmek TEK BASINA yapilamaz: 4 saatlik
+kilitle birlikte iki koşumun ayni `state.json` ve ayni `storage/` uzerinde
+paralel calismasi demekti.
+
+Yeni mantik: CANLI bir surecten kilit ASLA calinmaz. Koşum slot araligini
+asiyorsa bir sonraki tetikleme zaten "another cycle is already running"
+diyerek dusmeli — dogru davranis bu. Sure yalnizca PID GERI DONUSUMUNE
+karsi duruyor: 12 saat sonra ayni numarayi tasiyan surec, bizim koşumumuz
+olamayacak kadar eski demektir.
+"""
+
+
 def _acquire_lock() -> None:
     LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
     if LOCK_FILE.exists():
-        expired = time.time() - LOCK_FILE.stat().st_mtime > 4 * 3600
+        expired = time.time() - LOCK_FILE.stat().st_mtime > KILIT_BAYATLAMA
         try:
             recorded_pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
             try:
@@ -4677,7 +4762,11 @@ def _acquire_lock() -> None:
                 pid_is_dead = True
         except (OSError, ValueError):
             pid_is_dead = True
-        if expired or pid_is_dead:
+        # ⚠️ Kosul AYNI kaldi, degisen SURE. Gerekce `KILIT_BAYATLAMA`da:
+        # 4 saat gercek bir uzun koşumun ULASABILECEGI bir sureydi, yani
+        # kilit sahibi calisirken siliniyordu. 12 saat yalnizca PID geri
+        # donusumune karsi duruyor.
+        if pid_is_dead or expired:
             LOCK_FILE.unlink(missing_ok=True)
     try:
         descriptor = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)

@@ -231,8 +231,12 @@ def test_ses_ayarlari_tek_yerde():
     Ayrisirlarsa olculen sure gercek sesin suresi olmaz ve klip hesabi sessizce
     bozulur — video yine tekrar etmeye baslar ama sebebi gorunmez olur.
     """
+    # ⚠️ KARAKTER DILIMI ALINMIYOR artik. Eskiden `--video-clip-duration`
+    # sonrasi 400 karaktere bakiliyordu ve araya bir bayrak eklenince
+    # (2026-08-15, `--n-threads`) test dustu — oysa olctugu sey hic
+    # bozulmamisti. Aranan sey ayni KOMUT LISTESI, sabit bir uzunluk degil.
     i = KAYNAK.index('"--video-clip-duration"')
-    govde = KAYNAK[i : i + 400]
+    govde = KAYNAK[i : KAYNAK.index("subprocess.run(", i)]
 
     assert "SES_ADI" in govde
     assert "SES_HIZI" in govde
