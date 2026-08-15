@@ -79,6 +79,19 @@ INFERENCE_BACKEND = str(
 # sanal ortamin icinde) yol yapilandirmadan geliyor; bos birakilirsa
 # `shutil.which` denenir ve bulunamazsa anlasilir bir hata verilir.
 YTOTO_PATH = str(config.app.get("ytoto_path", "")).strip() or None
+# ⚠️ Hermes sağlayici/modeli HAT TARAFINDAN belirleniyor, kullanicinin kuresel
+# `~/.hermes/config.yaml` ayarina birakilmiyor. Gerekce `hermes_temel_komut`
+# docstring'inde: `chat` alt komutu o ayari dikkate almiyor ve kotasi dolu
+# kimligi secebiliyor. Ortam degiskeni yapilandirmayi ezer (zamanlayici ve
+# elle koşum ayni degeri kullansin diye ikisi de destekleniyor).
+HERMES_SAGLAYICI = (
+    os.getenv("YT_HERMES_PROVIDER")
+    or str(config.app.get("youtube_automation_hermes_provider", ""))
+).strip()
+HERMES_MODEL = (
+    os.getenv("YT_HERMES_MODEL")
+    or str(config.app.get("youtube_automation_hermes_model", ""))
+).strip()
 EDITORIAL_ANCHOR_POOL = [
     "Great Sphinx",
     "Moai",
@@ -1597,6 +1610,35 @@ def _run_hermes(command: list[str], timeout: int) -> subprocess.CompletedProcess
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
+def hermes_temel_komut() -> list[str]:
+    """`hermes` cagrisinin ONEKI — sağlayici ve model ACIKCA geciriliyor.
+
+    ⚠️ NEDEN BAYRAK, NEDEN KURESEL YAPILANDIRMA DEGIL — olculdu
+    (2026-08-15). `~/.hermes/config.yaml` sağlayiciyi `github-copilot`
+    gosterirken:
+
+        hermes -z ...                    -> CALISTI  (12,2 sn)
+        hermes chat -Q --image ... -q ... -> HTTP 429 usage limit
+
+    Yani `chat` alt komutu yapilandirmadaki sağlayiciyi DIKKATE ALMIYOR ve
+    kimlik havuzundan kotasi DOLU olani (openai-codex) seciyor. Metin yolu
+    calisip görü yolu dusunce hat sessizce kalite kapisiz kalirdi: senaryo
+    uretilir, kaynak ve video incelemeleri patlar.
+
+    Ayni bayraklar iki yolda da geciliyor ki hat hangi modelle urettigini
+    KENDI soylesin; kullanicinin kuresel hermes ayari degisince uretim
+    modeli sessizce degismesin.
+
+    Bos birakilirsa hicbir bayrak eklenmiyor — onceki davranis birebir.
+    """
+    komut = ["hermes"]
+    if HERMES_SAGLAYICI:
+        komut += ["--provider", HERMES_SAGLAYICI]
+    if HERMES_MODEL:
+        komut += ["-m", HERMES_MODEL]
+    return komut
+
+
 def _json_completion(system: str, user: str) -> dict[str, Any]:
     if INFERENCE_BACKEND == "hermes-cli":
         prompt = (
@@ -1605,7 +1647,7 @@ def _json_completion(system: str, user: str) -> dict[str, Any]:
             "Return the requested JSON object only, with no markdown fences or commentary."
         )
         result = _run_hermes(
-            ["hermes", "--ignore-rules", "--safe-mode", "-z", prompt], 180
+            hermes_temel_komut() + ["--ignore-rules", "--safe-mode", "-z", prompt], 180
         )
         if result.returncode:
             raise RuntimeError(
@@ -1635,8 +1677,8 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
             + "\nReturn the requested JSON object only, with no markdown fences or commentary."
         )
         result = _run_hermes(
-            [
-                "hermes",
+            hermes_temel_komut()
+            + [
                 "--ignore-rules",
                 "--safe-mode",
                 "chat",

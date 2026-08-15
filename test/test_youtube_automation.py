@@ -315,7 +315,13 @@ def test_json_completion_uses_hermes_cli_and_parses_last_json(monkeypatch):
     data = __import__("youtube_automation")._json_completion("system", "user")
 
     assert data == {"ok": True, "provider": "oauth"}
-    assert captured["command"][:3] == ["hermes", "--ignore-rules", "--safe-mode"]
+    # ⚠️ KONUMDAN BAGIMSIZ. Eski hali ilk uc ogeyi sabit varsayiyordu ve
+    # `--provider`/`-m` bayraklari eklenince kirildi (2026-08-15). Testin
+    # konusu bayraklarin SIRASI degil, guvenlik bayraklarinin ve `-z`nin
+    # gecmesi.
+    assert captured["command"][0] == "hermes"
+    assert "--ignore-rules" in captured["command"]
+    assert "--safe-mode" in captured["command"]
     assert "-z" in captured["command"]
     assert "system" in captured["command"][-1]
     assert "user" in captured["command"][-1]
