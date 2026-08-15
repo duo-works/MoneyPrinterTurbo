@@ -3807,7 +3807,21 @@ Ikisi ayrisirsa olculen sure gercek sesin suresi olmaz ve klip hesabi bozulur.
 """
 
 VARSAYILAN_KLIP_SURESI = 5
-"""Ses olculemediginde kullanilan sure — eski sabit davranis."""
+"""Ses HIC tahmin edilemediginde kullanilan sure — eski sabit davranis.
+
+⚠️ Bu sabit uzun formatta TEK BASINA yeterli degil ve sessizce bozuyor:
+45 kare × 5 sn = 225 sn gorsel, ses ise 775 sn. `itertools.cycle` acigi
+gorselleri 3,4 KEZ tekrarlayarak kapatir; hata firlatilmaz, log temiz
+gorunur, video sacmalar. Bu yuzden `klip_suresi` once senaryodan tahmin
+ediyor ve buraya ancak senaryo da yoksa dusuyor.
+"""
+
+KELIME_HIZI = 170
+"""Anlatim hizi, kelime/dakika — `SES_ADI` ve `SES_HIZI` ile OLCULDU.
+
+Uc ayri koşumda ayni deger cikti (bkz. `:760`). Ses olcumu agdan dondugu
+icin basarisiz olabilir; kelime sayisi olamaz.
+"""
 
 RENDER_ZAMAN_ASIMI = 1800
 """Render alt sureci icin ust sinir, saniye — SHORTS olcusu.
@@ -3934,7 +3948,7 @@ def anlatim_suresi(script: str) -> float:
             yol.unlink(missing_ok=True)
 
 
-def klip_suresi(ses_saniye: float, sahne_sayisi: int) -> float:
+def klip_suresi(ses_saniye: float, sahne_sayisi: int, senaryo: str = "") -> float:
     """Her sahnenin ekranda kalacagi sure.
 
     ⚠️ Olculdu (2026-08-09, Mohenjo-Daro): 7 sahne × 5 sn = 35,00 sn, ses
@@ -3945,9 +3959,29 @@ def klip_suresi(ses_saniye: float, sahne_sayisi: int) -> float:
 
     Sabit 5 sn yerine sure sahne sayisina bolunuyor, boylece hem tekrar hem de
     son sahnenin dusmesi imkansiz hale geliyor (bkz. `KLIP_PAYI`).
+
+    ⚠️ SES OLCUMU BASARISIZ OLABILIR — `anlatim_suresi` agdan TTS cekiyor ve
+    hatayi yutup 0.0 donuyor (uretimi durdurmamak icin, bilincli). O durumda
+    sabit 5 sn'ye dusmek Shorts'ta zararsizdi (8 kare × 5 = 40 sn, ses 33 sn)
+    ama uzun formatta videoyu sessizce mahvediyor: 45 kare × 5 = 225 sn
+    gorsele karsi 775 sn ses, yani gorseller 3,4 kez tekrar eder.
+
+    Cozum sabiti yukseltmek DEGIL — dogru sure bicime degil SENARYOYA bagli.
+    Kelime sayisi zaten elde ve hiz olculdu (`KELIME_HIZI`), yani ses
+    olcumu dustugunde bile suresi ±%10 dogrulukla bilinebilir.
     """
-    if ses_saniye <= 0 or sahne_sayisi <= 0:
+    if sahne_sayisi <= 0:
         return float(VARSAYILAN_KLIP_SURESI)
+    if ses_saniye <= 0:
+        kelime = len(senaryo.split())
+        if not kelime:
+            return float(VARSAYILAN_KLIP_SURESI)
+        ses_saniye = kelime / KELIME_HIZI * 60
+        print(
+            f"⚠️ ses olculemedi — senaryodan tahmin: {kelime} kelime ≈ "
+            f"{ses_saniye:.0f} sn ({KELIME_HIZI} kelime/dk)",
+            flush=True,
+        )
     return round(ses_saniye / sahne_sayisi * KLIP_PAYI, 2)
 
 
@@ -4550,7 +4584,9 @@ def run_generator(
     # ⚠️ Bolen KARE sayisi, sahne sayisi degil. Sahne basina iki yuva var
     # (`KARE_YUVASI`) ve MPT her materyale ESIT sure veriyor; sahneye
     # bolmek her kareyi iki kat uzun tutar ve videonun yarisini kaybederdik.
-    klip = klip_suresi(ses_saniye, len(material_files))
+    # ⚠️ Senaryo GECILIYOR: ses olcumu agdan dondugu icin dusebilir ve o
+    # zaman tek gercek kaynak senaryonun kelime sayisi kalir.
+    klip = klip_suresi(ses_saniye, len(material_files), plan.script)
     print(
         f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne × "
         f"{bicim.kare_yuvasi} yuva · klip {klip} sn "
