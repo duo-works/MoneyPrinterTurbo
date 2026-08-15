@@ -42,15 +42,37 @@ def test_UZUN_metin_sinirI_buyutuyor():
     """Yedinci koşumun birebir durumu: 1.210 kelime."""
     sinir = voice.get_edge_tts_timeout_seconds(_kelimeler(1210))
 
-    assert sinir == 242.0
-    assert sinir > 147, "olculen 2.200 kelimelik sentez suresinden kucuk olamaz"
+    assert sinir == 363.0
 
 
-def test_EN_UZUN_senaryo_da_sigiyor():
-    """Sozlesmenin tavani 2.200 kelime; olculen sentez suresi 147 sn."""
+def test_OLCULEN_sentez_sureleri_siginin_ALTINDA():
+    """⚠️ Iki gercek olcum, ikisi de sinira karsi dogrulaniyor.
+
+        2.200 kelime -> 147 sn  (0,067 sn/kelime)
+        1.452 kelime -> 189 sn  (0,130 sn/kelime)
+
+    Aradaki iki kat fark AGDAN geliyor, yani gunun saatine gore degisiyor;
+    sinir kotu olcume gore konuldu. Katsayi kucultulurse bu test duser.
+    """
+    assert voice.get_edge_tts_timeout_seconds(_kelimeler(2200)) > 147
+    assert voice.get_edge_tts_timeout_seconds(_kelimeler(1452)) > 189
+
+
+def test_EN_UZUN_senaryoda_PAY_kaliyor():
+    """Sozlesmenin tavani 2.200 kelime; yavas olcume gore ~286 sn surer."""
     sinir = voice.get_edge_tts_timeout_seconds(_kelimeler(2200))
 
-    assert sinir >= 147 * 2, "yavas ag payi kalmali"
+    assert sinir >= 2200 * 0.130 * 2, "yavas ag payi en az iki kat olmali"
+
+
+def test_sinir_ZAMANLAYICI_araligini_yemiyor():
+    """⚠️ Sinir bedava buyutulemez: asilan sentez UC KEZ deneniyor.
+
+    En uzun senaryoda bile 3 deneme 3 saatlik koşum araligina sigmali.
+    """
+    en_kotu = voice.get_edge_tts_timeout_seconds(_kelimeler(2200)) * 3
+
+    assert en_kotu < 3 * 3600
 
 
 def test_metin_verilmezse_ESKI_davranis():

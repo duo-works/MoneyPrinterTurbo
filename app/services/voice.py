@@ -38,9 +38,16 @@ _DEFAULT_EDGE_TTS_TIMEOUT_SECONDS = 30.0
 # Ust akis varsayilani da bunu acikca soyluyor: "覆盖常见短视频脚本" —
 # yani kisa video senaryolarina gore ayarlanmis.
 #
-# Olcum: 2.200 kelime -> 147 saniyede sentezleniyor (0,067 sn/kelime).
-# Asagidaki katsayi bunun ~3 katI: yavas ag ve yeniden baglanma payi.
-_EDGE_TTS_SECONDS_PER_WORD = 0.2
+# IKI olcum var ve katsayi BUYUK olanina gore konuldu:
+#   2.200 kelime -> 147 sn  (0,067 sn/kelime)
+#   1.452 kelime -> 189 sn  (0,130 sn/kelime)  <- bu sinir dogrulanirken
+# Ikisi arasindaki iki kat fark AGDAN geliyor, yani gunun saatine gore
+# degisiyor ve kotu gune gore planlamak gerekiyor. Katsayi yavas olcumun
+# ~2,3 kati; 2.200 kelimelik tavanda 660 saniye demek.
+#
+# ⚠️ Daha da buyutmek bedava DEGIL: gercekten asilan bir sentez UC KEZ
+# deneniyor, yani sinir 3 ile carpilarak zamanlayici slotundan dusuyor.
+_EDGE_TTS_SECONDS_PER_WORD = 0.3
 _MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 _MIMO_DEFAULT_TTS_MODEL = "mimo-v2.5-tts"
 NO_VOICE_NAME = "no-voice"
