@@ -27,6 +27,20 @@ from app.config import config
 from app.utils import utils
 
 _DEFAULT_EDGE_TTS_TIMEOUT_SECONDS = 30.0
+
+# ⚠️ OLCULDU (2026-08-15, DW-51): 30 saniye SHORTS olcusu ve uzun formatta
+# sentez daha baslamadan kesiliyor. Yedinci Herculaneum koşumu 51,5 dakika
+# calisip render'a ulasti, sonra 1.210 kelimelik senaryo UC KEZ 30 saniyede
+# zaman asimina ugradi ve video uretilmedi.
+#
+# Sinir ilk paketi degil BUTUN sentezi kapsiyor (`stream_edge_tts_chunks`
+# belgesi: "单次流式请求总超时"), yani metin uzadikca zorunlu olarak asiliyor.
+# Ust akis varsayilani da bunu acikca soyluyor: "覆盖常见短视频脚本" —
+# yani kisa video senaryolarina gore ayarlanmis.
+#
+# Olcum: 2.200 kelime -> 147 saniyede sentezleniyor (0,067 sn/kelime).
+# Asagidaki katsayi bunun ~3 katI: yavas ag ve yeniden baglanma payi.
+_EDGE_TTS_SECONDS_PER_WORD = 0.2
 _MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1"
 _MIMO_DEFAULT_TTS_MODEL = "mimo-v2.5-tts"
 NO_VOICE_NAME = "no-voice"
@@ -590,7 +604,7 @@ def create_edge_tts_communicate(
     return edge_tts.Communicate(text, voice_name, **communicate_kwargs)
 
 
-def get_edge_tts_timeout_seconds() -> Union[float, None]:
+def get_edge_tts_timeout_seconds(text: str = "") -> Union[float, None]:
     """
     获取 Azure TTS V1 单次流式请求的超时时间。
 
@@ -619,6 +633,16 @@ def get_edge_tts_timeout_seconds() -> Union[float, None]:
 
     if timeout_seconds <= 0:
         return None
+
+    # ⚠️ Sinir METNE gore olcekleniyor, bicime gore DEGIL. Sebep: sentez
+    # suresini belirleyen sey kelime sayisi, ve `azure_tts_v1` bicimi zaten
+    # bilmiyor. Yapilandirmadaki deger TABAN olarak korunuyor, yani kisa
+    # metinlerde davranis birebir ayni kaliyor ve asilma tespiti yasiyor.
+    kelime_sayisi = len(text.split())
+    if kelime_sayisi:
+        timeout_seconds = max(
+            timeout_seconds, kelime_sayisi * _EDGE_TTS_SECONDS_PER_WORD
+        )
 
     return timeout_seconds
 
@@ -739,7 +763,7 @@ def azure_tts_v1(
             ensure_file_path_exists(voice_file)
             communicate = create_edge_tts_communicate(text, voice_name, rate_str)
             sub_maker = edge_tts.SubMaker()
-            timeout_seconds = get_edge_tts_timeout_seconds()
+            timeout_seconds = get_edge_tts_timeout_seconds(text)
 
             with open(voice_file, "wb") as file:
                 def _handle_chunk(chunk):
