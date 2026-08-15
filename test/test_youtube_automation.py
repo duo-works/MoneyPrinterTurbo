@@ -281,6 +281,22 @@ def test_parse_cli_result_accepts_fenced_multiline_json():
     assert result["scenes"][0]["search_term"] == "Temple of Dendur stone"
 
 
+def test_parse_cli_result_kota_hatasini_MESAJDA_gosteriyor():
+    """⚠️ Olculdu (2026-08-15, ilk uzun format koşumu): CLI duz metin
+    `API call failed after 3 retries: HTTP 429: The usage limit has been
+    reached` dondurdu ve hat bunu yalnizca "eksik JSON" diye bildirdi.
+    Teshis istemin cok uzun oldugu yonune saptI — oysa istem hic
+    gonderilmemisti. Kota, ag ve kimlik hatalarinin hepsi bu yoldan geciyor.
+    """
+    with pytest.raises(ValueError, match="HTTP 429"):
+        parse_cli_result("API call failed after 3 retries: HTTP 429: usage limit")
+
+
+def test_parse_cli_result_bos_ciktiyi_soyluyor():
+    with pytest.raises(ValueError, match="cikti bos"):
+        parse_cli_result("   ")
+
+
 def test_json_completion_uses_hermes_cli_and_parses_last_json(monkeypatch):
     monkeypatch.setattr("youtube_automation.INFERENCE_BACKEND", "hermes-cli")
     captured = {}

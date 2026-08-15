@@ -890,7 +890,15 @@ def parse_cli_result(stdout: str) -> dict[str, Any]:
             best_start = start
     if best is not None:
         return best
-    raise ValueError("CLI output did not contain a complete JSON object")
+    # ⚠️ CIKTIYI MESAJA KOY. Eski hali yalnizca "complete JSON object" diyordu
+    # ve bu, JSON'u KESILMIS bir cevapla JSON HIC OLMAYAN bir cevabi ayirt
+    # edilemez kiliyordu. Olculdu (2026-08-15, ilk uzun format koşumu): CLI
+    # duz metin `API call failed after 3 retries: HTTP 429: The usage limit
+    # has been reached` dondurdu, hat bunu "eksik JSON" diye bildirdi ve
+    # teshis istemin cok uzun oldugu yonune saptI — oysa istem hic
+    # gonderilmemisti. Kota, ag ve kimlik hatalarinin hepsi bu yoldan gecer.
+    ozet = " ".join(stdout.split())[:300] or "(cikti bos)"
+    raise ValueError(f"CLI output did not contain a complete JSON object: {ozet}")
 
 
 AZAMI_KAYNAK_BASLIGI = 70
