@@ -94,7 +94,7 @@ def test_istem_de_sayiyi_soyluyor(monkeypatch):
     monkeypatch.setattr(ya, "load_state", lambda: {})
     monkeypatch.setattr(ya, "_recent_titles", lambda: [])
     monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: [])
 
     try:
         ya.generate_content_plan(sahne_sayisi=6)

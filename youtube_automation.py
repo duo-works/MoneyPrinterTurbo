@@ -740,9 +740,13 @@ SHORTS_BICIMI = VideoBicimi(
 
 UZUN_BICIMI = VideoBicimi(
     ad="uzun",
-    # ⚠️ Olculdu: konusma hizi ~150 kelime/dakika (Anita 41 sn / ~100
-    # kelime). 8-12 dakika hedefi 1.200-1.800 kelime demek; ust sinir
-    # 2.200 ile ~15 dakikaya izin veriliyor.
+    # ⚠️ Olculdu (2026-08-15), gercek edge-tts yolunda uc uzunlukta:
+    # 120 kelime 42,10 sn · 1.200 kelime 423,07 sn · 2.200 kelime 774,79 sn
+    # -> ucunde de 170 kelime/dakika. Yani bu aralik 7,1-12,9 dakika.
+    #
+    # Onceki not "~150 kelime/dk" diyordu; o sayi TEK bir Shorts orneginden
+    # (Anita 41 sn / ~100 kelime) cikarilmisti ve olcum onu duzeltti. Ayni
+    # koşum TTS'in 2.200 kelimeyi TEK PARCADA uretebildigini de gosterdi.
     kelime_araligi=(1200, 2200),
     # ⚠️ Sahne sayisinin tavani ARSIV ARZINDAN geliyor, tercihten degil.
     # Olculdu (2026-08-15, menu siniri 60): Bagan 49, Herculaneum 37,
@@ -1138,19 +1142,25 @@ def sorunlu_sahneler(review: QualityReview, toplam_sahne: int) -> list[int]:
     return sorted(birlesim) if birlesim else list(range(1, toplam_sahne + 1))
 
 
-def kareden_sahneye(kare: int) -> int:
+def kareden_sahneye(kare: int, yuva: int = KARE_YUVASI) -> int:
     """Hakemin kare numarasini sahne numarasina cevirir.
 
-    ⚠️ SAHNE BASINA IKI KARE var (`KARE_YUVASI`), yani kare 1-2 sahne 1,
-    kare 3-4 sahne 2... Bu esleme TEK YERDE tanimli olmali: kare duzeni
-    degisip cevrim degismezse hakemin isaretledigi kusur YANLIS sahneyi
-    onartir ve bozuk kare videoda kalir. Sessiz kirilmanin ders kitabi
-    ornegi — bu oturumda ayni sinif kusur uc uretim koşumunu oldurdu.
+    ⚠️ SHORTS'TA SAHNE BASINA IKI KARE var (`KARE_YUVASI`), yani kare 1-2
+    sahne 1, kare 3-4 sahne 2... Bu esleme TEK YERDE tanimli olmali: kare
+    duzeni degisip cevrim degismezse hakemin isaretledigi kusur YANLIS
+    sahneyi onartir ve bozuk kare videoda kalir. Sessiz kirilmanin ders
+    kitabi ornegi — bu oturumda ayni sinif kusur uc uretim koşumunu oldurdu.
+
+    ⚠️ `yuva` PARAMETRE, cunku uzun formatta sahne basina TEK kare var ve
+    orada kare i = sahne i. Sabit 2'ye bolunseydi hakemin 30. karede
+    gordugu kusur 15. sahneyi onartirdi — yani her onarim yanlis sahneye
+    giderdi ve kimse fark etmezdi.
     """
-    return (max(int(kare), 1) + KARE_YUVASI - 1) // KARE_YUVASI
+    yuva = max(int(yuva), 1)
+    return (max(int(kare), 1) + yuva - 1) // yuva
 
 
-def agir_kusurlu_kareler(review: QualityReview) -> list[int]:
+def agir_kusurlu_kareler(review: QualityReview, yuva: int = KARE_YUVASI) -> list[int]:
     """Agir kusurlu karelerin ait oldugu SAHNE numaralari ("kare 6: ...").
 
     ⚠️ Doner deger SAHNE, kare degil: cagiran taraf (`kareyi_onar`)
@@ -1158,7 +1168,7 @@ def agir_kusurlu_kareler(review: QualityReview) -> list[int]:
     isaretlerse sahne bir kez doner.
     """
     numaralar = {
-        kareden_sahneye(int(eslesme.group(1)))
+        kareden_sahneye(int(eslesme.group(1)), yuva)
         for kusur in review.agir_kusurlar
         if (eslesme := re.match(r"kare (\d+):", kusur))
     }
@@ -1166,7 +1176,11 @@ def agir_kusurlu_kareler(review: QualityReview) -> list[int]:
 
 
 def kareyi_onar(
-    plan: ContentPlan, review: QualityReview, menu_konusu: str = ""
+    plan: ContentPlan,
+    review: QualityReview,
+    menu_konusu: str = "",
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
 ) -> list[int]:
     """Hakemin isaretledigi karelerin GORSELINI degistirir; degisen sahneler doner.
 
@@ -1189,11 +1203,13 @@ def kareyi_onar(
     Menu yoksa ya da kullanilmamis dosya kalmadiysa BOS DONER — cagiran
     taraf eski davranisa (arama terimlerini revize etme) duser.
     """
-    bozuk = agir_kusurlu_kareler(review)
+    bozuk = agir_kusurlu_kareler(review, bicim.kare_yuvasi)
     bozuk = [n for n in bozuk if 1 <= n <= len(plan.scenes)]
     if not bozuk:
         return []
-    menu = arsiv_envanteri(menu_konusu.strip() or plan.visual_anchor)
+    menu = arsiv_envanteri(
+        menu_konusu.strip() or plan.visual_anchor, sinir=envanter_siniri(bicim)
+    )
     if not menu:
         return []
     kullanilan = {str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes}
@@ -1208,7 +1224,7 @@ def kareyi_onar(
     kusur_metni = {n: [] for n in bozuk}
     for kusur in review.agir_kusurlar:
         if eslesme := re.match(r"kare (\d+): (.+)", kusur):
-            sahne_no = kareden_sahneye(int(eslesme.group(1)))
+            sahne_no = kareden_sahneye(int(eslesme.group(1)), bicim.kare_yuvasi)
             if sahne_no in kusur_metni:
                 kusur_metni[sahne_no].append(eslesme.group(2))
     try:
@@ -2481,6 +2497,26 @@ SHORTS_EN = 1080
 SHORTS_BOY = 1920
 """Shorts karesi. Kaynak gorseller buna getirilmezse ekranin bir kismi siyah kalir."""
 
+UZUN_EN = 1920
+UZUN_BOY = 1080
+"""Uzun format karesi (16:9).
+
+⚠️ Yatay kadraj, arsiv arzina Shorts'tan DAHA IYI uyuyor ve bu bir tesaduf
+degil: arsiv fotograflarinin cogu yatay. Dikey hedefte bir 16:9 fotograf
+%68 kirpilirdi (bkz. `AZAMI_KIRPMA`) ve bulanik bant yoluna duserdi; yatay
+hedefte ayni fotograf neredeyse hic kirpilmadan tam ekran doluyor.
+"""
+
+
+def kare_olcusu(bicim: "VideoBicimi") -> tuple[int, int]:
+    """Bicimin piksel karesi. Tek yerden okunur ki oran ile boyut ayrisamasin."""
+    return (SHORTS_EN, SHORTS_BOY) if bicim.dikey else (UZUN_EN, UZUN_BOY)
+
+
+def en_boy_orani(bicim: "VideoBicimi") -> str:
+    """MPT CLI'nin `--video-aspect` degeri."""
+    return "9:16" if bicim.dikey else "16:9"
+
 # Merkezden kirpma bu orandan fazlasini atacaksa kirpmak yerine bulanik arka
 # plan kullanilir. 0.35 olculerek secildi: 2:3 AI gorselleri %16 kirpiliyor
 # (sorunsuz), 16:9 arsiv fotograflari %68 kirpilirdi ve konu kadraj disinda
@@ -2504,16 +2540,21 @@ def kirpma_orani(en: int, boy: int, hedef_en: int = 0, hedef_boy: int = 0) -> fl
     return 1 - kalan
 
 
-def bant_ister(kaynak: Path) -> bool:
+def bant_ister(kaynak: Path, *, hedef_en: int = 0, hedef_boy: int = 0) -> bool:
     """Gorsel tam ekrana kirpilamiyor mu — yani bulanik bant yoluna mi duser.
 
     `dikeye_yapistir` kararinin girdisi: yalnizca BANT ISTEYEN iki gorsel
     alt alta konur. Kirpilabilen gorsel tek basina tam ekran daha iyi
     duruyor, ikiye bolmek onu kucultmek olurdu.
+
+    ⚠️ `AZAMI_KIRPMA` esigi DIKEY hedefe gore olculmustu ama yatayda da dogru
+    isi yapiyor, cunku esik oranin kendisine degil KAYBEDILEN ALANA bakiyor:
+    16:9 arsiv fotografi yatay hedefte ~%0 kirpiliyor (tam ekran), dikey
+    portre ise yatayda bant yoluna dusuyor — tam tersi ama ayni kural.
     """
     with Image.open(kaynak) as ham:
         en, boy = ham.size
-    return kirpma_orani(en, boy) > AZAMI_KIRPMA
+    return kirpma_orani(en, boy, hedef_en, hedef_boy) > AZAMI_KIRPMA
 
 
 def dikeye_yapistir(ust: Path, alt: Path, hedef: Path) -> Path:
@@ -2556,7 +2597,14 @@ def dikeye_yapistir(ust: Path, alt: Path, hedef: Path) -> Path:
 
 
 def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
-    """Gorseli 1080x1920'ye getirir — siyah bant birakmadan.
+    """Gorseli 1080x1920'ye (Shorts karesi) getirir. `kareye_uydur`in sarmalayicisi."""
+    return kareye_uydur(kaynak, hedef, en=SHORTS_EN, boy=SHORTS_BOY)
+
+
+def kareye_uydur(
+    kaynak: Path, hedef: Path, *, en: int = SHORTS_EN, boy: int = SHORTS_BOY
+) -> Path:
+    """Gorseli hedef kareye getirir — siyah bant birakmadan.
 
     ⚠️ Olculdu (2026-08-06, DW-93): uretilen videolarin ustunde ve altinda
     150'ser piksel siyah bant vardi, yani ekranin **%15,6'si** bostaydi
@@ -2577,29 +2625,31 @@ def dikeye_uydur(kaynak: Path, hedef: Path) -> Path:
       disinda birakirdi, o yuzden gorselin buyutulmus bulanik kopyasi arka
       plana konur ve net gorsel ortada tam olarak gorunur. Shorts'ta yaygin
       ve siyah banttan cok daha iyi duruyor.
+
+    ⚠️ HEDEF KARE PARAMETRE, cunku uzun format 1920x1080 istiyor. Ayri bir
+    yatay kopya yazilmadi bilerek: parlaklik tabani (`karanligi_ac`) bu
+    govdenin icinde ve her sahne karesi buradan geciyor — catallansaydi
+    yatay koldaki karanlik kareler sessizce acilmadan kalirdi. Ayni gerekce
+    `dikeye_yapistir` docstring'inde de yaziyor.
     """
     from PIL import ImageFilter
 
     with Image.open(kaynak) as ham:
         gorsel = ham.convert("RGB")
-        en, boy = gorsel.size
-        kirpma = kirpma_orani(en, boy)
+        # ⚠️ Kaynagin olcusu, HEDEF olcuyle ayni adi tasiyamaz: `en`/`boy`
+        # artik parametre ve uzerine yazmak, her gorseli kendi boyutuna
+        # "uydurup" hedefi sessizce yok sayardi.
+        kaynak_en, kaynak_boy = gorsel.size
+        kirpma = kirpma_orani(kaynak_en, kaynak_boy, en, boy)
 
         if kirpma <= AZAMI_KIRPMA:
-            sonuc = ImageOps.fit(
-                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
-            )
+            sonuc = ImageOps.fit(gorsel, (en, boy), method=Image.Resampling.LANCZOS)
         else:
             arka = ImageOps.fit(
-                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
+                gorsel, (en, boy), method=Image.Resampling.LANCZOS
             ).filter(ImageFilter.GaussianBlur(radius=40))
-            on = ImageOps.contain(
-                gorsel, (SHORTS_EN, SHORTS_BOY), method=Image.Resampling.LANCZOS
-            )
-            arka.paste(
-                on,
-                ((SHORTS_EN - on.width) // 2, (SHORTS_BOY - on.height) // 2),
-            )
+            on = ImageOps.contain(gorsel, (en, boy), method=Image.Resampling.LANCZOS)
+            arka.paste(on, ((en - on.width) // 2, (boy - on.height) // 2))
             sonuc = arka
 
         # ⚠️ Parlaklik tabani BURADA, cunku her sahne karesi — AI uretimi de
@@ -2626,9 +2676,23 @@ def dikeye_uydur_hepsi(dosyalar: list[Path], hedef_dizin: Path) -> list[Path]:
 
 
 def kare_yerlesimi(
-    birincil: list[Path], ikincil: list[Path | None], hedef_dizin: Path
+    birincil: list[Path],
+    ikincil: list[Path | None],
+    hedef_dizin: Path,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
 ) -> tuple[list[Path], int]:
-    """Sahne basina IKI kare uretir; kareler ve tam dolan sahne sayisi doner.
+    """Sahne basina `bicim.kare_yuvasi` kare uretir; kareler ve tam dolan sahne doner.
+
+    ⚠️ UZUN FORMATTA SAHNE BASINA TEK KARE ve bu sayi kritik: `klip_suresi`
+    sesi KARE sayisina boluyor. Uzun kolda da `[A, A]` uretilseydi kare
+    sayisi ikiye katlanir, her karenin suresi yariya inerdi — yani sessizce
+    baska bir video cikardi. Cikan kare sayisi her zaman
+    `len(birincil) * bicim.kare_yuvasi`.
+
+    ⚠️ Alt alta yapistirma (`dikeye_yapistir`) uzun formatta YOK, cunku
+    sorunu ortadan kalkiyor: o yol 16:9 fotografi dikey kareye sigdirmak
+    icin vardi. Yatay hedefte ayni fotograf zaten tam ekran doluyor.
 
     ⚠️ NEDEN — kanal sahibinin sesli notu (2026-08-14): "Fotograflar cok uzun
     sure kaliyor ekranda, yazi degistikce fotografla degismesi gerekiyor" ve
@@ -2645,6 +2709,17 @@ def kare_yerlesimi(
     ⚠️ Karisik durum (biri kirpilir digeri bant ister) ardisik gosteriliyor:
     yapistirmak kirpilabilen gorseli gereksiz yere yariya indirirdi.
     """
+    en, boy = kare_olcusu(bicim)
+    if bicim.kare_yuvasi == 1:
+        # Uzun kol: her sahne kendi karesini alir, ikinci gorsel hic istenmez.
+        kareler = [
+            kareye_uydur(
+                birinci, hedef_dizin / f"sahne-{sira:02d}a.jpg", en=en, boy=boy
+            )
+            for sira, birinci in enumerate(birincil, 1)
+        ]
+        return kareler, 0
+
     kareler: list[Path] = []
     tam_dolan = 0
     for sira, birinci in enumerate(birincil, 1):
@@ -3478,7 +3553,7 @@ def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
 
 
 def run_generator(
-    plan: ContentPlan, attempt: int
+    plan: ContentPlan, attempt: int, *, bicim: VideoBicimi = SHORTS_BICIMI
 ) -> tuple[str, Path, Path, list[dict[str, Any]]]:
     # ⚠️ Klasor adinda KONU da var (DW-119). Eskiden yalnizca
     # `publication_slot_key()`-`attempt` idi, yani YYYY-MM-DD-HH: ayni saat
@@ -3685,11 +3760,11 @@ def run_generator(
     )
     credits = list(credits) + ikincil_krediler
     material_files, tam_dolan_sahne = kare_yerlesimi(
-        material_files, ikincil_dosyalar, material_dir / "dikey"
+        material_files, ikincil_dosyalar, material_dir / "dikey", bicim=bicim
     )
     print(
-        f"kare duzeni: {len(plan.scenes)} sahne × {KARE_YUVASI} yuva = "
-        f"{len(material_files)} kare · {tam_dolan_sahne} sahnede iki AYRI gorsel",
+        f"kare duzeni [{bicim.ad}]: {len(plan.scenes)} sahne × {bicim.kare_yuvasi} "
+        f"yuva = {len(material_files)} kare · {tam_dolan_sahne} sahnede iki AYRI gorsel",
         flush=True,
     )
 
@@ -3702,8 +3777,9 @@ def run_generator(
     # bolmek her kareyi iki kat uzun tutar ve videonun yarisini kaybederdik.
     klip = klip_suresi(ses_saniye, len(material_files))
     print(
-        f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne × {KARE_YUVASI} "
-        f"yuva · klip {klip} sn (toplam {klip * len(material_files):.2f} sn)",
+        f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne × "
+        f"{bicim.kare_yuvasi} yuva · klip {klip} sn "
+        f"(toplam {klip * len(material_files):.2f} sn)",
         flush=True,
     )
 
@@ -3728,7 +3804,10 @@ def run_generator(
         "--video-count",
         "1",
         "--video-aspect",
-        "9:16",
+        # ⚠️ Uzun format 16:9 OLMAK ZORUNDA. Dikey kalirsa YouTube videoyu
+        # Shorts sayar ve IZLENME SAATI YAZMAZ — uzun formatin butun amaci
+        # o saatler (YPP'nin Shorts yolu 90 gunde 10M izlenme istiyor).
+        en_boy_orani(bicim),
         "--video-concat-mode",
         "sequential",
         "--video-transition-mode",

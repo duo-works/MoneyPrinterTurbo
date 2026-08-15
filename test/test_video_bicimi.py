@@ -22,6 +22,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import youtube_automation as ya  # noqa: E402
 
+# ⚠️ OLCULDU (2026-08-15), tahmin degil: `anlatim_suresi` gercek edge-tts
+# yolundan uc uzunlukta kosuldu ve ucunde de ayni hiz cikti.
+#
+#       120 kelime ->  42,10 sn (171 kelime/dk)
+#     1.200 kelime -> 423,07 sn (170 kelime/dk)
+#     2.200 kelime -> 774,79 sn (170 kelime/dk)
+#
+# Onceki 150 kelime/dk sayisi TEK bir Shorts orneginden (Anita 41 sn / ~100
+# kelime) cikarilmisti; bu olcum onu duzeltiyor. Ayni koşum TTS'in 2.200
+# kelimeyi TEK PARCADA uretebildigini de gosterdi — parcalama gerekmiyor.
+KONUSMA_HIZI = 170
+
 
 def _plan(kelime: int, sahne: int, baslik: str = "baslik #Shorts") -> ya.ContentPlan:
     return ya.ContentPlan(
@@ -92,24 +104,24 @@ def test_uzun_bicim_YATAY():
 
 
 def test_kelime_araligi_sureye_oturuyor():
-    """~150 kelime/dk: 1.200-2.200 kelime = 8-15 dakika."""
+    """Olculen hizla 1.200-2.200 kelime = 7-13 dakika."""
     en_az, en_cok = ya.UZUN_BICIMI.kelime_araligi
 
-    assert 7 <= en_az / 150 <= 9
-    assert 13 <= en_cok / 150 <= 16
+    assert 6 <= en_az / KONUSMA_HIZI <= 8
+    assert 11 <= en_cok / KONUSMA_HIZI <= 14
 
 
 def test_sahne_basina_sure_belgesel_ritmi():
     """En kotu durumda bile kare ekranda makul kaliyor mu.
 
-    1.200 kelime / 150 = 8 dk = 480 sn; 45 sahne -> ~11 sn/kare. Ust uc:
-    2.200 kelime / 24 sahne -> ~37 sn. Ikisi de belgesel araliginda.
+    1.200 kelime / 170 = 7,1 dk = 423 sn; 45 sahne -> ~9 sn/kare. Ust uc:
+    2.200 kelime / 24 sahne -> ~32 sn. Ikisi de belgesel araliginda.
     """
     en_az_kelime, en_cok_kelime = ya.UZUN_BICIMI.kelime_araligi
     en_az_sahne, en_cok_sahne = ya.UZUN_BICIMI.sahne_araligi
 
-    en_kisa = (en_az_kelime / 150 * 60) / en_cok_sahne
-    en_uzun = (en_cok_kelime / 150 * 60) / en_az_sahne
+    en_kisa = (en_az_kelime / KONUSMA_HIZI * 60) / en_cok_sahne
+    en_uzun = (en_cok_kelime / KONUSMA_HIZI * 60) / en_az_sahne
 
     assert en_kisa >= 8, f"kare {en_kisa:.0f} sn — belgesel icin fazla hizli"
     assert en_uzun <= 45, f"kare {en_uzun:.0f} sn — fazla uzun, sikici"

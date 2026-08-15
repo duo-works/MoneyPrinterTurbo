@@ -88,7 +88,7 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(
         ya,
         "arsiv_envanteri",
-        lambda _k: [
+        lambda _k, **_: [
             {"dosya": f"YENI-{i}.jpg", "gosterdigi": "dogru nesne", "tarih": "1900"}
             for i in range(1, 5)
         ],

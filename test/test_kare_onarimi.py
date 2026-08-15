@@ -91,7 +91,7 @@ def test_kusur_yoksa_bos():
 
 
 def test_bozuk_karenin_gorseli_degisiyor(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg", "YENI.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "YENI.jpg"))
     monkeypatch.setattr(
         ya, "_json_completion", lambda s, u: {"picks": [{"n": 2, "source_file": "YENI.jpg"}]}
     )
@@ -109,7 +109,7 @@ def test_bozuk_karenin_gorseli_degisiyor(monkeypatch):
 
 def test_anlatim_DEGISMIYOR(monkeypatch):
     """⚠️ Ses zaten kayitli; anlatimi degistirmek sesle alt yaziyi ayirirdi."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "YENI.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "YENI.jpg"))
     monkeypatch.setattr(
         ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
     )
@@ -123,7 +123,7 @@ def test_anlatim_DEGISMIYOR(monkeypatch):
 
 def test_uydurulan_dosya_kabul_edilmiyor(monkeypatch):
     """Menude olmayan bir ad, onarimi kusurun kaynagina cevirirdi."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "YENI.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "YENI.jpg"))
     monkeypatch.setattr(
         ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "uydurma.jpg"}]}
     )
@@ -135,7 +135,7 @@ def test_uydurulan_dosya_kabul_edilmiyor(monkeypatch):
 
 def test_ZATEN_KULLANILAN_dosya_secilemiyor(monkeypatch):
     """Ayni gorselin iki sahnede cikmasi kullanicinin birebir sikayetiydi."""
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "B.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
     monkeypatch.setattr(
         ya, "_json_completion", lambda s, u: {"picks": [{"n": 2, "source_file": "A.jpg"}]}
     )
@@ -145,7 +145,7 @@ def test_ZATEN_KULLANILAN_dosya_secilemiyor(monkeypatch):
 
 
 def test_menu_tukendiyse_bos_donuyor(monkeypatch):
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg"))
     plan = _plan("A.jpg")
 
     assert ya.kareyi_onar(plan, _review("kare 1: modern")) == []
@@ -157,7 +157,7 @@ def test_cikarim_dusunce_kosum_devam_ediyor(monkeypatch):
     def patla(*_a, **_k):
         raise RuntimeError("hermes timeout")
 
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k: _menu("A.jpg", "YENI.jpg"))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "YENI.jpg"))
     monkeypatch.setattr(ya, "_json_completion", patla)
     plan = _plan("A.jpg")
 
@@ -167,7 +167,7 @@ def test_cikarim_dusunce_kosum_devam_ediyor(monkeypatch):
 def test_ISTEMDEKI_menuye_bakiyor(monkeypatch):
     """Kapiyla ayni kural: menu anahtari huni konusu, planin capasi degil."""
     menuler = {"Cutty Sark": _menu("A.jpg", "YENI.jpg"), "Jock Willis": _menu("Z.jpg")}
-    monkeypatch.setattr(ya, "arsiv_envanteri", lambda k: menuler.get(k, []))
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda k, **_: menuler.get(k, []))
     monkeypatch.setattr(
         ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
     )

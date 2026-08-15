@@ -80,12 +80,12 @@ def _hazirla(monkeypatch, tmp_path, incelemeler, arsiv_indirme):
     # guncellenmeli — yoksa test kendi kurdugu yoldan sapar.
     monkeypatch.setattr(
         "youtube_automation.kare_yerlesimi",
-        lambda birincil, _ikincil, _hedef: (list(birincil), len(birincil)),
+        lambda birincil, _ikincil, _hedef, **_: (list(birincil), len(birincil)),
     )
     # ⚠️ `bant_ister` GERCEK dosya aciyor (PIL); bu testin yollari sahte.
     # Kirpilabilir sayiliyor, yani esleme yedegi istenmiyor — bu testin
     # konusu arsiv/AI sirasi, kare duzeni degil.
-    monkeypatch.setattr("youtube_automation.bant_ister", lambda _yol: False)
+    monkeypatch.setattr("youtube_automation.bant_ister", lambda _yol, **_: False)
     monkeypatch.setattr("youtube_automation.anlatim_suresi", lambda _metin: 30.0)
     monkeypatch.setattr("youtube_automation.muzik_sec", lambda *_a, **_k: "")
 
