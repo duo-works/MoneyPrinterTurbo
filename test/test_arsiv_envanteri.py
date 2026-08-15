@@ -95,7 +95,7 @@ def test_menu_isteme_giriyor(monkeypatch):
     """⚠️ Baglanti testi — fonksiyon dogru olsa bile isteme girmezse kusur surer."""
     yakalanan: dict = {}
 
-    def sahte_cikarim(system: str, user: str) -> dict:
+    def sahte_cikarim(system: str, user: str, **_) -> dict:
         yakalanan["user"] = user
         raise RuntimeError("dur")
 
@@ -133,7 +133,7 @@ def test_menu_yoksa_istem_bozulmuyor(monkeypatch):
     """Menu bos donerse blok hic eklenmemeli, istem gecerli kalmali."""
     yakalanan: dict = {}
 
-    def sahte_cikarim(system: str, user: str) -> dict:
+    def sahte_cikarim(system: str, user: str, **_) -> dict:
         yakalanan["user"] = user
         raise RuntimeError("dur")
 

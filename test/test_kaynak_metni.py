@@ -143,7 +143,7 @@ def _cikarimi_yamala(monkeypatch, yakalanan: dict) -> None:
     testi hem hermetik hem arka uctan bagimsiz yapiyor.
     """
 
-    def sahte(system: str, user: str) -> dict:
+    def sahte(system: str, user: str, **_) -> dict:
         yakalanan["system"] = system
         yakalanan["user"] = user
         return dict(_GECERLI_PLAN)

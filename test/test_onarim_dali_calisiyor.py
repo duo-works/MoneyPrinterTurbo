@@ -104,7 +104,7 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(
         ya,
         "_json_completion",
-        lambda s, u: {"picks": [{"n": ya.kareden_sahneye(6), "source_file": next(secim)}]},
+        lambda s, u, **_: {"picks": [{"n": ya.kareden_sahneye(6), "source_file": next(secim)}]},
     )
     return plan
 

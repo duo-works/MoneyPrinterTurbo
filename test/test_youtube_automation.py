@@ -167,7 +167,7 @@ def test_generate_content_plan_prompt_keeps_its_visual_contract(monkeypatch):
     }
     captured = {}
 
-    def complete(system, user):
+    def complete(system, user, **_):
         captured["system"] = system
         captured["user"] = user
         return response

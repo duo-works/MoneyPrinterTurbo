@@ -93,7 +93,7 @@ def test_kusur_yoksa_bos():
 def test_bozuk_karenin_gorseli_degisiyor(monkeypatch):
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "YENI.jpg"))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda s, u: {"picks": [{"n": 2, "source_file": "YENI.jpg"}]}
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 2, "source_file": "YENI.jpg"}]}
     )
     plan = _plan("A.jpg", "B.jpg")
 
@@ -111,7 +111,7 @@ def test_anlatim_DEGISMIYOR(monkeypatch):
     """⚠️ Ses zaten kayitli; anlatimi degistirmek sesle alt yaziyi ayirirdi."""
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "YENI.jpg"))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
     )
     plan = _plan("A.jpg")
     onceki = plan.scenes[0]["narration"]
@@ -125,7 +125,7 @@ def test_uydurulan_dosya_kabul_edilmiyor(monkeypatch):
     """Menude olmayan bir ad, onarimi kusurun kaynagina cevirirdi."""
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "YENI.jpg"))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "uydurma.jpg"}]}
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 1, "source_file": "uydurma.jpg"}]}
     )
     plan = _plan("A.jpg")
 
@@ -137,7 +137,7 @@ def test_ZATEN_KULLANILAN_dosya_secilemiyor(monkeypatch):
     """Ayni gorselin iki sahnede cikmasi kullanicinin birebir sikayetiydi."""
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg"))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda s, u: {"picks": [{"n": 2, "source_file": "A.jpg"}]}
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 2, "source_file": "A.jpg"}]}
     )
     plan = _plan("A.jpg", "B.jpg")
 
@@ -169,7 +169,7 @@ def test_ISTEMDEKI_menuye_bakiyor(monkeypatch):
     menuler = {"Cutty Sark": _menu("A.jpg", "YENI.jpg"), "Jock Willis": _menu("Z.jpg")}
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda k, **_: menuler.get(k, []))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda s, u: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
     )
     plan = _plan("A.jpg")
     plan.visual_anchor = "Jock Willis"

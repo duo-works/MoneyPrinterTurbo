@@ -1640,7 +1640,27 @@ def hermes_temel_komut() -> list[str]:
     return komut
 
 
-def _json_completion(system: str, user: str) -> dict[str, Any]:
+CIKARIM_ZAMAN_ASIMI = 180
+"""Kisa (Shorts) bir JSON cevabi icin ust sinir, saniye."""
+
+UZUN_CIKARIM_ZAMAN_ASIMI = 600
+"""Uzun format icin ust sinir.
+
+⚠️ OLCULDU (2026-08-15, ucuncu Herculaneum koşumu): sabit 180 sn ile cagri
+`TimeoutExpired` verdi ve koşum 188,4 saniyede oldu. Sinir Shorts'a gore
+konmustu: 80-120 kelimelik senaryo + 8 sahne ~800 token. Uzun format
+1.200-2.200 kelime + 30-45 sahne, yani ~7.000 token uretiyor — ayni surede
+bitmesi beklenemezdi.
+
+Sinir tamamen kaldirilmadi: asili kalan bir cagri zamanlayici slotunu
+sessizce yer. 600 sn, olculen uretim hizina gore genis bir pay birakiyor
+ve 3 saatlik koşum araligina hala uc denemeyle sigiyor.
+"""
+
+
+def _json_completion(
+    system: str, user: str, *, zaman_asimi: int = CIKARIM_ZAMAN_ASIMI
+) -> dict[str, Any]:
     if INFERENCE_BACKEND == "hermes-cli":
         prompt = (
             f"SYSTEM INSTRUCTIONS:\n{system}\n\n"
@@ -1648,7 +1668,8 @@ def _json_completion(system: str, user: str) -> dict[str, Any]:
             "Return the requested JSON object only, with no markdown fences or commentary."
         )
         result = _run_hermes(
-            hermes_temel_komut() + ["--ignore-rules", "--safe-mode", "-z", prompt], 180
+            hermes_temel_komut() + ["--ignore-rules", "--safe-mode", "-z", prompt],
+            zaman_asimi,
         )
         if result.returncode:
             raise RuntimeError(
@@ -2473,7 +2494,16 @@ def generate_content_plan(
     son_kusur = ""
     for deneme in range(1, 6):
         yumusak_kapilar_acik = deneme <= YUMUSAK_KAPI_DENEMESI
-        data = _json_completion(system, user)
+        # ⚠️ Uzun kipte zaman asimi GENIS. Gerekce
+        # `UZUN_CIKARIM_ZAMAN_ASIMI`nda: ~7.000 tokenlik bir cevap Shorts'un
+        # 180 saniyesine sigmiyor ve koşum 188,4 saniyede oluyordu.
+        data = _json_completion(
+            system,
+            user,
+            zaman_asimi=(
+                CIKARIM_ZAMAN_ASIMI if bicim.dikey else UZUN_CIKARIM_ZAMAN_ASIMI
+            ),
+        )
         plan = ContentPlan(
             topic=str(data.get("topic", "")).strip(),
             visual_anchor=str(data.get("visual_anchor", "")).strip(),

@@ -31,7 +31,7 @@ def _istemi_yakala(monkeypatch, menu, konu="Herculaneum", **ek):
     """Planlamayi ilk cikarim cagrisinda durdurup isteme bakar."""
     yakalanan: dict = {}
 
-    def sahte_cikarim(system: str, user: str) -> dict:
+    def sahte_cikarim(system: str, user: str, **_) -> dict:
         yakalanan["system"] = system
         yakalanan["user"] = user
         raise RuntimeError("dur")

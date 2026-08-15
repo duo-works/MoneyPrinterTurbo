@@ -86,7 +86,7 @@ def test_istem_de_sayiyi_soyluyor(monkeypatch):
     """
     yakalanan: dict = {}
 
-    def sahte(system: str, user: str) -> dict:
+    def sahte(system: str, user: str, **_) -> dict:
         yakalanan["user"] = user
         raise RuntimeError("dur")
 

@@ -244,3 +244,31 @@ def test_TUM_refine_cagrilari_bicimi_tasiyor():
         if "plan: ContentPlan" in cagri:
             continue
         assert "bicim=bicim" in cagri, f"bicimsiz cagri: {cagri}"
+
+
+# --- Cikarim zaman asimi ---------------------------------------------------
+
+
+def test_uzun_kipte_zaman_asimi_GENIS():
+    """⚠️ Olculdu (2026-08-15, ucuncu Herculaneum koşumu): sabit 180 sn ile
+    cagri `TimeoutExpired` verdi ve koşum 188,4 saniyede oldu. Sinir
+    Shorts'a gore konmustu (~800 token); uzun format ~7.000 token uretiyor.
+    """
+    assert ya.UZUN_CIKARIM_ZAMAN_ASIMI > ya.CIKARIM_ZAMAN_ASIMI
+    assert ya.UZUN_CIKARIM_ZAMAN_ASIMI >= 600
+
+
+def test_zaman_asimi_KALDIRILMADI():
+    """Asili kalan bir cagri zamanlayici slotunu sessizce yer; sinir
+    genisletildi ama duruyor. Uc deneme 3 saatlik araliga sigmali."""
+    assert ya.UZUN_CIKARIM_ZAMAN_ASIMI * 3 < 3 * 3600
+
+
+def test_plan_uretimi_bicime_gore_sure_veriyor():
+    govde = _run_cycle_govdesi()
+    i = KAYNAK.index("def generate_content_plan(")
+    plan_govdesi = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
+
+    assert "zaman_asimi=(" in plan_govdesi
+    assert "UZUN_CIKARIM_ZAMAN_ASIMI" in plan_govdesi
+    assert govde is not None

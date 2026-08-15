@@ -192,7 +192,7 @@ def test_kapi_YEDEK_KIPTE_gercekten_yuruyor(monkeypatch):
     ]
     istemler: list[str] = []
 
-    def sahte(system: str, user: str) -> dict:
+    def sahte(system: str, user: str, **_) -> dict:
         istemler.append(user)
         return yanitlar[min(len(istemler) - 1, len(yanitlar) - 1)]
 
