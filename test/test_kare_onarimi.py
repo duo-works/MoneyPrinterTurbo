@@ -185,7 +185,8 @@ def test_eski_yol_YEDEK_olarak_duruyor():
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
     govde = kaynak[kaynak.index("def run_cycle(") :]
 
-    assert "refine_search_terms(plan, review)" in govde
+    # Argüman listesi ARANMIYOR: cagriya `bicim=` eklendi (2026-08-15).
+    assert "refine_search_terms(plan, review" in govde
 
 
 # ⚠️ Cagri yerinin GERCEKTEN calistigi `test_onarim_dali_calisiyor.py`de

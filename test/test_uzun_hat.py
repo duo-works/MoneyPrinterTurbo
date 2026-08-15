@@ -123,7 +123,9 @@ def test_uzun_kipte_IKINCIL_GORSEL_indirilmiyor():
     # Cagri bir kip kosulunun ICINDE olmali.
     onceki = govde[:j]
     assert "if bicim.kare_yuvasi >= 2:" in onceki
-    assert onceki.rindex("if bicim.kare_yuvasi >= 2:") > onceki.rindex("\n    ikincil_dosyalar")
+    assert onceki.rindex("if bicim.kare_yuvasi >= 2:") > onceki.rindex(
+        "\n    ikincil_dosyalar"
+    )
 
 
 def test_uzun_kipte_kredi_LISTESI_buyumuyor():
@@ -215,3 +217,30 @@ def test_run_cycle_cagrisi_bicimi_TASIYOR():
     cagri = KAYNAK[i : KAYNAK.index(")", i)]
 
     assert "bicim=bicim" in cagri
+
+
+# --- Kacak tel: dogrulama varsayilana dusmemeli ---------------------------
+
+
+def test_refine_search_terms_BICIM_aliyor():
+    """⚠️ Olculdu (2026-08-15, ikinci Herculaneum koşumu): bu fonksiyonun
+    sonundaki `validate_content_plan` VARSAYILAN Shorts biciminde calisip
+    1.208 kelimelik gecerli uzun senaryoyu "80-120 words" diye reddetti ve
+    koşum 10,8 dakikanin sonunda istisnayla oldu.
+
+    Kusur sinsi: bu fonksiyona YALNIZCA kaynak kapisi kusur bildirdiginde
+    ugraniliyor, temiz gecen bir koşumda hic calismiyor.
+    """
+    i = KAYNAK.index("def refine_search_terms(")
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
+
+    assert "bicim: VideoBicimi = SHORTS_BICIMI" in govde
+    assert "validate_content_plan(plan, bicim=bicim)" in govde
+
+
+def test_TUM_refine_cagrilari_bicimi_tasiyor():
+    """Fonksiyon dogru olsa bile cagri bicimi gecirmezse kusur surer."""
+    for cagri in re.findall(r"refine_search_terms\([^)]*\)", KAYNAK):
+        if "plan: ContentPlan" in cagri:
+            continue
+        assert "bicim=bicim" in cagri, f"bicimsiz cagri: {cagri}"

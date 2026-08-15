@@ -53,8 +53,12 @@ def test_tekrarlayan_terim_DOSYADAN_ayirt_ediliyor():
 
     terimler = [s["search_term"] for s in plan.scenes]
     assert terimler[0] != terimler[1], "terimler hala ayni"
-    # ⚠️ Ayirt edici bilgi UYDURULMUYOR, alintilanan dosyadan aliniyor.
-    assert "marble" in terimler[1] or "deer" in terimler[1]
+    # ⚠️ Ayirt edici bilgi UYDURULMUYOR, alintilanan DOSYADAN aliniyor:
+    # eklenen her kelime dosya adinda gecmeli.
+    dosya_kelimeleri = ya._normalize_topic("Herculaneum Casa dei Cervi marble deer")
+    eklenenler = ya._normalize_topic(terimler[1]) - ya._normalize_topic(terimler[0])
+    assert eklenenler, "hicbir sey eklenmemis"
+    assert eklenenler <= dosya_kelimeleri, f"dosyada olmayan kelime eklendi: {eklenenler}"
 
 
 def test_onarim_sonrasi_KAPI_geciyor():

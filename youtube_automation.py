@@ -2629,7 +2629,21 @@ def generate_content_plan(
     )
 
 
-def refine_search_terms(plan: ContentPlan, review: QualityReview) -> ContentPlan:
+def refine_search_terms(
+    plan: ContentPlan, review: QualityReview, *, bicim: VideoBicimi = SHORTS_BICIMI
+) -> ContentPlan:
+    """Hakemin onerdigi arama terimlerini plana isler ve plani yeniden dogrular.
+
+    ⚠️ `bicim` GECMEZSE UZUN KOŞUM BURADA COKUYOR. Olculdu (2026-08-15,
+    ikinci Herculaneum koşumu): plan uretimi gecti, gorseller indi, kaynak
+    incelemesi kusur bildirdi ve bu fonksiyon cagrildi — sonundaki
+    `validate_content_plan` VARSAYILAN Shorts biciminde calisip 1.208
+    kelimelik gecerli uzun senaryoyu "80-120 words" diye reddetti; koşum
+    10,8 dakikanin sonunda istisnayla oldu.
+
+    Kusur sinsi, cunku bu fonksiyona YALNIZCA kaynak kapisi kusur
+    bildirdiginde ugraniyor: temiz gecen bir koşumda hic calismiyor.
+    """
     if len(review.revised_search_terms) == len(plan.scenes):
         terms = review.revised_search_terms
     else:
@@ -2652,7 +2666,7 @@ def refine_search_terms(plan: ContentPlan, review: QualityReview) -> ContentPlan
             if len(term.split()) >= 2:
                 term = _ensure_visual_anchor(term, plan.visual_anchor)
                 scene["search_term"] = term
-    validate_content_plan(plan)
+    validate_content_plan(plan, bicim=bicim)
     return plan
 
 
@@ -3797,7 +3811,7 @@ def run_generator(
                 for scene_number in problem_scenes
             }
         if problem_scenes and not terms_by_scene:
-            refined_plan = refine_search_terms(plan, source_review)
+            refined_plan = refine_search_terms(plan, source_review, bicim=bicim)
             terms_by_scene = {
                 scene_number: refined_plan.scenes[scene_number - 1]["search_term"]
                 for scene_number in problem_scenes
@@ -4732,7 +4746,7 @@ def run_cycle(
                         flush=True,
                     )
                 else:
-                    plan = refine_search_terms(plan, review)
+                    plan = refine_search_terms(plan, review, bicim=bicim)
 
         if not selected:
             result = {"status": "rejected", "slot": slot, "topic": plan.topic, "reviews": reviews}

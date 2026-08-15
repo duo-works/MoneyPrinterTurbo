@@ -569,7 +569,7 @@ def test_run_generator_generates_missing_refinement_terms_for_blocking_review(
         ]
     )
 
-    def supply_terms(candidate, _review):
+    def supply_terms(candidate, _review, **_):
         candidate.scenes[1]["search_term"] = "historic rescue corrected scene 2"
         candidate.scenes[4]["search_term"] = "historic rescue corrected scene 5"
         return candidate
