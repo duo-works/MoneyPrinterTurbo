@@ -169,7 +169,7 @@ def test_hakem_cevabi_agir_kusura_baglaniyor(monkeypatch):
     monkeypatch.setattr(
         ya,
         "_vision_json",
-        lambda prompt, gorsel: {
+        lambda prompt, gorsel, **_: {
             "visual_alignment_score": 95,
             "subtitle_readability_score": 100,
             "issues": [],

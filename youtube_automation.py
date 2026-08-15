@@ -1721,12 +1721,41 @@ CIKARIM_ZAMAN_ASIMI = 180
 """Kisa (Shorts) bir JSON cevabi icin ust sinir, saniye."""
 
 GORU_ZAMAN_ASIMI = 360
-"""Gorü (montaj okuma) cagrilari icin ust sinir, saniye.
+"""Gorü (montaj okuma) cagrilari icin ust sinir, saniye — SHORTS olcusu.
 
 ⚠️ `hermes` yolunda bu sayi 360 olarak GOMULUYDU; openai yolunda ise hic
 zaman asimi yoktu. Sabit hale getirildi ki iki yol ayni siniri paylassin —
 zaman asimsiz bir gorü cagrisi zamanlayici slotunu sessizce yer.
 """
+
+UZUN_GORU_ZAMAN_ASIMI = 900
+"""Uzun formatta gorü siniri.
+
+⚠️ 360, metin yolundaki 180'in DUZELTILMEMIS ikiziydi: ikisi de Shorts'a
+gore konmustu, biri (ucuncu koşumda) duzeltildi, digeri gozden kacti.
+
+Uzun formatta gorü cagrisinin iki ucu birden buyuyor:
+  girdi  — kontak sayfasi 4 sutunda 12 kare (Shorts'ta 16 kare ama daha
+           kucuk), `detail: "high"` ile gonderiliyor
+  cikti  — `frames` dizisi sayfadaki her sahne icin bir nesne, arti
+           `issues` ve `revised_search_terms`
+
+Kaynak kapisi bir denemede en fazla uc kez cagriliyor (ilk inceleme, arsiv
+iyilestirmesi sonrasi, AI yedegi sonrasi), yani en kotu durum 3 x 900 sn.
+Bu, render icin ayrilan butceyle BIRLIKTE dusunulmeli (bkz. `RENDER_ZAMAN_ASIMI`).
+"""
+
+
+def goru_zaman_asimi(bicim: "VideoBicimi | None" = None) -> int:
+    """Bicime gore gorü siniri.
+
+    ⚠️ Varsayilan `None`: bu fonksiyon dosyada `SHORTS_BICIMI`den ONCE
+    tanimli ve varsayilan degerler `def` aninda hesaplaniyor. Ayni sinif
+    kusur bu oturumda uc koşum oldurdu.
+    """
+    if bicim is None or bicim.dikey:
+        return GORU_ZAMAN_ASIMI
+    return UZUN_GORU_ZAMAN_ASIMI
 
 UZUN_CIKARIM_ZAMAN_ASIMI = 600
 """Uzun format icin ust sinir.
@@ -1783,7 +1812,13 @@ def _json_completion(
     return _json_govdesi(response.choices[0].message.content)
 
 
-def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
+def _vision_json(
+    prompt: dict[str, Any],
+    image_path: Path,
+    *,
+    bicim: "VideoBicimi | None" = None,
+) -> dict[str, Any]:
+    zaman_asimi = goru_zaman_asimi(bicim)
     if INFERENCE_BACKEND == "hermes-cli":
         query = (
             json.dumps(prompt, ensure_ascii=False)
@@ -1803,7 +1838,7 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
                 "-q",
                 query,
             ],
-            GORU_ZAMAN_ASIMI,
+            zaman_asimi,
         )
         if result.returncode:
             raise RuntimeError(
@@ -1820,7 +1855,7 @@ def _vision_json(prompt: dict[str, Any], image_path: Path) -> dict[str, Any]:
         temperature=0.1,
         response_format={"type": "json_object"},
         max_tokens=AZAMI_CIKTI_TOKEN,
-        timeout=float(GORU_ZAMAN_ASIMI),
+        timeout=float(zaman_asimi),
         messages=[
             {
                 "role": "user",
@@ -3066,8 +3101,45 @@ def kare_yerlesimi(
     return kareler, tam_dolan
 
 
+def kaynak_ornegi(
+    material_files: list[Path],
+    bicim: VideoBicimi = SHORTS_BICIMI,
+    zorunlu: list[int] | None = None,
+) -> list[int]:
+    """Kontak sayfasina girecek malzeme numaralari (1-tabanli).
+
+    ⚠️ OLCULDU (2026-08-15, DOKUZUNCU Herculaneum koşumu, 46,2 dakika): 45
+    gorsel 4 sutuna dizilince kontak sayfasi 1600x3600 piksel oluyor ve
+    model BOS cevap donduruyor — kapi hicbir sey goremeden dusuyor.
+
+    ⚠️ Cozum zaten depoda vardi ve buraya uygulanmamisti: `hakem_kareleri`
+    ayni dersi render SONRASI hakem kapisinda ogrenmisti. Ayni fonksiyon
+    aynen kullaniliyor, ikinci bir orneklem kurali yazilmiyor — iki kapinin
+    ayri sekilde ornekleme yapmasi teshisi imkansiz hale getirirdi.
+
+    Shorts hic orneklenmiyor (`hakem_kareleri` gerekcesi): olculerek
+    kalibre edilmis bir kapinin gorus alanini daraltmak, uzun formatin
+    bedelini Shorts'a odetmek olurdu.
+
+    ⚠️ `zorunlu` ONARILAN sahneler icin: kapi bir sahneyi kusurlu bulup
+    gorseli degistirildikten sonra sayfa YENIDEN uretiliyor. Duzgun orneklem
+    o sahneyi disarida birakabilirdi, yani hat gorseli degistirip
+    degisikligin ise yarayip yaramadigina hic bakmamis olurdu. Onarilanlar
+    her zaman iceride.
+    """
+    ornek = hakem_kareleri(len(material_files), bicim)
+    if not zorunlu:
+        return ornek
+    gecerli = {n for n in zorunlu if 1 <= n <= len(material_files)}
+    return sorted(set(ornek) | gecerli)
+
+
 def create_source_montage(
-    material_files: list[Path], attempt: int, konu: str = ""
+    material_files: list[Path],
+    attempt: int,
+    konu: str = "",
+    *,
+    secilen: list[int] | None = None,
 ) -> Path:
     # ⚠️ `konu` isteğe bagli ama uretimde HER ZAMAN veriliyor (DW-119):
     # materyal klasoru gibi bu dosya adi da saat anahtarliydi ve ayni saatte
@@ -3076,11 +3148,17 @@ def create_source_montage(
     if not material_files:
         raise ValueError("source montage requires at least one image")
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    # ⚠️ Hucrenin uzerine yazilan sayi, hucrenin SIRASI degil GERCEK sahne
+    # numarasi. Boylece orneklem yapilinca bile hakem gercek sahne
+    # numarasini bildiriyor ve geri cevrim gerekmiyor —
+    # `problem_scene_numbers` dogrudan `plan.scenes`e denk dusuyor.
+    numaralar = secilen or list(range(1, len(material_files) + 1))
     columns = 4
     cell_width, cell_height = 400, 300
-    rows = (len(material_files) + columns - 1) // columns
+    rows = (len(numaralar) + columns - 1) // columns
     canvas = Image.new("RGB", (columns * cell_width, rows * cell_height), "black")
-    for index, path in enumerate(material_files, 1):
+    for hucre, numara in enumerate(numaralar):
+        path = material_files[numara - 1]
         with Image.open(path) as source:
             tile = ImageOps.fit(
                 source.convert("RGB"),
@@ -3089,8 +3167,8 @@ def create_source_montage(
             )
         draw = ImageDraw.Draw(tile)
         draw.rectangle((0, 0, 54, 34), fill="black")
-        draw.text((12, 8), str(index), fill="white")
-        canvas.paste(tile, (((index - 1) % columns) * cell_width, ((index - 1) // columns) * cell_height))
+        draw.text((12, 8), str(numara), fill="white")
+        canvas.paste(tile, ((hucre % columns) * cell_width, (hucre // columns) * cell_height))
     ayirt_edici = f"-{konu_slug(konu)}" if konu else ""
     montage = (
         REVIEW_DIR
@@ -3161,13 +3239,38 @@ def belge_kareleri(kareler: list[dict[str, Any]], plan: ContentPlan, sahne_sayis
     return sorted(numaralar)
 
 
-def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
+def review_source_materials(
+    plan: ContentPlan,
+    montage: Path,
+    *,
+    secilen: list[int] | None = None,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> QualityReview:
+    # ⚠️ Isteme YALNIZCA sayfada gorunen sahneler konuyor. 45 sahnenin
+    # tamamini verip 12 kare gostermek, modelden goremedigi 33 kare hakkinda
+    # hukum istemek olurdu; kendi numaralandirmasi da kayardi.
+    #
+    # Numaralar KORUNUYOR (`n` alani): hucrenin uzerindeki sayi gercek sahne
+    # numarasi, yani hakemin bildirdigi numara dogrudan `plan.scenes`e denk
+    # dusuyor ve `belge_kareleri` bir cevrim yapmadan calisiyor.
+    gorunen = [
+        {"n": numara, **plan.scenes[numara - 1]}
+        for numara in (secilen or range(1, len(plan.scenes) + 1))
+        if 1 <= numara <= len(plan.scenes)
+    ]
     prompt = {
         "topic": plan.topic,
         "visual_anchor": plan.visual_anchor,
-        "scenes": plan.scenes,
+        "scenes": gorunen,
         "instructions": (
             "Review this numbered source-image contact sheet before video rendering. "
+            # ⚠️ Numaralar ARDISIK OLMAYABILIR: uzun formatta sayfa bir
+            # ORNEKLEM (bkz. `kaynak_ornegi`) ve her hucrenin uzerindeki sayi
+            # gercek sahne numarasi. Bu cumle olmazsa model numaralari 1'den
+            # yeniden sayar ve bildirdigi her numara yanlis sahneyi gosterir.
+            "The number printed on each image is its scene number, and the sheet may show "
+            "a sample of the scenes rather than all of them, so the numbers can skip. "
+            "Always report the number printed on the image, never its position on the sheet. "
             "Each numbered image must directly match the corresponding scene, visual anchor, and historical period. "
             "Historically grounded AI illustrations are acceptable; do not reject an image merely because it is an illustration, but reject misleading or historically inconsistent details. "
             "Reject generic modern people, vehicles, factories, schools, unrelated maps or plans, single-word coincidences, and misleading period substitutions. "
@@ -3210,7 +3313,7 @@ def review_source_materials(plan: ContentPlan, montage: Path) -> QualityReview:
             'document; a drawn plan or cross-section is a diagram}.'
         ),
     }
-    data = _vision_json(prompt, montage)
+    data = _vision_json(prompt, montage, bicim=bicim)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     kareler = data.get("frames")
     kareler = [k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else []
@@ -3929,8 +4032,13 @@ def run_generator(
     else:
         material_files = _delikleri_doldur(plan, material_files, material_dir)
     _benzerligi_kaydet(material_files, material_dir)
-    source_montage = create_source_montage(material_files, attempt, plan.topic)
-    source_review = review_source_materials(plan, source_montage)
+    secilen = kaynak_ornegi(material_files, bicim)
+    source_montage = create_source_montage(
+        material_files, attempt, plan.topic, secilen=secilen
+    )
+    source_review = review_source_materials(
+        plan, source_montage, secilen=secilen, bicim=bicim
+    )
     # ⚠️ ARSIV ONCE — bu blok artik AI yedeginden BAGIMSIZ calisiyor (DW-118).
     #
     # Kosul eskiden `not AI_VISUAL_FALLBACK_ENABLED` idi. Yani yedek acikken
@@ -4033,8 +4141,13 @@ def run_generator(
                 ):
                     credits.append({**credit, "scene": scene_number})
                 credits.sort(key=lambda credit: int(credit.get("scene", 0)))
-                source_montage = create_source_montage(material_files, attempt, plan.topic)
-                source_review = review_source_materials(plan, source_montage)
+                secilen = kaynak_ornegi(material_files, bicim, problem_scenes)
+                source_montage = create_source_montage(
+                    material_files, attempt, plan.topic, secilen=secilen
+                )
+                source_review = review_source_materials(
+                    plan, source_montage, secilen=secilen, bicim=bicim
+                )
     if AI_VISUAL_FALLBACK_ENABLED and (
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
@@ -4060,8 +4173,13 @@ def run_generator(
         for scene_number, replacement in zip(problem_scenes, replacements, strict=True):
             refined_materials[scene_number - 1] = replacement
         material_files = refined_materials
-        source_montage = create_source_montage(material_files, attempt, plan.topic)
-        source_review = review_source_materials(plan, source_montage)
+        secilen = kaynak_ornegi(material_files, bicim, problem_scenes)
+        source_montage = create_source_montage(
+            material_files, attempt, plan.topic, secilen=secilen
+        )
+        source_review = review_source_materials(
+            plan, source_montage, secilen=secilen, bicim=bicim
+        )
     if (
         not source_review.publishable
         or source_review.visual_alignment_score < MIN_SOURCE_VISUAL_SCORE
@@ -4489,7 +4607,7 @@ def review_video(
             "photograph of something else entirely is not."
         ),
     }
-    data = _vision_json(prompt, montage)
+    data = _vision_json(prompt, montage, bicim=bicim)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     altyazi_skor = int(data.get("subtitle_readability_score", 0))
     kareler = data.get("frames")

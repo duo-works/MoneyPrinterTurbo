@@ -517,7 +517,7 @@ def test_run_generator_refines_problem_scenes_once_with_archives_when_ai_disable
     monkeypatch.setattr("youtube_automation.download_scene_materials", download)
     monkeypatch.setattr(
         "youtube_automation.create_source_montage",
-        lambda files, *_: montage_calls.append(list(files)) or tmp_path / "sources.jpg",
+        lambda files, *_, **__: montage_calls.append(list(files)) or tmp_path / "sources.jpg",
     )
     monkeypatch.setattr(
         "youtube_automation.review_source_materials", lambda *_, **__: next(reviews)
@@ -857,7 +857,7 @@ def test_run_generator_regenerates_rejected_wikimedia_set_with_ai(monkeypatch, t
     monkeypatch.setattr("youtube_automation.generate_ai_scene_materials", generate_ai)
     monkeypatch.setattr(
         "youtube_automation.create_source_montage",
-        lambda files, *_: montage_calls.append(files) or tmp_path / "sources.jpg",
+        lambda files, *_, **__: montage_calls.append(files) or tmp_path / "sources.jpg",
     )
     monkeypatch.setattr("youtube_automation.review_source_materials", lambda *_, **__: next(reviews))
 
@@ -973,7 +973,7 @@ def test_source_review_requests_revisions_for_blocking_publishable_false(monkeyp
     captured = {}
     monkeypatch.setattr("youtube_automation.INFERENCE_BACKEND", "hermes-cli")
 
-    def vision(prompt, _image):
+    def vision(prompt, _image, **_):
         captured.update(prompt)
         return {
             "publishable": False,

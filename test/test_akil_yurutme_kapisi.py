@@ -84,13 +84,37 @@ def test_cikti_tavani_uzun_formata_yetiyor():
     assert ya.AZAMI_CIKTI_TOKEN >= 14000
 
 
-def test_goru_zaman_asimi_TEK_yerde():
+def test_goru_zaman_asimi_IKI_YOLDA_da_ayni():
     """⚠️ Sayi eskiden `hermes` yolunda GOMULUYDU, openai yolunda ise hic
-    zaman asimi yoktu — zaman asimsiz cagri zamanlayici slotunu yer."""
-    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    zaman asimi yoktu — zaman asimsiz cagri zamanlayici slotunu yer.
 
-    assert "GORU_ZAMAN_ASIMI," in kaynak, "hermes yolu sabiti kullanmali"
-    assert "timeout=float(GORU_ZAMAN_ASIMI)" in kaynak, "openai yolu sabiti kullanmali"
+    ⚠️ Kaynak metninde SABIT ADI aranmiyor artik: sinir bicime baglandi
+    (2026-08-15) ve iki yol da yerel `zaman_asimi` degiskenini kullaniyor.
+    Aranan sey davranis — ayni bicimde iki yolun ayni sayiyi almasi.
+    """
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    govde = kaynak[kaynak.index("def _vision_json(") :]
+    govde = govde[: govde.index("\ndef ", 10)]
+
+    assert govde.count("zaman_asimi") >= 3, "iki yol da ayni degiskeni kullanmali"
+    assert "timeout=float(zaman_asimi)" in govde, "openai yolu zaman asimi almali"
+
+
+def test_uzun_kipte_goru_siniri_BUYUK():
+    """Kontak sayfasi ve `frames` dizisi 45 sahnede kat kat buyuyor."""
+    assert ya.goru_zaman_asimi(ya.UZUN_BICIMI) > ya.goru_zaman_asimi(ya.SHORTS_BICIMI)
+
+
+def test_SHORTS_goru_siniri_DEGISMEDI():
+    """⚠️ Kalibre edilmis bir sinir; uzun formatin bedeli Shorts'a odetilmez."""
+    assert ya.goru_zaman_asimi(ya.SHORTS_BICIMI) == 360
+    assert ya.goru_zaman_asimi(None) == 360
+
+
+def test_en_kotu_goru_yuku_ZAMANLAYICIYA_sigiyor():
+    """⚠️ Kaynak kapisi bir denemede en fazla UC kez cagriliyor (ilk
+    inceleme, arsiv iyilestirmesi, AI yedegi). Sinir bedava buyutulemez."""
+    assert ya.goru_zaman_asimi(ya.UZUN_BICIMI) * 3 < 3 * 3600
 
 
 def test_iki_yol_da_akil_yurutmeyi_KAPATIYOR():

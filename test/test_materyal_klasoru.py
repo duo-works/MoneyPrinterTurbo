@@ -67,4 +67,8 @@ def test_kaynak_kontak_sayfasi_da_ayrisiyor():
     """Hakemin gordugu kontak sayfasi da ezilmemeli — ayni kok neden."""
     kaynak = Path(ya.__file__).read_text(encoding="utf-8")
     assert 'f"source-{publication_slot_key()}-attempt-{attempt}.jpg"' not in kaynak
-    assert "create_source_montage(material_files, attempt, plan.topic)" in kaynak
+    # ⚠️ TAM cagri dizesi ARANMIYOR: cagriya `secilen=` eklendi (2026-08-15,
+    # kontak sayfasi orneklemesi). Aranan sey telin kendisi — KONUNUN dosya
+    # adina girmesi, cunku ayni saatte uretilen ikinci video birincinin
+    # kontak sayfasini eziyordu. Uc cagri yeri de konuyu tasimali.
+    assert kaynak.count("material_files, attempt, plan.topic, secilen=secilen") == 3

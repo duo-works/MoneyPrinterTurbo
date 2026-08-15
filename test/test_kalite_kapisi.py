@@ -129,7 +129,7 @@ def test_kaynak_incelemesi_skoru_koddan_turetiyor(monkeypatch):
     monkeypatch.setattr(
         ya,
         "_vision_json",
-        lambda prompt, gorsel: {
+        lambda prompt, gorsel, **_: {
             "visual_alignment_score": 85,
             "issues": ["Scene 3 is generic."],
             "revised_search_terms": ["Hadrian's Wall construction"],
@@ -176,7 +176,7 @@ def test_kaynak_kapisi_esigi_video_kapisindan_kopuk(monkeypatch):
     monkeypatch.setattr(
         ya,
         "_vision_json",
-        lambda prompt, gorsel: {
+        lambda prompt, gorsel, **_: {
             "visual_alignment_score": ara_skor,
             "issues": [],
             "revised_search_terms": [],

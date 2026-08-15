@@ -64,7 +64,7 @@ def _istemi_yakala(monkeypatch, *, sahne: int, bicim=None) -> str:
     """`review_video`u cagirip hakeme giden TALIMAT metnini dondurur."""
     yakalanan: dict = {}
 
-    def sahte_goru(prompt, _montaj):
+    def sahte_goru(prompt, _montaj, **_):
         yakalanan["prompt"] = prompt
         return {}
 
