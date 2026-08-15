@@ -431,7 +431,8 @@ THIS IS A LONG FORM DOCUMENTARY, NOT A SHORT, and the difference is not length a
 Build the script in parts: an opening that poses the question, then three to five thematic sections that each answer a different part of it, then a closing that takes a position. Each section must move the story somewhere the previous one did not; a section that could swap places with another is a section that should be cut.
 NEVER ANNOUNCE THE STRUCTURE. Do not write "in this section", "first we will look at", "as we saw earlier", or any other signposting. The viewer feels a new section through the change of subject, not through being told about it.
 AIM FOR ABOUT 1600 SPOKEN WORDS, not the minimum. A script that lands just under the floor is rejected outright and the entire plan is thrown away, so write comfortably inside the range rather than close to its edge.
-THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
+DO THE ARITHMETIC BEFORE YOU WRITE, because the scene count decides the script length and getting this wrong is the most common way this plan is thrown away. Multiply the number of scenes you intend to write by the words you intend to put in each narration; if that product is under 1200 the plan is rejected. Roughly 45 words per narration at 35 scenes, 65 at 24 scenes, 36 at 45 scenes. A narration of 25-30 words is a Short's scene: at 35 scenes it lands near 1000 words, under the floor, and the whole plan is discarded.
+THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. This means the narrations together ARE the full script, not a summary of it: their combined word count must equal the script's, so a 1600 word script split into 35 scenes puts about 45 words in each. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
 Length makes one failure far more expensive: inventing facts to fill time. When the source text runs out, write fewer scenes about what it does contain, never more scenes about what it does not."""
 """Uzun formata OZEL yonerge — Shorts sozlesmesinin ustune eklenir.
 
@@ -781,6 +782,7 @@ def validate_content_plan(
     sahne_sayisi: int | None = None,
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
+    konu: str = "",
 ) -> None:
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
     if kusur := kanca_kusuru(plan.script):
@@ -820,6 +822,29 @@ def validate_content_plan(
             f"visual anchor {plan.visual_anchor!r} resolves to {len(anchor_words)} "
             "words; use at most 4. Drop honorifics and middle names and keep the "
             "shortest form a viewer would recognise"
+        )
+    # ⚠️ KOD KAPISI. Uzun kipte capa, ARZI OLCULEN konunun kendisi olmali.
+    # Olculdu (2026-08-15, dorduncu Herculaneum koşumu): model capayi
+    # "Herculaneum" yerine "House of the Stags" (tek bir ev) sectI. Asagidaki
+    # `:844` kapisi her sahnenin teriminin capayi TASIMASINI zorunlu kildigi
+    # icin 35 sahnenin 35'i de "Stags" aradi; arsiv modern geyik heykelleri
+    # dondurdu ve kaynak kapisi 63 puan verdi.
+    #
+    # Kusur uzun formata OZGU: 8 sahnede dar capa calisiyor, 35 sahnede o
+    # capanin arsivi tukeniyor. Arz olcumunu (`arsiv_arzi_olc.py`) biz KONU
+    # uzerinde yapiyoruz, model ise kimsenin olcmedigi bir alt kumeye
+    # geciyor — yani olculen sayi ile uretilen video baska seyden bahsediyor.
+    #
+    # Yalnizca `konu` disaridan verildiginde uygulanir: yedek kipte capayi
+    # model sectigi icin karsilastirilacak bir konu YOK. Shorts'ta dar capa
+    # kasitli ve dokunulmuyor (bkz. "Vassar College" gerekcesi, `:403`).
+    if konu and not bicim.dikey and not (anchor_words & _normalize_topic(konu)):
+        raise ValueError(
+            f"visual anchor {plan.visual_anchor!r} shares no word with the topic "
+            f"{konu!r}. In a long form video every scene search term must carry the "
+            "anchor, so a narrower anchor points all of them at a subset of the "
+            "archive and it runs out. Use the topic itself as the visual anchor and "
+            "put the narrower subject in the individual scene search terms instead"
         )
     if len(plan.title) > 100:
         raise ValueError("YouTube title must be at most 100 characters")
@@ -2548,7 +2573,7 @@ def generate_content_plan(
                 flush=True,
             )
         try:
-            validate_content_plan(plan, sahne_sayisi, bicim=bicim)
+            validate_content_plan(plan, sahne_sayisi, bicim=bicim, konu=konu or "")
         except ValueError as exc:
             son_kusur = str(exc)
             user += (

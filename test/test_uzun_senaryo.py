@@ -115,6 +115,54 @@ def test_uzun_yonerge_sahne_anlatimlarini_ESIT_UZUNLUKTA_istiyor():
     assert "same length as the others" in uzun
 
 
+# --- Sahne basina kelime hedefi -------------------------------------------
+#
+# ⚠️ Olculdu (2026-08-15, dorduncu Herculaneum koşumu): bes denemenin
+# sonuncusu 1.055 kelimeydi ve sozlesme 1.200-2.200 istiyor. Koşum #1'de
+# ayni model 1.353 kelime uretmisti, yani YAPABILIYOR ama tutarli degil.
+#
+# Sebep aritmetik: istem TOPLAM kelimeyi soyluyordu, sahne BASINA hicbir sey
+# soylemiyordu. Model Shorts uzunlugunda (~30 kelime) anlatimlar yazip 35
+# sahneye boluyor: 35 x 30 = 1.050, tabanin hemen altinda.
+
+
+def test_uzun_yonerge_SAHNE_BASINA_kelime_soyluyor():
+    uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
+
+    assert "45 words per narration at 35 scenes" in uzun
+
+
+def test_uzun_yonerge_SHORTS_UZUNLUGUNDA_anlatimi_acikca_yasakliyor():
+    """Modelin dustugu tuzak adiyla anilmali; genel "uzun yaz" yetmedi."""
+    uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
+
+    assert "25-30 words is a Short's scene" in uzun
+
+
+def test_uzun_yonerge_CARPMAYI_istiyor():
+    """⚠️ Model sayilari once carpmazsa hatayi ancak 20 dakika sonra goruyoruz."""
+    uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
+
+    assert "Multiply the number of scenes" in uzun
+    assert "under 1200 the plan is rejected" in uzun
+
+
+def test_anlatimlar_SENARYONUN_KENDISI_oldugu_yaziyor():
+    """Model anlatimlari senaryonun OZETI sanirsa toplam kelime tutmuyor."""
+    uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
+
+    assert "not a summary of it" in uzun
+
+
+def test_SHORTS_yonergesi_bu_maddelerden_ETKILENMIYOR():
+    """⚠️ Sahne basina 45 kelime Shorts'ta 8x45 = 360 kelime demek; sozlesme
+    80-120 istiyor. Madde Shorts'a sizarsa her Shorts plani reddedilir."""
+    kisa = ya.editoryal_sistem_yonergesi(ya.SHORTS_BICIMI)
+
+    assert "45 words per narration" not in kisa
+    assert "Multiply the number of scenes" not in kisa
+
+
 def test_uzun_yonerge_KIMLIGI_ve_SOZLESMEYI_koruyor():
     """Kanal sesi ve JSON sozlesmesi dusmemeli — yalnizca sayilar degisiyor."""
     uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
@@ -324,7 +372,11 @@ def test_bicim_DOGRULAMAYA_gecirilyor():
     def bosluksuz(metin: str) -> str:
         return re.sub(r"\s+", "", metin)
 
-    assert bosluksuz(
-        "validate_content_plan(plan, sahne_sayisi, bicim=bicim)"
-    ) in bosluksuz(kaynak)
+    # ⚠️ TAM cagri dizesi ARANMIYOR: cagriya sonradan `konu=` eklendi
+    # (2026-08-15, capa genisligi kapisi) ve birebir eslesme bunu kusur
+    # sanmisti. Aranan sey telin kendisi — `sahne_sayisi` ve `bicim` ayni
+    # cagrida gidiyor mu.
+    assert bosluksuz("validate_content_plan(plan,sahne_sayisi,bicim=bicim") in bosluksuz(
+        kaynak
+    )
     assert bosluksuz("editoryal_sistem_yonergesi(bicim)") in bosluksuz(kaynak)
