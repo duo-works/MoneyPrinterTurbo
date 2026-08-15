@@ -68,7 +68,16 @@ def test_ince_arsivde_SHORTS_A_dusuyor():
     govde = _run_cycle_govdesi()
 
     assert "except UzunFormatUygunDegilError" in govde
-    assert "[bicim] if bicim.dikey else [bicim, SHORTS_BICIMI]" in govde
+    assert "[bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]" in govde
+
+
+def test_kuyruk_adayi_yoksa_uzun_DENENMIYOR():
+    """⚠️ `--uzun --yedek-konu` ile bos kuyrukta `aday` None kalir ve
+    `generate_content_plan` `ValueError` atar — dongu onu yakalamiyordu,
+    yani koşum izlenmeyen bir istisnayla olurdu."""
+    govde = _run_cycle_govdesi()
+
+    assert "if not bicim.dikey and aday is None:" in govde
 
 
 def test_planlama_hatasi_DONGUDE_yakalaniyor():
@@ -90,6 +99,42 @@ def test_konu_sorununda_DIGER_bicim_denenmiyor():
     i = govde.index("planlama_hatasi = exc")
 
     assert "break" in govde[i : i + 60]
+
+
+# --- Ikincil gorsel: uzun kipte hic indirilmiyor ---------------------------
+
+
+def test_uzun_kipte_IKINCIL_GORSEL_indirilmiyor():
+    """⚠️ Kipten bagimsiz calisirken UC sey birden oluyordu:
+
+    1. `bant_ister` DIKEY hedefe bakiyor, yani her 16:9 arsiv fotografi
+       "bant ister" cikip 45 sahnenin hepsine yedek indiriliyordu.
+    2. Gelen dosyalar `credits`e ekleniyor, yani ACIKLAMADA KAYNAK
+       GOSTERILIYORDU.
+    3. Uzun kipte `kare_yerlesimi` ikincil listeyi HIC KULLANMIYOR.
+
+    Yani video hic gostermedigi fotograflara atif yapardi — yanlis atif
+    sessiz ve yayinlandiktan sonra duzeltilmesi zor bir kusur.
+    """
+    i = KAYNAK.index("def run_generator(")
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
+    j = govde.index("ikincil_gorseller(")
+
+    # Cagri bir kip kosulunun ICINDE olmali.
+    onceki = govde[:j]
+    assert "if bicim.kare_yuvasi >= 2:" in onceki
+    assert onceki.rindex("if bicim.kare_yuvasi >= 2:") > onceki.rindex("\n    ikincil_dosyalar")
+
+
+def test_uzun_kipte_kredi_LISTESI_buyumuyor():
+    """`credits` uzatmasi da ayni kosulun icinde olmali."""
+    i = KAYNAK.index("def run_generator(")
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
+    j = govde.index("credits = list(credits) + ikincil_krediler")
+
+    # Sekiz bosluk girinti = `if` blogunun icinde (fonksiyon govdesi dort).
+    satir_basi = govde.rindex("\n", 0, j) + 1
+    assert govde[satir_basi:j] == " " * 8, "kredi uzatmasi kip kosulunun disinda"
 
 
 # --- Telemetri -------------------------------------------------------------

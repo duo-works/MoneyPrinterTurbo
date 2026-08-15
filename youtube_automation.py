@@ -3777,16 +3777,28 @@ def run_generator(
     # ⚠️ IKINCI GORSEL burada indiriliyor — kaynak kapisindan SONRA. Kapi
     # birincil kareleri yargiliyor; ikincil gorsel bir iyilestirme ve
     # reddedilen bir plan icin indirilmesi bosa istek olurdu.
-    ikincil_dosyalar, ikincil_krediler = wikimedia_materials.ikincil_gorseller(
-        plan.scenes,
-        material_dir / "ikincil",
-        kategori_havuzu,
-        used_titles={str(k.get("title", "")) for k in credits},
-        # Yalnizca bant isteyen sahnelere esleme yedegi aciliyor; gerekcesi
-        # `ikincil_gorseller`de. Eksik sahne (kismi kip) False sayiliyor.
-        esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
-    )
-    credits = list(credits) + ikincil_krediler
+    # ⚠️ UZUN FORMATTA HIC INDIRILMIYOR ve bu bir DUZELTME, iyilestirme degil.
+    # Blok kipten bagimsiz calisirken uc sey oluyordu:
+    #   1. `bant_ister` DIKEY hedefe bakiyor, yani her 16:9 arsiv fotografi
+    #      "bant ister" cikiyor ve 45 sahnenin neredeyse hepsi icin yedek
+    #      gorsel indiriliyordu — 45 bosa ag istegi.
+    #   2. Gelen dosyalar `credits`e ekleniyordu, yani ACIKLAMADA KAYNAK
+    #      GOSTERILIYORDU.
+    #   3. Uzun kipte `kare_yerlesimi` ikincil listeyi HIC KULLANMIYOR.
+    # Yani video hic gostermedigi fotograflara atif yapardi. Yanlis atif
+    # sessiz ve duzeltilmesi zor bir kusur: lisans metni yayinlanmis oluyor.
+    ikincil_dosyalar: list[Path | None] = [None] * len(material_files)
+    if bicim.kare_yuvasi >= 2:
+        ikincil_dosyalar, ikincil_krediler = wikimedia_materials.ikincil_gorseller(
+            plan.scenes,
+            material_dir / "ikincil",
+            kategori_havuzu,
+            used_titles={str(k.get("title", "")) for k in credits},
+            # Yalnizca bant isteyen sahnelere esleme yedegi aciliyor; gerekcesi
+            # `ikincil_gorseller`de. Eksik sahne (kismi kip) False sayiliyor.
+            esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
+        )
+        credits = list(credits) + ikincil_krediler
     material_files, tam_dolan_sahne = kare_yerlesimi(
         material_files, ikincil_dosyalar, material_dir / "dikey", bicim=bicim
     )
@@ -4353,7 +4365,20 @@ def run_cycle(
         # istisnayla olurdu.
         plan: ContentPlan | None = None
         planlama_hatasi: DistinctTopicUnavailableError | None = None
-        denenecek = [bicim] if bicim.dikey else [bicim, SHORTS_BICIMI]
+        # ⚠️ KONUSUZ UZUN PLAN OLMAZ ve burada durmak yerine Shorts'a
+        # dusuluyor. `--uzun --yedek-konu` ile bos kuyrukta `aday` None
+        # kaliyor; `generate_content_plan` o durumda `ValueError` atiyor ve
+        # bu dongu onu yakalamiyordu, yani nazikce reddedilecek bir koşum
+        # izlenmeyen bir istisnayla olurdu.
+        if not bicim.dikey and aday is None:
+            print(
+                "ℹ️ uzun format icin kuyruk adayi yok (yedek konu kipi), "
+                "Shorts'a dusuluyor",
+                flush=True,
+            )
+            bicim = SHORTS_BICIMI
+        denecek_uzun = not bicim.dikey
+        denenecek = [bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]
         for aday_bicim in denenecek:
             try:
                 plan = generate_content_plan(
