@@ -1019,7 +1019,22 @@ def generate_video(
         params.font_size = int(params.font_size)
         params.stroke_width = int(params.stroke_width)
         phrase = subtitle_item[1]
-        max_width = video_width * 0.9
+        # ⚠️ SARMA ORANI KAREYE GORE (2026-08-15, DW-51). Sabit %90 dikey
+        # kareye gore kalibre edilmisti: 1080 x 0,9 = 972 piksel ve altyazi
+        # blogu ekranin alt ucte birinde derli toplu duruyordu.
+        #
+        # Yatayda ayni oran 1920 x 0,9 = 1728 piksel demek ve OLCULDU (ilk
+        # 16:9 render, kare goruntusu): metin cerceveyi UCTAN UCA kapliyor,
+        # son kelime sag kenara dayaniyor.
+        #
+        # ⚠️ Font boyutunu kucultmek COZMEZ: sarma her halukarda mevcut
+        # genisligi dolduruyor, yani kucuk font yalnizca satira daha cok
+        # kelime sigdirir. Degismesi gereken sey GENISLIGIN KENDISI.
+        #
+        # Yatayda %65: 1920 x 0,65 = 1248 piksel, yani dikeydeki 972'ye
+        # yakin bir satir uzunlugu ve iki yanda okumayi rahatlatan bosluk.
+        oran = 0.9 if video_height >= video_width else 0.65
+        max_width = video_width * oran
         bg_color = resolve_subtitle_background_color()
         rounded_bg_enabled = bool(
             getattr(params, "rounded_subtitle_background", False) and bg_color
