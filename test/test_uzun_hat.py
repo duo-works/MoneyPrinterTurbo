@@ -77,7 +77,7 @@ def test_kuyruk_adayi_yoksa_uzun_DENENMIYOR():
     yani koşum izlenmeyen bir istisnayla olurdu."""
     govde = _run_cycle_govdesi()
 
-    assert "if not bicim.dikey and aday is None:" in govde
+    assert "if not bicim.dikey and etkin_konu is None:" in govde
 
 
 def test_planlama_hatasi_DONGUDE_yakalaniyor():
@@ -166,8 +166,42 @@ def test_uzun_bayragi_var():
 
 def test_uzun_KONU_zorunlu_kiliyor():
     """⚠️ Konusuz uzun plan 2.000 kelimeyi hafizadan yazar; uydurma riski
-    kelime basina degil kelime SAYISIYLA olcekleniyor (DW-114)."""
-    assert "if args.uzun and not args.from_notion:" in KAYNAK
+    kelime basina degil kelime SAYISIYLA olcekleniyor (DW-114).
+
+    ⚠️ Sart olan sey Notion DEGIL, konunun verilmis olmasi: `--konu` ayni
+    kosulu birebir sagliyor (kaynak metin ve arsiv menusu isteme giriyor).
+    """
+    assert "if args.uzun and not (args.from_notion or args.konu):" in KAYNAK
+
+
+def test_ACIK_KONU_kuyrugu_atliyor():
+    """⚠️ Kullanim yeri olculmus: kanalin en cok izlenen videolari talebi
+    KANITLANMIS konular ama huni onlari `benzeri uretilmis` diye yeniden
+    onermiyor, yani uzun formatta yeniden ele almanin tek yolu bu."""
+    govde = _run_cycle_govdesi()
+
+    assert "if konu_override:" in govde
+    assert 'kaynak = "acik-konu"' in govde
+    assert "etkin_konu = konu_override or (aday.baslik if aday else None)" in govde
+
+
+def test_acik_konuda_CAPA_TEKRARI_serbest():
+    """⚠️ Kanitlanmis konuyu uzun formatta yeniden ele alirken AYNI capa
+    isteniyor — amac o. Kapi acik kalsaydi uc denemenin ucu de reddedilir,
+    her biri ~2.000 kelimelik bir cikarim koşumu yakardi.
+
+    Tekrar politikasi ihlal edilmiyor: 40 saniyelik Short ile 10 dakikalik
+    belgesel ayri eserler ("each video has a distinct storyline, focus, or
+    concept").
+    """
+    govde = _run_cycle_govdesi()
+
+    assert "capa_serbest = bool(konu_override)" in govde
+    assert "capa_tekrari_serbest=capa_serbest" in govde
+
+
+def test_acik_konu_ile_kuyruk_CAKISMIYOR():
+    assert "if args.konu and args.from_notion:" in KAYNAK
 
 
 def test_uzun_ile_sahne_deneyi_CAKISMIYOR():

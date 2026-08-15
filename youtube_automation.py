@@ -2176,6 +2176,7 @@ def generate_content_plan(
     sahne_sayisi: int | None = None,
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
+    capa_tekrari_serbest: bool = False,
 ) -> ContentPlan:
     """Video planini uretir; `konu` verilirse KONUYU SECMEZ, verileni isler.
 
@@ -2472,8 +2473,18 @@ def generate_content_plan(
             # ⚠️ CAPA tekrari huni kipine OZEL kaliyor: yedek kipte capayi
             # zaten model seciyor ve asagidaki dal onu `is_duplicate_visual_anchor`
             # ile denetliyor. Buraya tasimak ayni kontrolu iki kez yapardi.
-            if yumusak_kapilar_acik and is_duplicate_visual_anchor(
-                plan.visual_anchor, previous_anchors
+            #
+            # ⚠️ `capa_tekrari_serbest` ISE KAPI KAPALI ve bu bilincli:
+            # kanitlanmis bir konuyu uzun formatta yeniden ele alirken AYNI
+            # capa isteniyor — amac o. Kapi acik kalsaydi uc denemenin ucu de
+            # reddedilirdi ve her deneme ~2.000 kelimelik bir cikarim koşumu
+            # demek. Tekrar politikasi da ihlal edilmiyor: 40 saniyelik bir
+            # Short ile 10 dakikalik bir belgesel ayri eserler ("each video
+            # has a distinct storyline, focus, or concept").
+            if (
+                yumusak_kapilar_acik
+                and not capa_tekrari_serbest
+                and is_duplicate_visual_anchor(plan.visual_anchor, previous_anchors)
             ):
                 user += (
                     f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
@@ -4280,6 +4291,7 @@ def run_cycle(
     yedek_konu: bool = False,
     sahne_sayisi: int | None = None,
     bicim: VideoBicimi = SHORTS_BICIMI,
+    konu_override: str | None = None,
 ) -> dict[str, Any]:
     slot = publication_slot_key()
     state = load_state()
@@ -4292,7 +4304,19 @@ def run_cycle(
     # bu, hic baglanmamis olmaktan daha kotu cunku fark edilmiyor.
     aday: notion_kuyrugu.Aday | None = None
     kaynak = "huni" if kuyruktan else "model"
-    if kuyruktan:
+    # ⚠️ ACIK KONU — kuyruga da modele de sorulmuyor. Kullanim yeri olculmus:
+    # kanalin en cok izlenen videolari zaten talebi KANITLANMIS konular ve
+    # arsiv arzlari uretildikleri icin biliniyor. Kuyruk o konulari yeniden
+    # onermez (`benzeri uretilmis` kapisi), o yuzden uzun formatta yeniden
+    # ele almanin tek yolu konuyu dogrudan vermek.
+    #
+    # ⚠️ Uydurma guvencesi KORUNUYOR: `--uzun`un istedigi sey Notion degil
+    # KONUNUN VERILMIS olmasiydi — kaynak metin ve arsiv menusu ancak konu
+    # varken isteme giriyor. Acik konu bu kosulu birebir sagliyor.
+    if konu_override:
+        kaynak = "acik-konu"
+        kuyruktan = False
+    elif kuyruktan:
         adaylar = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH)
         # ⚠️ LISTE ILE KAPMA CELISEBILIYOR, ve bu koşumu OLDURMEMELI.
         #
@@ -4363,14 +4387,21 @@ def run_cycle(
         # `DistinctTopicUnavailableError` kardes `except`e ugramadan disari
         # kacardi — yani nazikce reddedilecek bir koşum izlenmeyen bir
         # istisnayla olurdu.
+        # Konu tek yerden okunuyor: acik konu > kuyruk adayi > yok (model secer).
+        etkin_konu = konu_override or (aday.baslik if aday else None)
+        # ⚠️ Acik konuda capa tekrari SERBEST: kanitlanmis bir konuyu uzun
+        # formatta yeniden ele alirken AYNI capa isteniyor, amac o. Kapi acik
+        # kalsaydi uc denemenin ucu de reddedilir, her biri ~2.000 kelimelik
+        # bir cikarim koşumu yakardi.
+        capa_serbest = bool(konu_override)
         plan: ContentPlan | None = None
         planlama_hatasi: DistinctTopicUnavailableError | None = None
         # ⚠️ KONUSUZ UZUN PLAN OLMAZ ve burada durmak yerine Shorts'a
-        # dusuluyor. `--uzun --yedek-konu` ile bos kuyrukta `aday` None
+        # dusuluyor. `--uzun --yedek-konu` ile bos kuyrukta konu None
         # kaliyor; `generate_content_plan` o durumda `ValueError` atiyor ve
         # bu dongu onu yakalamiyordu, yani nazikce reddedilecek bir koşum
         # izlenmeyen bir istisnayla olurdu.
-        if not bicim.dikey and aday is None:
+        if not bicim.dikey and etkin_konu is None:
             print(
                 "ℹ️ uzun format icin kuyruk adayi yok (yedek konu kipi), "
                 "Shorts'a dusuluyor",
@@ -4383,9 +4414,10 @@ def run_cycle(
             try:
                 plan = generate_content_plan(
                     exclusions,
-                    konu=aday.baslik if aday else None,
+                    konu=etkin_konu,
                     sahne_sayisi=sahne_sayisi,
                     bicim=aday_bicim,
+                    capa_tekrari_serbest=capa_serbest,
                 )
                 bicim = aday_bicim
                 break
@@ -4467,9 +4499,10 @@ def run_cycle(
                     try:
                         plan = generate_content_plan(
                             exclusions,
-                            konu=aday.baslik if aday else None,
+                            konu=etkin_konu,
                             sahne_sayisi=sahne_sayisi,
                             bicim=bicim,
+                            capa_tekrari_serbest=capa_serbest,
                         )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
@@ -4530,9 +4563,10 @@ def run_cycle(
                     try:
                         plan = generate_content_plan(
                             exclusions,
-                            konu=aday.baslik if aday else None,
+                            konu=etkin_konu,
                             sahne_sayisi=sahne_sayisi,
                             bicim=bicim,
+                            capa_tekrari_serbest=capa_serbest,
                         )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
@@ -4563,7 +4597,7 @@ def run_cycle(
                 if onarilan := kareyi_onar(
                     plan,
                     review,
-                    aday.baslik if aday else "",
+                    etkin_konu or "",
                     bicim=bicim,
                     ornekler=hakem_kareleri(
                         len(plan.scenes) * bicim.kare_yuvasi, bicim
@@ -4725,21 +4759,36 @@ def main() -> None:
         help=(
             "8-13 dakikalık YATAY belgesel üret (varsayılan: dikey Shorts). "
             "İzlenme saati yalnızca bu koldan geliyor; Shorts saymıyor. Konu "
-            "zorunlu (--from-notion) ve arşiv 24 görselden azsa koşum "
-            "sessizce Shorts'a düşer."
+            "zorunlu (--from-notion ya da --konu) ve arşiv 24 görselden azsa "
+            "koşum sessizce Shorts'a düşer."
+        ),
+    )
+    parser.add_argument(
+        "--konu",
+        metavar="METİN",
+        help=(
+            "Konuyu doğrudan ver (kuyruğa sorma). Kullanım yeri ölçülmüş: "
+            "kanalın en çok izlenen videoları talebi KANITLANMIŞ konular ve "
+            "huni onları `benzeri üretilmiş` diye yeniden önermiyor, yani "
+            "uzun formatta yeniden ele almanın tek yolu bu. Çapa tekrarı bu "
+            "kipte serbest — aynı çapa zaten istenen şey."
         ),
     )
     args = parser.parse_args()
     if args.sahne_sayisi is not None and not 6 <= args.sahne_sayisi <= 10:
         parser.error("--sahne-sayisi 6 ile 10 arasında olmalı")
     bicim = UZUN_BICIMI if args.uzun else SHORTS_BICIMI
-    # ⚠️ Uzun kip konuyu KUYRUKTAN almak zorunda: kaynak metin ve arsiv
-    # menusu yalnizca konu verildiginde isteme giriyor, yani konusuz uzun
-    # plan 2.000 kelimeyi hafizadan yazar (DW-114 riski, kelime SAYISIYLA
-    # olcekleniyor). `generate_content_plan` de ayni kurali uyguluyor;
-    # burada durmak kullaniciya anlasilir bir hata veriyor.
-    if args.uzun and not args.from_notion:
-        parser.error("--uzun için --from-notion gerekli: konusuz uzun plan uydurma riski taşır")
+    # ⚠️ Sart olan sey Notion DEGIL, KONUNUN VERILMIS olmasi: kaynak metin ve
+    # arsiv menusu ancak konu varken isteme giriyor, yani konusuz uzun plan
+    # 2.000 kelimeyi hafizadan yazar (DW-114 riski, kelime SAYISIYLA
+    # olcekleniyor). `--konu` bu kosulu birebir sagliyor.
+    if args.uzun and not (args.from_notion or args.konu):
+        parser.error(
+            "--uzun için --from-notion ya da --konu gerekli: "
+            "konusuz uzun plan uydurma riski taşır"
+        )
+    if args.konu and args.from_notion:
+        parser.error("--konu ile --from-notion birlikte kullanılamaz")
     if args.uzun and args.sahne_sayisi is not None:
         parser.error("--uzun ile --sahne-sayisi birlikte kullanılamaz (deney Shorts koluna ait)")
     result = run_cycle(
@@ -4750,6 +4799,7 @@ def main() -> None:
         yedek_konu=args.yedek_konu,
         sahne_sayisi=args.sahne_sayisi,
         bicim=bicim,
+        konu_override=args.konu,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
