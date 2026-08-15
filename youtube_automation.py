@@ -2648,6 +2648,18 @@ def generate_content_plan(
             validate_content_plan(plan, sahne_sayisi, bicim=bicim, konu=konu or "")
         except ValueError as exc:
             son_kusur = str(exc)
+            # ⚠️ HER DENEME yaziliyor, yalnizca sonuncusu degil. Olculdu
+            # (2026-08-15, sekizinci Herculaneum koşumu): koşum 8,6 dakika
+            # surdu ve geriye TEK satir bilgi birakti ("son kusur: 48 sahne").
+            # Diger dort denemenin neye taktigi kayboldu, yani bir sonraki
+            # adim tahmine kaliyordu. Uzun koşumlar pahali; korlugun bedeli
+            # her seferinde yeni bir koşum.
+            print(
+                f"⚠️ deneme {deneme}/5 reddedildi: {exc} "
+                f"({len(plan.scenes)} sahne, {len(plan.script.split())} kelime, "
+                f"capa {plan.visual_anchor!r})",
+                flush=True,
+            )
             user += (
                 "\nThe last JSON plan was invalid: "
                 f"{exc}. Return a completely corrected plan that follows every constraint."
@@ -2660,6 +2672,8 @@ def generate_content_plan(
         if yumusak_kapilar_acik and (
             kusur := alinti_kusuru(plan, konu or "", sinir=envanter_sinir)
         ):
+            son_kusur = f"alinti kapisi: {kusur}"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += f"\nThe last plan did not match the archive: {kusur}"
             continue
         # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
@@ -2688,6 +2702,8 @@ def generate_content_plan(
         # docstring'de: konuyu model degil, olculmus talep verisi ve onu
         # onaylayan insan sectI.
         if yumusak_kapilar_acik and _kapanis_tekrari(plan.script, onceki_kapanislar):
+            son_kusur = "kapanis kalibi onceki videoyla ayni"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += (
                 "\nThe closing line repeats the sentence pattern of an earlier video. "
                 "End on a different kind of note: a different part of the archive, a "
@@ -2699,6 +2715,8 @@ def generate_content_plan(
         # orada "hepsi ayni video" izlenimi veriyor — ve bu izlenim tam da
         # "toplu uretilmis, tekrar eden icerik" olcutunun baktigi sey.
         if yumusak_kapilar_acik and _baslik_bicimi_tekrari(plan.title, onceki_basliklar):
+            son_kusur = f"baslik bicimi tekrari: {plan.title!r}"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += (
                 "\nThe title repeats the shape of a recent one. Keep it a search query, "
                 "but change the shape: a different question word, or a statement that "
@@ -2706,6 +2724,8 @@ def generate_content_plan(
             )
             continue
         if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
+            son_kusur = "kanca kalibi onceki videoyla ayni"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += (
                 "\nThe opening line repeats the sentence pattern of an earlier video. "
                 "Open on a different kind of detail: an object, a number, a place, or "
@@ -2729,6 +2749,8 @@ def generate_content_plan(
                 and not capa_tekrari_serbest
                 and is_duplicate_visual_anchor(plan.visual_anchor, previous_anchors)
             ):
+                son_kusur = f"capa daha once kullanilmis: {plan.visual_anchor!r}"
+                print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
                 user += (
                     f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
                     "channel. Keep the same subject but anchor the video on a different "
