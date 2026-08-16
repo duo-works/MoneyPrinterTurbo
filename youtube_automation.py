@@ -4373,6 +4373,12 @@ def run_generator(
             # bir belgesel icin portre gorseller ustte gelir (bkz.
             # `wikimedia_materials.UZUN_ORANI`).
             hedef_oran=kare_orani(bicim),
+            # ⚠️ Uzun formatta capa BASLIKTA aranir. Gerekce ve olcum
+            # `wikimedia_materials._puanli_adaylar` icinde: aciklamada gecen
+            # capa, gorselin onu gosterdigi anlamina gelmiyor (adas kasaba,
+            # modern kopya, gecerken anma). Shorts'ta dar capa KASITLI ve
+            # cogu zaman baslikta gecmez — bu yuzden orada kapali.
+            capa_baslikta=not bicim.dikey,
         )
     except MaterialsUnavailableError as exc:
         if not AI_VISUAL_FALLBACK_ENABLED:

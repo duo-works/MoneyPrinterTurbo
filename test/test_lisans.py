@@ -56,8 +56,13 @@ def test_bilinmeyen_lisans_reddediliyor(lisans):
 def test_lisans_kontrolu_secime_bagli():
     """Fonksiyon dogru olsa bile secim onu cagirmazsa sinir tutmaz."""
     kaynak = Path(wm.__file__).read_text(encoding="utf-8")
+    # ⚠️ SABIT UZUNLUKTA DILIM ALMA. Onceki hali `i : i + 3000` idi ve
+    # `_puanli_adaylar`a yorum eklenince dilim lisans kontrolune ULASAMADI;
+    # test kod bozulmadan patladi (bu sinif kirilma bu depoda dorduncu kez).
+    # Dilim, secimin gercekten kullandigi fonksiyonun SONUNA kadar gidiyor.
     i = kaynak.index("def select_candidate(")
-    govde = kaynak[i : i + 3000]
+    j = kaynak.index("\ndef ", kaynak.index("def _puanli_adaylar("))
+    govde = kaynak[i:j]
 
     assert "kullanilabilir_lisans(license_name)" in govde
 

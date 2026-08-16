@@ -618,8 +618,11 @@ def select_candidate(
     query: str = "",
     required_anchor: str = "",
     hedef_oran: float = SHORTS_ORANI,
+    capa_baslikta: bool = False,
 ) -> dict[str, Any] | None:
-    adaylar = _puanli_adaylar(pages, used_titles, query, required_anchor, hedef_oran)
+    adaylar = _puanli_adaylar(
+        pages, used_titles, query, required_anchor, hedef_oran, capa_baslikta
+    )
     return adaylar[0] if adaylar else None
 
 
@@ -643,6 +646,7 @@ def _puanli_adaylar(
     query: str = "",
     required_anchor: str = "",
     hedef_oran: float = SHORTS_ORANI,
+    capa_baslikta: bool = False,
 ) -> list[dict[str, Any]]:
     candidates: list[tuple[float, dict[str, Any]]] = []
     query_terms = _relevance_terms(query)
@@ -665,8 +669,30 @@ def _puanli_adaylar(
         evidence = " ".join(
             [title, _plain_text(_metadata_value(image, "ImageDescription"))]
         ).lower()
+        # ⚠️ UZUN FORMATTA CAPA BASLIKTA ARANIYOR, aciklamada degil.
+        #
+        # Olculdu (2026-08-16, uc Herculaneum videosu, hepsi 72/72/52): capa
+        # kelimesinin ACIKLAMADA gecmesi, gorselin onu GOSTERDIGI anlamina
+        # gelmiyor. Videoya bu yoldan giren uc dosya:
+        #
+        #   1846 Missouri serif ilani → "Louis to Herculaneum, by Catalang's
+        #                                ford" (Herculaneum, MISSOURI)
+        #   Getty Villa, Kaliforniya  → "1974 tasarimi Villa dei Papiri'den"
+        #   Kolezyum, Roma            → "MS 79 ... Herculaneum ve Pompeii'yi"
+        #
+        # Uc ayri gecis bicimi: ADAS YER, MODERN KOPYA, GECERKEN ANMA.
+        # Hicbiri Herculaneum'a ozgu degil.
+        #
+        # Bedeli OLCULDU: teslim edilen 38 dosyanin 34'unde (%89) capa zaten
+        # baslikta geciyor. Kural uc kotu dosyanin ucunu de eliyor, karsiliginda
+        # yalnizca bir sinirdaki dosya kaybediliyor (`Achilleus Lyra.jpg`).
+        #
+        # ⚠️ SHORTS'TA KAPALI ve oyle kalmali: orada capa bilerek DAR olabiliyor
+        # (kisi videosunda capa kurum olursa video yanlis insani gosterir) ve
+        # dar capa cogu zaman baslikta gecmez. Shorts yolu 96 puan aliyor.
+        capa_kaniti = title.lower() if capa_baslikta else evidence
         if required_anchor_terms and not all(
-            term in evidence for term in required_anchor_terms
+            term in capa_kaniti for term in required_anchor_terms
         ):
             continue
         if not capa_eslesme.sira_sayisi_uyuyor(
@@ -1298,6 +1324,7 @@ def download_scene_materials(
     kismi: bool = False,
     kategori_havuzu: list[dict[str, Any]] | None = None,
     hedef_oran: float = SHORTS_ORANI,
+    capa_baslikta: bool = False,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
     """Sahne gorsellerini arsivlerden indirir.
 
@@ -1434,6 +1461,13 @@ def download_scene_materials(
                     query=query,
                     required_anchor=visual_anchor,
                     hedef_oran=hedef_oran,
+                    # ⚠️ Kusurun girdigi TEK kapi burasi. `build_search_queries`
+                    # terimi ikili parcalara boluyor ("Herculaneum decorative
+                    # elements Pompeii comparison" → 10 sorgu) ve iki terimlik
+                    # bir sorguda asgari eslesme 1'e DUSUYOR. Yani tam terim
+                    # tutmayinca kapi 3'ten 1'e cokuyor ve aciklamasinda capa
+                    # gecen her buyuk fotograf kabul ediliyor.
+                    capa_baslikta=capa_baslikta,
                 )
                 if not candidate:
                     break

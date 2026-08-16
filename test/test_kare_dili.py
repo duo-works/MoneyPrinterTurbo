@@ -152,7 +152,11 @@ def test_benzerlik_kaydi_temizlikte_korunuyor():
 
 def test_olcum_hatta_bagli():
     """Baglanti testi — fonksiyon dogru olsa bile cagrilmazsa olcum yok."""
+    # ⚠️ SABIT UZUNLUKTA DILIM ALMA. Onceki hali `i : i + 3000` idi ve
+    # `download_scene_materials` cagrisina alti satir yorum eklenince olcum
+    # cagrisi dilimin DISINDA kaldi; test kod bozulmadan patladi. Dilim
+    # fonksiyonun kendi sonuna kadar gidiyor.
     i = KAYNAK.index("def run_generator(")
-    govde = KAYNAK[i : i + 3000]
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
 
     assert "_benzerligi_kaydet(" in govde
