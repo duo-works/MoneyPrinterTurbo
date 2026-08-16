@@ -31,7 +31,12 @@ import sys
 
 import notion_kuyrugu
 import wikimedia_materials
-from youtube_automation import KARE_YUVASI, YTOTO_PATH, is_duplicate_visual_anchor, load_state
+from youtube_automation import (
+    KARE_YUVASI,
+    YTOTO_PATH,
+    engellenen_capalar,
+    is_duplicate_visual_anchor,
+)
 
 HEDEF_DERINLIK = 6
 """`Secildi` kuyrugunda tutulmak istenen aday sayisi.
@@ -86,13 +91,13 @@ def uretilebilir_mi(baslik: str) -> tuple[bool, int]:
 
 
 def _kullanilmis_capalar() -> list[str]:
-    durum = load_state()
-    return [
-        str(k.get("visual_anchor", ""))
-        for c in (durum.get("published", []), durum.get("rejected", []))
-        for k in c
-        if str(k.get("visual_anchor", "")).strip()
-    ]
+    """⚠️ Uretimle AYNI listeyi dondurmeli — bkz. `engellenen_capalar`.
+
+    Eskiden burada `published` + `rejected` capalari toplaniyordu ve tek bir
+    ret konuyu omur boyu yasakliyordu; olcum 2026-08-16'da havuzun 52'de 0'a
+    dustugunu gosterdi. Butce mantigi tek yerde tutuluyor.
+    """
+    return engellenen_capalar()
 
 
 def besle(kuru: bool = False) -> dict:

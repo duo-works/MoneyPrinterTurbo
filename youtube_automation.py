@@ -421,6 +421,74 @@ def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
     return False
 
 
+RET_DENEME_BUTCESI = 3
+"""Bir konunun KALICI olarak kapanmasi icin gereken ret sayisi.
+
+⚠️ NEDEN VAR — olculdu (2026-08-16). Dislama listesi `published` + `rejected`
+capalarindan kuruluyordu, yani **tek bir ret konuyu omur boyu yasakliyordu.**
+Kanalin 18 yayini ve 192 reddi var; liste %85 basarisizliktan olusuyordu:
+
+    kullanilmis capa kaydi              211  (tekil 117)
+    yalniz REDDEDILMIS capa              99
+    havuzda kalan uygun capa           0 / 52
+    yalniz yayinlananlar engelleseydi  46 / 52
+
+Yanan 99 konunun 17'si esige 1-10 puan yaklasmisti: Buyuk Piramit, Knossos,
+Akrotiri, Aphrodisias, Jerash TEK denemede 78 alip (kapi 80) yasaklandi.
+
+⚠️ Ama sinirsiz tekrar da yanlis: Murad III 15, Talaat Pasha 13 deneme yakti
+ve ikisi de gecemedi. 3 butcesi ikisini de disarida tutar (zaten asmislar),
+tek denemelik yakin isabetleri geri acar. Kendi kendini sinirlar: 2 retli bir
+capa yeniden denenir, duserse 3 olur ve kapanir.
+
+⚠️ YAYIN farkli: yayinlanmis capa KALICI engel. Ayni videoyu iki kez cekmek
+tekrar politikasi ihlali; ret ise yalnizca "bu deneme tutmadi" demek.
+"""
+
+
+def _ret_denemeleri(state: dict[str, Any]) -> dict[str, int]:
+    """Her capa/konu icin kac ret kaydi var.
+
+    Anahtar `visual_anchor`; bos ise `topic`'e dusulur — eski kayitlarin bir
+    kisminda capa alani yok.
+    """
+    sayac: dict[str, int] = {}
+    for kayit in state.get("rejected", []):
+        anahtar = str(kayit.get("visual_anchor") or kayit.get("topic") or "").strip()
+        if anahtar:
+            anahtar = anahtar.casefold()
+            sayac[anahtar] = sayac.get(anahtar, 0) + 1
+    return sayac
+
+
+def _butce_doldu(ad: str, sayac: dict[str, int]) -> bool:
+    return sayac.get(str(ad).strip().casefold(), 0) >= RET_DENEME_BUTCESI
+
+
+def engellenen_capalar(state: dict[str, Any] | None = None) -> list[str]:
+    """Yeniden kullanilamayacak capalar — yayinlananlar + butcesi dolmus retler.
+
+    ⚠️ TEK KAYNAK. Huni (`huni_besle`) ve uretim (`generate_content_plan`)
+    ayni listeyi gormeli; iki tarafin farkli engel listesi tasimasi bu repoda
+    daha once yasanmis bir kusur sinifi (kuyrugun kabul ettigi konuyu besleyici
+    reddediyordu).
+    """
+    durum = load_state() if state is None else state
+    sayac = _ret_denemeleri(durum)
+    engelli = [
+        str(kayit.get("visual_anchor", ""))
+        for kayit in durum.get("published", [])
+        if str(kayit.get("visual_anchor", "")).strip()
+    ]
+    engelli.extend(
+        str(kayit.get("visual_anchor", ""))
+        for kayit in durum.get("rejected", [])
+        if str(kayit.get("visual_anchor", "")).strip()
+        and _butce_doldu(str(kayit.get("visual_anchor", "")), sayac)
+    )
+    return engelli
+
+
 KANAL_SESI = """You are the editorial producer of an English global-history YouTube Shorts channel.
 
 THE CHANNEL HAS ONE FIXED EDITORIAL ANGLE, AND EVERY SCRIPT MUST HAVE IT: the gap between what people assume happened and what the surviving evidence actually shows. Not "here are facts about a place", but "here is what the record says, and it is not what you were told."
@@ -2058,8 +2126,18 @@ def _recent_titles() -> list[str]:
     titles.extend(item.get("topic", "") for item in state.get("published", []))
     titles.extend(item.get("title", "") for item in state.get("published", []))
     titles.extend(item.get("visual_anchor", "") for item in state.get("published", []))
-    titles.extend(item.get("topic", "") for item in state.get("rejected", []))
-    titles.extend(item.get("visual_anchor", "") for item in state.get("rejected", []))
+    # ⚠️ RET KOLU BUTCEYE BAGLI — bu liste `is_duplicate_topic`e (Jaccard >=
+    # 0,6) giriyor ve yedek kipte capa AYNI ZAMANDA konu. Butce uygulanmazsa
+    # `engellenen_capalar` capayi serbest biraksa bile "Knossos" ile daha once
+    # reddedilmis "Knossos" Jaccard 1,0 verip plan asamasinda yine reddedilir;
+    # yani H1 listeyi acar ama kapi yine kapali kalirdi.
+    sayac = _ret_denemeleri(state)
+    for item in state.get("rejected", []):
+        capa = str(item.get("visual_anchor") or item.get("topic") or "")
+        if not _butce_doldu(capa, sayac):
+            continue
+        titles.append(item.get("topic", ""))
+        titles.append(item.get("visual_anchor", ""))
     if ANALYSIS_FILE.exists():
         analysis = json.loads(ANALYSIS_FILE.read_text(encoding="utf-8"))
         titles.extend(item.get("title", "") for item in analysis.get("all_shorts", []))
@@ -2758,12 +2836,7 @@ def generate_content_plan(
         sahne_tavani = min(bicim.sahne_araligi[1], len(on_menu))
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
-    previous_anchors = [
-        str(item.get("visual_anchor", ""))
-        for collection in (state.get("published", []), state.get("rejected", []))
-        for item in collection
-        if str(item.get("visual_anchor", "")).strip()
-    ]
+    previous_anchors = engellenen_capalar(state)
     eligible_anchors = [
         anchor
         for anchor in EDITORIAL_ANCHOR_POOL

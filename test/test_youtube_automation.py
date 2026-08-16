@@ -1083,20 +1083,75 @@ def test_run_cycle_returns_quality_rejection_when_distinct_topics_are_exhausted(
     assert "distinct" in result["reviews"][-1]["review"]["issues"][0]
 
 
-def test_recent_titles_includes_rejected_visual_anchor(monkeypatch, tmp_path):
+def _ret_durumu(tmp_path, monkeypatch, adet: int):
+    kayit = ", ".join(
+        '{"topic": "Ancient Architecture", "visual_anchor": "Pyramids of Giza"}'
+        for _ in range(adet)
+    )
     state_file = tmp_path / "state.json"
     state_file.write_text(
-        '{"published": [], "completed_slots": [], "rejected": '
-        '[{"topic": "Ancient Architecture", "visual_anchor": "Pyramids of Giza"}]}',
+        '{"published": [], "completed_slots": [], "rejected": [' + kayit + "]}",
         encoding="utf-8",
     )
     monkeypatch.setattr("youtube_automation.STATE_FILE", state_file)
     monkeypatch.setattr("youtube_automation.ANALYSIS_FILE", tmp_path / "missing.json")
 
+
+def test_recent_titles_TEK_retten_sonra_konuyu_yasaklamiyor(monkeypatch, tmp_path):
+    """⚠️ SOZLESME DEGISTI (2026-08-16). Eskiden tek ret konuyu omur boyu
+    disliyordu; olculdu ki bu, capa havuzunu 52'de 0'a dusuruyor ve tek
+    denemede 78 alan konular (Knossos, Aphrodisias, Jerash) kalici olarak
+    yasaklaniyor. Butce `RET_DENEME_BUTCESI` ile 3.
+
+    ⚠️ Bu kolun butceye baglanmasi SART: liste `is_duplicate_topic`e (Jaccard
+    >= 0,6) giriyor ve yedek kipte capa AYNI ZAMANDA konu. Yalnizca capa
+    listesi acilsaydi konu kapisi yine reddederdi."""
+    _ret_durumu(tmp_path, monkeypatch, 1)
+
+    history = _recent_titles()
+
+    assert "Ancient Architecture" not in history
+    assert "Pyramids of Giza" not in history
+
+
+def test_recent_titles_BUTCE_dolunca_yasakliyor(monkeypatch, tmp_path):
+    """3 ret = konu kapanir. Murad III (15 deneme) ve Talaat Pasha (13) boyle
+    disarida kaliyor — sinirsiz tekrar slot yakiyordu."""
+    import youtube_automation as ya
+
+    _ret_durumu(tmp_path, monkeypatch, ya.RET_DENEME_BUTCESI)
+
     history = _recent_titles()
 
     assert "Ancient Architecture" in history
     assert "Pyramids of Giza" in history
+
+
+def test_yayinlanan_capa_TEK_kayitla_kalici_engel():
+    """⚠️ Yayin ile ret ayni sey DEGIL: yayinlanmis capa butceye tabi degil,
+    ilk kayitta kalici kapanir. Ayni videoyu iki kez cekmek tekrar politikasi
+    ihlali; ret yalnizca 'bu deneme tutmadi' demek."""
+    import youtube_automation as ya
+
+    durum = {
+        "published": [
+            {"topic": "Ancient Architecture", "visual_anchor": "Pyramids of Giza"}
+        ],
+        "rejected": [],
+    }
+
+    assert "Pyramids of Giza" in ya.engellenen_capalar(durum)
+
+
+def test_engellenen_capalar_huni_ile_uretimde_AYNI(monkeypatch, tmp_path):
+    """⚠️ Iki tarafin farkli engel listesi tasimasi bu repoda yasanmis bir kusur
+    sinifi (kuyrugun kabul ettigi konuyu besleyici reddediyordu). Tek kaynak."""
+    import huni_besle
+    import youtube_automation as ya
+
+    _ret_durumu(tmp_path, monkeypatch, 1)
+
+    assert huni_besle._kullanilmis_capalar() == ya.engellenen_capalar()
 
 
 def test_refine_search_terms_restores_missing_visual_anchor():
