@@ -1054,7 +1054,43 @@ def arsiv_menusu(
     return _aciklamayi_seyrelt(adaylar)[:sinir]
 
 
-AYNI_ACIKLAMA_TAVANI = 2
+AYNI_ACIKLAMA_TAVANI = 6
+"""Bir aciklama grubunun menuye koyabilecegi en fazla dosya.
+
+⚠️ 2'DEN 6'YA CIKARILDI (2026-08-16). Tavan 2 iken seyreltme gercek arzi
+yok ediyordu: Commons kategori sablonu (Vikipedi giris cumlesi) tasiyan her
+konu terfi kapisinda eksik sayiliyordu. Olculdu:
+
+    Karnak   sicilen aday 59 -> seyreltme sonrasi  6   (kapi 12: KALIR)
+    Ephesus  sicilen aday  6 -> seyreltme sonrasi  4   (kapi 12: KALIR)
+
+Karnak'in 45'lik grubu ORNEKLENDI (8 dosya indirildi, 28 cift): yalnizca
+5 cift (%18) `ARSIV_TEKRAR_ESIGI`nin ustunde, benzerlik ort. 0,58 / en dusuk
+0,37. Yani dosyalar buyuk olcude FARKLI — karsilastir: Herculaneum'un tekrar
+eden 1773 gravur serisinde 20 dosyanin 20'si esigin ustundeydi.
+
+⚠️ ELENEN IKI MEKANIZMA (ikisi de olculerek curutuldu, tekrar denenmesin):
+  * aciklama + TARIH anahtari — iki vaka da ayni yukleyicinin ayni gunku
+    serisi (Karnak 2025-02-03, saniyeler arayla; Cutty Sark 26-06-2012).
+    Saniye ayrimi ikisini de seyreltmez, gun ayrimi ikisini de seyreltir.
+  * kategori kolunu muaf tutmak — Karnak'in 45'lik grubu ARAMA kolundan
+    geliyor, kategori kolundan degil (olculdu: kategori grubu 0).
+
+6 = `ASGARI_MENU`nun (12) yarisi. Editoryal ifade: tek bir aciklama grubu,
+kapiyi gecen bir konunun ihtiyac duydugu dosyanin YARISINDAN fazlasini
+saglayamaz. (`huni_besle.ASGARI_MENU` ile bilincli iliski; ice aktarilmiyor
+cunku dongu olurdu.)
+
+Cutty Sark sozlesmesi KORUNUYOR: 38'lik bir seri menuye 38 degil 6 girdi
+koyar, yani gercekten farkli dosyalari `[:sinir]` disina itme kusuru
+kapali kalir.
+
+⚠️ Ucuz vekil oldugu bilinerek kabul edildi — aciklama metni gorsel
+benzerligi olcemez. Bedeli asagi akista sinirli: `_tekrar_mi` indirme aninda
+gorsel tekrari yakaliyor, hakem render sonrasi tekrari olcuyor ve
+`RET_DENEME_BUTCESI` sayesinde yanlis terfi edilen bir konu kalici yasak
+degil en fazla 3 slot maliyeti demek.
+"""
 
 
 def _aciklamayi_seyrelt(adaylar: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -45,6 +45,27 @@ def test_aciklamasiz_dosyalar_gruplanmiyor():
     assert len(wm._aciklamayi_seyrelt(adaylar)) == 6
 
 
+def test_BUYUK_grup_tavana_kadar_menude_kaliyor():
+    """⚠️ KARNAK SINIFI — seyreltme gercek arzi yok etmemeli.
+
+    Tavan 2 iken Commons kategori sablonu (Vikipedi giris cumlesi) tasiyan
+    her konu terfi kapisinda eksik sayiliyordu: Karnak'in suzgecten gecen 59
+    adayi menuye 6 girdi olarak dusuyordu ve kapi 12 istiyor.
+
+    O 45'lik grup ORNEKLENDI (8 dosya, 28 cift): yalnizca 5 cift (%18)
+    tekrar esiginin ustunde, ort. benzerlik 0,58. Yani dosyalar farkli ve
+    atilmalari YANLIS red uretiyordu.
+    """
+    adaylar = [_aday(f"File:{i}.jpg", "the karnak temple complex") for i in range(45)]
+
+    seyrek = wm._aciklamayi_seyrelt(adaylar)
+
+    assert len(seyrek) == wm.AYNI_ACIKLAMA_TAVANI
+    assert wm.AYNI_ACIKLAMA_TAVANI * 2 >= 12, (
+        "iki aciklama grubu tek basina kapiyi (ASGARI_MENU=12) gecirebilmeli"
+    )
+
+
 def test_ilk_bastaki_sira_korunuyor():
     """Seyreltme siralamayi degistirmemeli: puan sirasi hala anlamli."""
     adaylar = [_aday("File:a.jpg", "x"), _aday("File:b.jpg", "y"), _aday("File:c.jpg", "x")]
