@@ -459,6 +459,30 @@ karsilastiriyor.
 # serit gercekten izlenebilir bir kare vermiyor; takas orada AI lehine donuyor.
 ASGARI_DIKEY_DOLULUK = 0.28
 
+AZAMI_PIKSEL = 150_000_000
+"""Bir adayin gecebilecegi en buyuk piksel sayisi — ust olcu siniri.
+
+⚠️ Bu sinir bir URETIM COKMESINDEN geldi (2026-08-16 03:08,
+`hata-20260816-030859.log`): zamanlayici 1.283.491.230 pikselli bir Commons
+dosyasi indirdi, `_tekrar_mi` onu olcmeye calisti ve PIL
+`DecompressionBombError` firlatti. Hata `OSError` OLMADIGI icin mevcut
+korumalar gormedi ve tum koşum oldu — o slot bos gecti.
+
+Asil koruma `gorsel_olcum.parmak_izi` icinde (hatayi `OSError`e ceviriyor);
+burasi ikinci kat: boyle bir dosya INDIRILMEDEN elensin. Alt sinir
+(`< 720`) asagida zaten var, ust sinir yoktu.
+
+Deger olculdu, tahmin edilmedi. Ayni gunun koşumunda 99 ve 114 megapikselli
+iki dosya sorunsuz kullanildi (PIL yalnizca uyari verdi, is gordu), yani
+sinir onlarin USTUNDE olmali — buyuk arsiv taramalari cogu zaman en iyi
+kaynak. PIL'in hata esigi 178.956.970; 150M ikisinin arasina oturuyor:
+calisan en buyuk dosyanin %31 ustu, PIL'in patlama noktasinin %16 altinda.
+
+⚠️ PIL'in kendi sabitine yaslanilmadi (surum degisince sessizce kayar) ve
+`Image.MAX_IMAGE_PIXELS = None` yapilmadi — o, dosyayi gercekten cozmeye
+calisip birkac GB RAM yerdi.
+"""
+
 
 def belge_taramasi(baslik: str) -> bool:
     """Bu Commons dosyasi bir belge/el yazmasi taramasi mi — bkz. `BELGE_ISARETLERI`."""
@@ -672,6 +696,11 @@ def _puanli_adaylar(
         width = int(image.get("width") or image.get("thumbwidth") or 0)
         height = int(image.get("height") or image.get("thumbheight") or 0)
         if width < 720 or height < 720:
+            continue
+        # ⚠️ Ust sinir: 1,28 gigapiksellik bir dosya zamanlayiciyi oldurmustu
+        # (bkz. `AZAMI_PIKSEL`). Alt sinirin yaninda duruyor cunku ikisi de
+        # ayni soruyu soruyor — bu dosya isimize yarar mi.
+        if width * height > AZAMI_PIKSEL:
             continue
         if not karede_yeterli(width, height, hedef_oran):
             continue

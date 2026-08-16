@@ -158,9 +158,28 @@ def parmak_izi(yol: Path) -> Any:
 
     Renkten bagimsiz oldugu icin ayni gorselin renklendirilmis kopyasini
     yakalar; olculdu (2026-08-09) tam da bu oldu.
+
+    ⚠️ DEV DOSYA `OSError`E CEVRILIYOR ve bu satir bir uretim cokmesini
+    kapatiyor. Olculdu (2026-08-16 03:08, `hata-20260816-030859.log`):
+    zamanlayici 1.283.491.230 pikselli bir Commons dosyasinda
+    `PIL.Image.DecompressionBombError` alip TUM kosumu oldurdu.
+
+    Uc cagri yerinin ucu de zaten `except OSError` ile sarili ve niyetleri
+    dogru ("olcum hatasi uretimi durdurmaz"): `_izi_ekle`, `_tekrar_mi`,
+    `benzer_kareler`. Kusur, `DecompressionBombError`in `OSError`den DEGIL
+    dogrudan `Exception`dan tureme si — yani o korumalarin hicbiri onu
+    gormuyordu. Cevrim burada yapiliyor ki uc koruma da degismeden calissin.
+
+    ⚠️ `Image.MAX_IMAGE_PIXELS = None` YANLIS cozum olurdu: sinir kalkarsa
+    dosya gercekten cozulmeye calisilir ve 1,28 gigapiksel birkac GB RAM yer.
+    Dogru davranis olcumden VAZGECMEK; boyle bir dosya `_puanli_adaylar`
+    icindeki ust olcu siniriyla zaten aday olamiyor.
     """
-    with Image.open(yol) as im:
-        gri = im.convert("L").resize((16, 16))
+    try:
+        with Image.open(yol) as im:
+            gri = im.convert("L").resize((16, 16))
+    except Image.DecompressionBombError as hata:
+        raise OSError(f"gorsel olculemeyecek kadar buyuk: {yol}") from hata
     dizi = np.asarray(gri, dtype=float)
     return dizi > dizi.mean()
 
