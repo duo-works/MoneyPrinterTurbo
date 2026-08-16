@@ -2054,6 +2054,27 @@ def _json_completion(
     return _json_govdesi(response.choices[0].message.content)
 
 
+GORU_JSON_DENEMESI = 3
+"""Görü modeli okunamayan cevap verirse kac kez tekrar denenecek.
+
+⚠️ NEDEN VAR — olculdu (2026-08-16), AYNI GUN IKI KOŞUM bu yuzden oldu:
+
+    06:13  json.decoder.JSONDecodeError: Expecting value: line 1 column 1
+    14:15  RuntimeError: model bos cevap dondurdu
+
+Ikisi de RET degil ÇÖKME: `run_cycle` yigin iziyle olyor, slot kayboluyor ve
+zamanlayici "HATA | cikis 1" yaziyor. 14:15 koşumu Terracotta Army'yi ta
+hakem asamasina getirmisti — render tamamlanmis, ~25 dakikalik is cope gitti.
+
+Tekrar denemek dogru cozum cunku kusur MODELIN CIKTISINDA, girdide degil:
+ayni istem ikinci denemede okunabilir JSON dondurebiliyor. `temperature=0.1`
+denemeler arasi kucuk bir degisiklik birakiyor.
+
+3 secildi: her deneme yuksek cozunurluklu bir gorü cagrisi, yani pahali;
+ama kaybedilen alternatif TUM koşum (plan + indirme + render).
+"""
+
+
 def _vision_json(
     prompt: dict[str, Any],
     image_path: Path,
@@ -2092,32 +2113,46 @@ def _vision_json(
     client, model = _openai_client()
     base_url = str(config.app.get("openai_base_url", "")).strip()
     encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.1,
-        response_format={"type": "json_object"},
-        max_tokens=AZAMI_CIKTI_TOKEN,
-        timeout=float(zaman_asimi),
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{encoded}",
-                            "detail": "high",
+    son_hata: Exception | None = None
+    for deneme in range(1, GORU_JSON_DENEMESI + 1):
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+            max_tokens=AZAMI_CIKTI_TOKEN,
+            timeout=float(zaman_asimi),
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{encoded}",
+                                "detail": "high",
+                            },
                         },
-                    },
-                ],
-            }
-        ],
-        # ⚠️ Gorü yolunda da kapali: iki kalite kapisi da buradan geciyor ve
-        # akil yurutme butceyi yerse kapi BOS cevap alip sessizce duser.
-        **_akil_yurutmeyi_kapat(base_url),
-    )
-    return _json_govdesi(response.choices[0].message.content)
+                    ],
+                }
+            ],
+            # ⚠️ Gorü yolunda da kapali: iki kalite kapisi da buradan geciyor ve
+            # akil yurutme butceyi yerse kapi BOS cevap alip sessizce duser.
+            **_akil_yurutmeyi_kapat(base_url),
+        )
+        try:
+            return _json_govdesi(response.choices[0].message.content)
+        except (RuntimeError, ValueError) as hata:
+            # ⚠️ ValueError `json.JSONDecodeError`i de kapsiyor.
+            son_hata = hata
+            print(
+                f"⚠️ görü yanıtı okunamadı (deneme {deneme}/{GORU_JSON_DENEMESI}): "
+                f"{str(hata)[:120]}",
+                flush=True,
+            )
+    raise RuntimeError(
+        f"görü modeli {GORU_JSON_DENEMESI} denemede de okunabilir JSON vermedi"
+    ) from son_hata
 
 
 def _recent_titles() -> list[str]:
