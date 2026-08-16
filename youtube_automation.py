@@ -4026,6 +4026,20 @@ def ikincil_gorselleri_denetle(
     davranisina (denetimsiz ikincil) duser. Kapinin kendisi bir
     IYILESTIRME; onu on kosula cevirmek tek bir 429'un koşumu oldurmesi
     demek olurdu (bkz. `arsiv_envanteri` ayni gerekce).
+
+    ⚠️ KAPI, YAZILDIKTAN SONRA KAYITLI DOSYALARA KOSULDU (render yok, tek
+    gorü cagrisi). Ayrim yapiyor, toptan reddetmiyor:
+
+        Palmyra  ikincil alan sahneler 3,4,5 -> UCU DE dusuruldu. Uclu de
+                 gercekten bozuktu: 03b/04b ayni modern turist (yesil polo,
+                 deve), 05b hava ussu. Render SONRASI hakem de 3 ve 5'i
+                 agir kusurlu saymisti — yani ortusuyor.
+        Gobekli  ikincil alan sahneler 2,3,4,5,6 -> YALNIZCA 6 dusuruldu
+                 (PowerPoint slaydi); dordu korundu.
+
+    Bedel 4-10 sn ve TEK cagri; karsiliginda yanan sey tam bir render +
+    indirme + hakem cagrisi. `kare_yerlesimi` ritmi ise kotu ikincil zaten
+    ritim degil kusur uretiyordu.
     """
     # ⚠️ Numaralar SAHNE numarasi: `create_source_montage` hucreyi
     # `material_files[numara - 1]` diye okuyor. Sikistirilmis bir liste
