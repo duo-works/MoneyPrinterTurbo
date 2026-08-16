@@ -132,11 +132,31 @@ def test_uzun_kipte_kredi_LISTESI_buyumuyor():
     """`credits` uzatmasi da ayni kosulun icinde olmali."""
     i = KAYNAK.index("def run_generator(")
     govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
-    j = govde.index("credits = list(credits) + ikincil_krediler")
+    j = govde.index("credits = list(credits) + [")
 
     # Sekiz bosluk girinti = `if` blogunun icinde (fonksiyon govdesi dort).
     satir_basi = govde.rindex("\n", 0, j) + 1
     assert govde[satir_basi:j] == " " * 8, "kredi uzatmasi kip kosulunun disinda"
+
+
+def test_DUSURULEN_ikincilin_kredisi_EKLENMIYOR():
+    """⚠️ Ayni kusurun ikinci yuzu (2026-08-17). Ikincil gorsel artik render
+    ONCESI denetleniyor ve bozuksa dusuruluyor
+    (`ikincil_gorselleri_denetle`); kredisi de dusmezse video GOSTERMEDIGI
+    bir fotografa atif yapar — yukaridaki testin kapattigi kusurun aynisi,
+    bu kez kip degil denetim yuzunden.
+
+    ⚠️ SIRA onemli: denetim, kredi uzatmasindan ONCE calismali. Sonra
+    calissaydi `dusen_kume` heniz bos olurdu ve suzgec hicbir sey elemezdi.
+    """
+    i = KAYNAK.index("def run_generator(")
+    govde = KAYNAK[i : KAYNAK.index("\ndef ", i + 10)]
+
+    denetim = govde.index("ikincil_gorselleri_denetle(")
+    kredi = govde.index("credits = list(credits) + [")
+
+    assert denetim < kredi, "denetim kredi uzatmasindan once calismali"
+    assert "if int(kredi.get(\"scene\", 0)) not in dusen_kume" in govde
 
 
 # --- Telemetri -------------------------------------------------------------

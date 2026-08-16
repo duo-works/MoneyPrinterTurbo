@@ -16,7 +16,7 @@ import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from zoneinfo import ZoneInfo
 
 from imageio_ffmpeg import get_ffmpeg_exe
@@ -3781,6 +3781,7 @@ def create_source_montage(
     konu: str = "",
     *,
     secilen: list[int] | None = None,
+    ek: str = "",
 ) -> Path:
     # ⚠️ `konu` isteğe bagli ama uretimde HER ZAMAN veriliyor (DW-119):
     # materyal klasoru gibi bu dosya adi da saat anahtarliydi ve ayni saatte
@@ -3811,9 +3812,12 @@ def create_source_montage(
         draw.text((12, 8), str(numara), fill="white")
         canvas.paste(tile, ((hucre % columns) * cell_width, (hucre // columns) * cell_height))
     ayirt_edici = f"-{konu_slug(konu)}" if konu else ""
+    # ⚠️ `ek` OLMADAN ikincil denetimi birincil kontak sayfasini EZERDI. O
+    # dosya adli kayit: 01 slotundaki kusurun ikincil gorsellerden geldigi,
+    # tam da birincil sayfanin TEMIZ olmasi karsilastirilarak bulundu.
     montage = (
         REVIEW_DIR
-        / f"source-{publication_slot_key()}{ayirt_edici}-attempt-{attempt}.jpg"
+        / f"source-{publication_slot_key()}{ayirt_edici}-attempt-{attempt}{ek}.jpg"
     )
     canvas.save(montage, format="JPEG", quality=90)
     return montage
@@ -3981,6 +3985,68 @@ def review_source_materials(
         problem_scene_numbers=sorunlu,
         kareler=kareler,
     )
+
+
+def ikincil_gorselleri_denetle(
+    plan: ContentPlan,
+    ikincil: list[Path | None],
+    attempt: int,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> list[int]:
+    """Ikincil gorselleri render ONCESI denetler; DUSURULECEK sahne numaralari doner.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-17, 01 slotu, IKI koşumun IKISINDE de).
+    Kaynak kapisi (`review_source_materials`) yalnizca BIRINCIL gorselleri
+    goruyordu; ikincil gorsel kapidan SONRA iniyor (bkz. `run_cycle`) ve
+    hicbir denetimden gecmeden videonun yarisini dolduruyordu. Kapi
+    calisiyordu, ona o kareler HIC GOSTERILMIYORDU:
+
+        Palmyra    kaynak sayfasi 6/6 TEMIZ, alti agir kusurun ALTISI da
+                   ikincil alan sahnelere dustu (3 ve 5). `scene-05b`
+                   askeri hava ussunde bayrakli cocuklar (20. yy),
+                   `scene-04b` deveye binmis modern turist.
+        Gobekli    tek agir kusur "kare 12" = 6. sahne; `scene-06b` bir
+                   PowerPoint slaydi ("Legacy of Strong Female Symbols in
+                   Anatolia", MO 9500 - MS 110).
+
+    ⚠️ Kok neden `ikincil_gorseller`in esleme yedegi: aday bulunamayinca
+    `_kategori_adaylari(...)[0]` aliniyor, yani kategori havuzunun ILK
+    dosyasi — alaka kontrolu YOK. Oradaki varsayim ("kategori uyeligi ozneyi
+    garanti eder") yalnizca YER icin dogru: Commons'in Palmyra kategorisi
+    Palmyra'nin modern turist fotograflarini da icerir. Ozne dogru, ANLATIM
+    ve DONEM yanlis.
+
+    ⚠️ DUSURME, REDDETME DEGIL. Ikincil gorsel bir iyilestirme: dusunce
+    `kare_yerlesimi` o sahneyi `[A, A]`ya cevirir, yani kapidan GECMIS
+    birincil kareye. Bozuk ikincil yuzunden butun plani copa atmak, iyi bes
+    sahneyi de yakardi.
+
+    ⚠️ Ag/cikarim hatasi uretimi DURDURMAZ: bos liste doner, hat bugunku
+    davranisina (denetimsiz ikincil) duser. Kapinin kendisi bir
+    IYILESTIRME; onu on kosula cevirmek tek bir 429'un koşumu oldurmesi
+    demek olurdu (bkz. `arsiv_envanteri` ayni gerekce).
+    """
+    # ⚠️ Numaralar SAHNE numarasi: `create_source_montage` hucreyi
+    # `material_files[numara - 1]` diye okuyor. Sikistirilmis bir liste
+    # ([03b, 04b, 05b]) yanlis hucreyi gosterirdi; tam boy liste veriliyor ve
+    # None'lar zaten `secilen` disinda kaldigi icin hic indekslenmiyor.
+    secilen = [numara for numara, yol in enumerate(ikincil, 1) if yol is not None]
+    if not secilen:
+        return []
+    try:
+        montaj = create_source_montage(
+            cast(list[Path], ikincil), attempt, plan.topic, secilen=secilen, ek="-ikincil"
+        )
+        inceleme = review_source_materials(plan, montaj, secilen=secilen, bicim=bicim)
+    except Exception as hata:  # noqa: BLE001 - kapi bir iyilestirme, on kosul degil
+        print(f"⚠️ ikincil gorsel denetimi atlandi: {hata}", flush=True)
+        return []
+    # ⚠️ TOPLAM SKORA BAKILMIYOR, sahne sahne bakiliyor. Dusuk bir sayfa
+    # skoru iyi ikincilleri de silerdi; buradaki eylem "yeniden ara" degil
+    # "dusur", yani esik yanlis kaldirac.
+    uygun = set(secilen)
+    return [numara for numara in inceleme.problem_scene_numbers if numara in uygun]
 
 
 GORSEL_DIL = (
@@ -4951,7 +5017,28 @@ def run_generator(
             # `ikincil_gorseller`de. Eksik sahne (kismi kip) False sayiliyor.
             esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
         )
-        credits = list(credits) + ikincil_krediler
+        # ⚠️ IKINCIL DENETIMI — gerekcesi `ikincil_gorselleri_denetle`de.
+        # Kaynak kapisi bu dosyalari HIC gormuyordu ve 01 slotunda iki
+        # koşumun ikisinde de agir kusurlarin TAMAMI buradan geldi.
+        if dusen := ikincil_gorselleri_denetle(
+            plan, ikincil_dosyalar, attempt, bicim=bicim
+        ):
+            for numara in dusen:
+                ikincil_dosyalar[numara - 1] = None
+            print(
+                f"ikincil gorsel dusuruldu: {dusen} — o sahneler birincil kareye "
+                "([A, A]) doner",
+                flush=True,
+            )
+        # ⚠️ KREDI DENETIMDEN SONRA ekleniyor. Dusurulen gorselin kredisi
+        # kalirsa video GOSTERMEDIGI bir fotografa atif yapar; yanlis atif
+        # sessiz ve duzeltilmesi zor (ayni gerekce bu blogun ustunde).
+        dusen_kume = set(dusen)
+        credits = list(credits) + [
+            kredi
+            for kredi in ikincil_krediler
+            if int(kredi.get("scene", 0)) not in dusen_kume
+        ]
     material_files, tam_dolan_sahne = kare_yerlesimi(
         material_files, ikincil_dosyalar, material_dir / "dikey", bicim=bicim
     )
