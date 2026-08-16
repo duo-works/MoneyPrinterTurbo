@@ -100,14 +100,11 @@ EDITORIAL_ANCHOR_POOL = [
     "Tikal",
     "Chichen Itza",
     "Sacsayhuaman",
-    "Newgrange",
-    "Notre Dame Cathedral",
     "Chartres Cathedral",
     "Hadrian's Wall",
     "Ellora Caves",
     "Ajanta Caves",
     "Sigiriya",
-    "Rani ki Vav",
     # ⚠️ Asagidakiler 2026-08-13'te EKLENDI cunku havuz TUKENMISTI: 15 capanin
     # 15'i de kullanilmisti ve `eligible_anchors` bos donuyordu. Model bos
     # liste alinca ince arsivli gizemlere kayiyordu (Baychimo, Vasa, Phaistos
@@ -126,7 +123,6 @@ EDITORIAL_ANCHOR_POOL = [
     "Gobekli Tepe",             # 18
     "Ephesus",                  # 29
     "Hagia Sophia",             # 29
-    "Masada",                   # 47
     "Baalbek",                  # 17
     "Pont du Gard",             # 15
     "Brooklyn Bridge",          # 28
@@ -247,11 +243,28 @@ EDITORIAL_ANCHOR_POOL = [
     #     Notre Dame Cathedral  5    Newgrange     10
     #     Rani ki Vav          10    Masada        11
     #
-    # ⚠️ Bunlar havuzdan CIKARILMADI: suzgec kaliplari daraltilirsa ya da
-    # Commons aciklamalari zenginlesirse geri gelebilirler. Ama yedek kipte
-    # capa secimi menu boyutuna BAKMIYOR (`eligible_anchors` yalnizca tekrar
-    # kapisini uyguluyor), yani bu dordu secilirse ince menuyle uretim
-    # yapilir. Onceden de var olan bir bosluk; suzgec yalnizca gorunur kildi.
+    # ⚠️ DORDU DE HAVUZDAN CIKARILDI — ilk hali "cikarilmadi" diyordu ve o
+    # karar AYNI GECE yanlislandi. 01 slotu yedek kipte kostu, model Masada'yi
+    # secti (menu 11) ve ucuncu deneme gorsel 45 aldi — pencerenin en dusuk
+    # skoru. Yedek kipte capa secimi menu boyutuna BAKMIYOR
+    # (`eligible_anchors` yalnizca tekrar kapisini uyguluyor), yani havuzda
+    # duran ince capa er gec secilir.
+    #
+    # Geri donulebilir: olcut yine 12+, `arsiv_envanteri` ile yeniden olcup
+    # ekleyin. Emsal ayni dosyada — Pompeii ilk turda 0 olcup elenmisti,
+    # sonra 12 olcup geri alindi (bkz. yukarisi).
+    #
+    # ⚠️ ELENEN TASARIM, tekrar onerilmesin: havuza CANLI menu kapisi koymak
+    # (`eligible_anchors` icinde `arsiv_envanteri`). Yedek kipte istem
+    # asamasinda hicbir menu cekilmiyor, yani kapi 58 capayi da soguk
+    # olcerdi: olculdu, capa basina ~12 sn -> ~12 dk, koşumun kendisi ~20 dk.
+    # Maliyet kabul edilemez.
+    #
+    # Kalici secenek (SIMDI YAPILMADI): modelin SECTIGI capayi plan sonrasi
+    # tek seferde olcmek — 1 cagri (~12 sn) + yanan bir cikarim, tam render
+    # bedelinden ucuz. Cikarilmadan sonra bilinen ince capa KALMADI, yani
+    # neredeyse hic atesleneceği icin simdi yazilmadi; gorü on kontrolu
+    # (ayri DW) bu isi zaten ustlenebilir.
     "Roman aqueduct",           # 20
     "Cryptoporticus",           # 16
     "Mastaba",                  # 15
