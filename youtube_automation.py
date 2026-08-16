@@ -533,6 +533,7 @@ EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. 
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
 NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF. "No one can reconstruct every transition from this summary alone" and "the record here does not name each turning point" are not narration; they are padding you reach for when you do not know enough about the subject, and no archive image can illustrate them, so that scene is guaranteed to show something unrelated. If you cannot fill a scene with a concrete thing that happened, a named person, a place, an object, or a date, write fewer scenes. Honest uncertainty ABOUT THE WORLD stays welcome ("locals still claim...", "his body was never found").
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
+NEVER BUILD A SCENE ON THE MODERN RECOVERY EPISODE OR ON LABORATORY ANALYSIS. Sentences like "a sponge diver found a bronze arm in 1900", "salvagers dragged the marble up with hooks", "a CT scan revealed the hidden join" or "radiocarbon dating placed it at 1600 BC" cannot be illustrated here, because every search term must carry the visual_anchor and the archive holds the ancient object itself, not the dive, the winch, or the scanner. The archive will return a present day museum photograph instead and the scene will be marked as an unrelated modern image. Say what the object IS and what happened to it in its own time; if the date came from a laboratory, state the date as a fact and leave the instrument out.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
 When a legend or myth is used, say plainly that it is a legend ("the Inca told of...", "locals still claim...") and separate it from the archaeological record. An honest legend is compelling; a legend presented as fact is not.
 The subject may be a monument, civilization, artifact, invention, vessel, or site, but the SCRIPT must be about something that happened, not about how the thing was built or how large it is. Dimensions, construction techniques, and material lists belong in a single supporting sentence at most.
@@ -720,6 +721,56 @@ RESMEDILEMEZ_KALIPLAR = (
         r"\b(?:image|photo|photograph|picture|portrait|engraving|drawing|painting|"
         r"illustration|plate|film|footage)s?\b[^.]{0,40}?\b"
         r"(?:shows?|showing|depicts?|depicting|captures?)\b",
+        re.IGNORECASE,
+    ),
+    # ⚠️ Ailenin DORDUNCU bicimi: KURTARMA/CIKARMA ANI (2026-08-16).
+    #
+    # Olculdu — ayni gun iki koşum 78 aldi (kapi 80) ve ikisinin de agir
+    # kusurlari ayni yerden geldi. Antikythera koşumunda 5 karede "konuyla
+    # ilgisiz modern goruntu", Great Sphinx koşumunda kaynak skoru 35:
+    #
+    #     "a sponge diver finding a bronze arm in 1900"       Antikythera 45
+    #     "salvagers dragging the marble with hooks"          Antikythera 45
+    #
+    # Nedensellik zinciri bu dosyada zaten belgeli: sahnenin arama terimi
+    # capayi TASIMAK ZORUNDA (`validate_content_plan`), yani sorgu
+    # "Antikythera mechanism sponge diver" oluyor ve arsiv 1900'deki dalis
+    # anini degil nesnenin bugunku muze fotografini donduruyor. Sahne
+    # zorunlu olarak alakasiz bir goruntu aliyor ve hakem `modern` +
+    # `authentic_subject: false` yaziyor — kusur senaryoda dogup gorselde
+    # goruluyor.
+    #
+    # ⚠️ Kasten DAR — genel "found/discovered" BILEREK disarida. "Archaeologists
+    # found no human remains in the ash" (Akrotiri) dunya hakkinda mesru bir
+    # olgu ve o koşumda agir kusur YOKTU. Yasakli olan, sahnenin gorsel
+    # eylemi olarak KURTARMA episodunu anlatmak: ya suraltI kurtarma oznesi,
+    # ya da fiziksel cikarma fiili tasiyan bir ozne.
+    re.compile(
+        r"\b(?:sponge divers?|salvagers?|salvage (?:crew|team|ship|diver|operation)s?|"
+        r"treasure hunters?)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:divers?|workmen|labou?rers?|crews?|excavators?)\b[^.]{0,40}?\b"
+        r"(?:hauled|dragged|raised|hoisted|winched|dredged|lifted|prised|prized)\b",
+        re.IGNORECASE,
+    ),
+    # ⚠️ Ailenin BESINCI bicimi: MODERN ANALIZ TEKNOLOJISI (2026-08-16).
+    #
+    # Ayni kok: hicbir antik-anit arsivi bir tomografi cekimini ya da
+    # radyokarbon olcumunu gosteremez, ve sahnenin sorgusu capaya bagli
+    # oldugu icin donen sey yine nesnenin modern fotografi oluyor.
+    #
+    # ⚠️ Olgunun kendisi yasak DEGIL — yalnizca SAHNE anlatimi olamaz.
+    # Radyokarbon tarihi aciklamada ya da bir olguyu destekleyen cumlede
+    # yasayabilir; burada elenen, o olcumu resmedilecek AN gibi yazmak.
+    re.compile(
+        # ⚠️ "x ray" BOSLUKLU da yakalanmali: istem anlatimda her turden tireyi
+        # yasakliyor (`tiresiz_anlatim`), yani model "X-ray" yazamiyor ve
+        # yalnizca tireli bicimi arayan bir kalip tam da uretilen metni kacirir.
+        r"\b(?:x[ -]?rays?|ct scans?|cat scans?|3d scans?|laser scans?|tomograph(?:y|ic)|"
+        r"radiocarbon|carbon dating|spectromet(?:ry|er)|dna (?:analysis|test(?:ing|s)?|"
+        r"sequenc\w+)|computer models?|digital reconstructions?)\b",
         re.IGNORECASE,
     ),
 )

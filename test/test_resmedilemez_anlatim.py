@@ -186,3 +186,62 @@ def test_gorsel_hakkindaki_OLGU_mesru_kaliyor():
         "The plate records the king's name in three scripts.",
     ):
         assert ya.resmedilemez_kusuru(cumle) == "", cumle
+
+
+# --- Kurtarma episodu ve modern analiz (2026-08-16) ----------------------
+
+
+def test_KURTARMA_anini_anlatan_sahne_reddediliyor():
+    """⚠️ Olculdu: ayni gun iki koşum 78 aldi (kapi 80).
+
+    Antikythera koşumunda 5 karede "konuyla ilgisiz modern goruntu", Great
+    Sphinx koşumunda kaynak skoru 35. Ikisinin de kaynagi ayni: sahne
+    1900'deki KURTARMA anini anlatiyor, ama arama terimi capayi tasimak
+    zorunda oldugu icin arsiv dalisi degil nesnenin bugunku muze fotografini
+    donduruyor.
+    """
+    for cumle in (
+        "In 1900 a sponge diver found a bronze arm on the seabed.",
+        "Salvagers dragged the marble up with hooks.",
+        "The salvage crew worked through the winter.",
+        "Divers raised the bronze statues one by one.",
+        "Workmen hauled the block clear of the sand.",
+    ):
+        assert ya.resmedilemez_kusuru(cumle), cumle
+
+
+def test_MODERN_ANALIZ_sahnesi_reddediliyor():
+    """Hicbir antik-anit arsivi tomografi ya da radyokarbon olcumu gosteremez."""
+    for cumle in (
+        "A CT scan revealed the hidden join inside the gearwork.",
+        "Radiocarbon dating placed the timber at 1600 BC.",
+        "An x ray showed thirty gears where two had been counted.",
+        "Computer models suggest the dome would have stood.",
+    ):
+        assert ya.resmedilemez_kusuru(cumle), cumle
+
+
+def test_KAZI_OLGUSU_mesru_kaliyor():
+    """⚠️ Bu obek yeni yasagin bekcisi — genel "found/discovered" DISARIDA.
+
+    "Archaeologists found no human remains in the ash" Akrotiri koşumunun
+    merkezi olgusuydu ve o koşumda agir kusur YOKTU. Kazi tarihini bir olgu
+    olarak anlatmak serbest; yasakli olan, cikarma anini sahnenin GORSEL
+    EYLEMI yapmak.
+    """
+    for cumle in (
+        "Archaeologists found no human remains in the ash.",
+        "The site was excavated in 1748.",
+        "Excavation stopped when the tunnel flooded.",
+        "The tomb stayed sealed for three thousand years.",
+        "Historians still argue about who fired first.",
+        "His body was never found.",
+    ):
+        assert ya.resmedilemez_kusuru(cumle) == "", cumle
+
+
+def test_istem_de_kurtarma_kuralini_soyluyor():
+    """Kod zorluyor, istem duzeltilecek metin sayisini azaltiyor (DW-87 dersi)."""
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+
+    assert "NEVER BUILD A SCENE ON THE MODERN RECOVERY EPISODE" in kaynak
