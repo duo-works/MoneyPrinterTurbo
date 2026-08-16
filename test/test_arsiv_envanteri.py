@@ -84,8 +84,17 @@ def test_aciklama_kirpiliyor(monkeypatch):
 
 
 def test_bos_baslik_atlaniyor(monkeypatch):
+    # ⚠️ Aciklamalar ICERIK tasimali: menu artik iceriksiz aciklamayi eliyor
+    # (`aciklama_iceriksiz_mi`) ve bu testin konusu BASLIK, aciklama degil.
+    ya._ENVANTER_ONBELLEGI.clear()
     monkeypatch.setattr(
-        wm, "arsiv_menusu", lambda _k, **_kw: [_aday(""), _aday("File:Gercek.jpg"), {}]
+        wm,
+        "arsiv_menusu",
+        lambda _k, **_kw: [
+            _aday("", "Tomb of Qin Shihuang, 210 BC"),
+            _aday("File:Gercek.jpg", "Tomb of Qin Shihuang, 210 BC"),
+            {},
+        ],
     )
 
     assert [g["dosya"] for g in ya.arsiv_envanteri("X")] == ["Gercek.jpg"]
@@ -152,3 +161,72 @@ def test_menu_yoksa_istem_bozulmuyor(monkeypatch):
     istem = yakalanan.get("user", "")
     assert "ARCHIVE MENU" not in istem
     assert "AUTHORITATIVE SOURCE" in istem
+
+
+# --- Iceriksiz aciklama suzgeci (2026-08-17) ------------------------------
+
+
+def test_ICERIKSIZ_aciklamali_dosya_menuye_GIRMIYOR(monkeypatch):
+    """⚠️ Olculdu (11 ret, 16-17 Agu): en sik agir kusur `konuyla ilgisiz
+    modern goruntu` (20 kez). Model dosyayi ACIKLAMAYA bakarak seciyor ve
+    Terracotta Army menusunde ilk on girdinin ALTISI ayni kunyeydi:
+
+        "2007. Complete indexed photo collection at WorldHistoryPics.com."
+
+    Ne gosterdigini soylemeyen girdi kor secim demek.
+    """
+    ya._ENVANTER_ONBELLEGI.clear()
+    monkeypatch.setattr(
+        wm,
+        "arsiv_menusu",
+        lambda _k, **_kw: [
+            _aday("File:Warrior 1.jpg", "2007. Complete indexed photo collection at WHP.com."),
+            _aday("File:Warrior 2.jpg", "https://example.org/gallery"),
+            _aday("File:Pit 1.jpg", "Tomb of Qin Shihuang, 210 BC, Qin, Lintong, Shaanxi."),
+            _aday("File:Bos.jpg", ""),
+            _aday("File:Kisa.jpg", "Xi'an"),
+        ],
+    )
+
+    menu = ya.arsiv_envanteri("Terracotta Army")
+
+    assert [g["dosya"] for g in menu] == ["Pit 1.jpg"]
+
+
+def test_ICERIKLI_aciklama_KORUNUYOR(monkeypatch):
+    """⚠️ Sinir bekcisi: suzgec kasten DAR. Menuyu kurutmak, ayni fonksiyon
+    kapma kapisi oldugu icin (`run_cycle`) konuyu tumden elemek demek."""
+    ya._ENVANTER_ONBELLEGI.clear()
+    monkeypatch.setattr(
+        wm,
+        "arsiv_menusu",
+        lambda _k, **_kw: [
+            _aday("File:A.jpg", "Moai on Rapa Nui, fallen and broken at the quarry"),
+            _aday("File:B.jpg", "Lantern slide; view of a moai with its face eroded"),
+            _aday("File:C.jpg", "Aretas IV (reigned B.C. 9 - A.D. 40), builder of Al-Khazneh"),
+        ],
+    )
+
+    menu = ya.arsiv_envanteri("Moai")
+
+    assert len(menu) == 3, "icerik tasiyan aciklama elenmemeli"
+
+
+def test_suzgec_dogrudan_olculuyor():
+    """Kalibin kendisi — istemden bagimsiz."""
+    for iceriksiz in (
+        "2007. Complete indexed photo collection at WorldHistoryPics.com.",
+        "https://commons.example/file",
+        "www.example.com",
+        "Own work",
+        "",
+        "Xi'an",
+    ):
+        assert ya.aciklama_iceriksiz_mi(iceriksiz), iceriksiz
+
+    for icerikli in (
+        "Tomb of Qin Shihuang, 210 BC, Qin, Lintong, Shaanxi.",
+        "The clipper CUTTY SARK re-conditioned at anchor at Falmouth",
+        "Lantern slide; view of a moai having fallen and broken",
+    ):
+        assert not ya.aciklama_iceriksiz_mi(icerikli), icerikli

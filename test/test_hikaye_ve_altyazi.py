@@ -31,21 +31,42 @@ def _sistem_yonergesi() -> str:
 
 
 def test_siyah_serit_kapali():
-    """Kullanici istegi: metin dogrudan goruntunun uzerinde dursun."""
-    i = KAYNAK.index('"--subtitle-position"')
-    govde = KAYNAK[i : i + 1400]
+    """Kullanici istegi: metin dogrudan goruntunun uzerinde dursun (DW-103).
 
-    assert '"--no-subtitle-background-enabled"' in govde
-    assert '"--subtitle-background-enabled"' not in govde
-    assert '"--rounded-subtitle-background"' not in govde
+    ⚠️ 17 Agu'da bu karar YENIDEN soruldu ve KORUNDU. Altyazi kapisi 7
+    render'in dordunde dusuyordu ve kodda hazir bir ara yol vardi — metin
+    genisliginde, %55 saydam, yuvarlatilmis kutu
+    (`--rounded-subtitle-background`, seritten farkli). Kanal sahibine
+    acikca soruldu, REDDETTI: zemin yok, kontur kalinlastirilacak.
+
+    ⚠️ Pencereyle dilimleme BIRAKILDI: gerekce yorumlari buyuyunce bayrak
+    1400 karakterlik pencerenin disina tasti ve test, kod DOGRU oldugu halde
+    dustu. Artik kaynagin tamami taraniyor — hem daha saglam hem daha genis
+    bir guvence. Tirnakli arama `--no-...` icindeki alt dizeye TAKILMAZ.
+    """
+    assert '"--no-subtitle-background-enabled"' in KAYNAK
+    assert '"--subtitle-background-enabled"' not in KAYNAK
+    assert '"--rounded-subtitle-background"' not in KAYNAK
 
 
 def test_kontur_serit_yerine_okunabilirligi_sagliyor():
-    """Serit kalkinca beyaz metni acik zeminde ayakta tutan tek sey kontur."""
+    """Serit kalkinca beyaz metni acik zeminde ayakta tutan tek sey kontur.
+
+    ⚠️ 5 -> 7 (2026-08-17). Olculdu: altyazi kapisi 7 render'in DORDUNDE
+    dustu (65, 70, 72, 78; kapi 80) ve hakem her seferinde ayni gerekceyi
+    yazdi — "white text lacks sufficient contrast against cloudy skies",
+    "light text on light paper background". Kontur 5 yetmiyordu.
+
+    ⚠️ Serit yine ACILMADI: kanal sahibine 17 Agu'da acikca soruldu ve yari
+    saydam kutu secenegi de REDDEDILDI (bkz. `test_siyah_serit_kapali`).
+
+    ⚠️ 7 bir TAVAN: 56px fontta ~%12,5 ve ustu harflerin ic bosluklarini
+    kapatmaya baslar. Harfler bozulursa 6'ya INILIR, yukari cikilmaz.
+    """
     i = KAYNAK.index('"--stroke-width"')
     govde = KAYNAK[i : i + 60]
 
-    assert '"5"' in govde, "serit yokken kontur kalinlastirilmali"
+    assert '"7"' in govde, "serit yokken kontur kalinlastirilmali"
 
 
 def test_metin_beyaz_kontur_siyah():

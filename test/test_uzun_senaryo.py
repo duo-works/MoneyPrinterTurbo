@@ -273,7 +273,9 @@ def test_onbellek_SINIRA_gore_ayrisiyor(monkeypatch):
     def sahte(konu, sinir, **_):
         istenen.append(sinir)
         return [
-            {"title": f"File:D{i}.jpg", "aciklama": "x", "tarih": ""}
+            # ⚠️ Aciklama ICERIK tasimali: menu artik iceriksiz aciklamayi
+            # eliyor. Bu testin konusu onbellek anahtari, aciklama degil.
+            {"title": f"File:D{i}.jpg", "aciklama": f"Tomb chamber wall {i}", "tarih": ""}
             for i in range(sinir)
         ]
 

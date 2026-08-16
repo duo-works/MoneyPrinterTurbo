@@ -239,6 +239,19 @@ EDITORIAL_ANCHOR_POOL = [
     # `is_duplicate_visual_anchor` onu yanan "Antikythera mechanism"
     # capasiyla ayni sayiyor. Dogru davranis — ayni videoyu iki kez
     # cekmemek icin var — ve kararı fonksiyonun kendisi verdi.
+    # ⚠️ 2026-08-17: `ICERIKSIZ_ACIKLAMA` suzgeci menuyu daralttı ve havuz
+    # yeniden olculdu (kapinin kendi fonksiyonuyla, 58 capa): **54 geciyor**.
+    # Esigin altina dusen DORT capa kayda geciyor — esik DUSURULMEDI, cunku
+    # aciklamasi kunye olan bir arsiv modele kor secim yaptiriyor:
+    #
+    #     Notre Dame Cathedral  5    Newgrange     10
+    #     Rani ki Vav          10    Masada        11
+    #
+    # ⚠️ Bunlar havuzdan CIKARILMADI: suzgec kaliplari daraltilirsa ya da
+    # Commons aciklamalari zenginlesirse geri gelebilirler. Ama yedek kipte
+    # capa secimi menu boyutuna BAKMIYOR (`eligible_anchors` yalnizca tekrar
+    # kapisini uyguluyor), yani bu dordu secilirse ince menuyle uretim
+    # yapilir. Onceden de var olan bir bosluk; suzgec yalnizca gorunur kildi.
     "Roman aqueduct",           # 20
     "Cryptoporticus",           # 16
     "Mastaba",                  # 15
@@ -2502,6 +2515,57 @@ def envanter_siniri(bicim: "VideoBicimi | None" = None) -> int:
 _ENVANTER_ONBELLEGI: dict[tuple[str, int], list[dict[str, str]]] = {}
 ACIKLAMA_SINIRI = 140
 
+ASGARI_ACIKLAMA = 12
+"""Bir menu aciklamasinin bilgi tasidigi sayilmasi icin gereken uzunluk."""
+
+ICERIKSIZ_ACIKLAMA = re.compile(
+    r"(https?://|www\.|\.com\b|\.org\b|\.net\b"
+    r"|complete indexed photo|photo collection at"
+    r"|own work|self[- ]photographed|uploaded by"
+    r"|all rights reserved)",
+    re.IGNORECASE,
+)
+"""Gorselin ICERIGINI anlatmayan aciklama kaliplari.
+
+⚠️ NEDEN VAR — olculdu (2026-08-16/17, 11 ret). Hakemin en sik yazdigi agir
+kusur `konuyla ilgisiz modern goruntu` (20 kez; `donem uyusmuyor` 7, `anlatilan
+kisi degil` 2). Sebep modernlik DEGIL: hakem `modern` VE
+`authentic_subject: false` istiyor, yani secilen dosya anlatilan seyi
+gostermiyor.
+
+Model dosyayi bu menudeki ACIKLAMAYA bakarak seciyor. Ama aciklamalarin buyuk
+kismi gorselin icerigini hic anlatmiyor — Terracotta Army menusunde ilk on
+girdinin ALTISI ayni satirdi:
+
+    "2007. Complete indexed photo collection at WorldHistoryPics.com."
+
+Yani secim pratikte KOR yapiliyor: model bir kunyeye bakip etrafina anlati
+yaziyor, render'da cikan kare uymuyor ve slot yaniyor.
+
+⚠️ KISMI COZUM oldugu BILINEREK eklendi. Olculdu:
+
+    Terracotta Army  40 -> 15   (kunye yigini temizlendi)
+    Petra            40 -> 35
+    Tipasa           40 -> 34
+    Moai             31 -> 31   <- HIC ETKILENMIYOR
+    Cryptoporticus   16 -> 16
+    Mastaba          15 -> 14
+
+Moai'nin aciklamalari kunye degil seyahat anlatisi ("After visiting the North
+of Chile, we flew down to Santiago...") ve bu kaliplarla ayirt edilemiyor.
+O sinifi kapatan tek yol render ONCESI goru kontrolu — ayri is.
+
+⚠️ Kaliplar KASTEN DAR tutuldu: aciklama metnini "kalitesine" gore yargilayan
+genis bir kural, mesru ama kisa aciklamalari da elerdi ve menuyu kurutmak
+kapiyi kapatmak demek (`arsiv_envanteri` ayni zamanda kapma kapisi).
+"""
+
+
+def aciklama_iceriksiz_mi(aciklama: str) -> bool:
+    """Aciklama gorselin icerigi hakkinda bir sey soyluyor mu."""
+    sade = (aciklama or "").strip()
+    return len(sade) < ASGARI_ACIKLAMA or bool(ICERIKSIZ_ACIKLAMA.search(sade))
+
 
 def arsiv_envanteri(
     konu: str,
@@ -2555,10 +2619,22 @@ def arsiv_envanteri(
         dosya = str(aday.get("title") or "").removeprefix("File:").strip()
         if not dosya:
             continue
+        gosterdigi = str(aday.get("aciklama") or "")[:ACIKLAMA_SINIRI]
+        # ⚠️ Aciklamasi iceriksiz olan dosya menuye GIRMIYOR — gerekce
+        # `ICERIKSIZ_ACIKLAMA`da. Model dosyayi aciklamadan seciyor; ne
+        # gosterdigini soylemeyen bir girdi kor secim demek.
+        #
+        # ⚠️ Bu, kapinin saydigi sayiyi da dusurur ve DOGRUSU bu:
+        # `arsiv_envanteri` ayni zamanda kapma kapisi (`run_cycle`) ve terfi
+        # olcumunun karsiligi. Menuyu suzup kapiyi suzmemek, konuyu terfi
+        # ettirip `alinti_kusuru` asamasinda oldurmek olurdu — menu
+        # seyreltmesinde ayni ders olculmustu.
+        if aciklama_iceriksiz_mi(gosterdigi):
+            continue
         menu.append(
             {
                 "dosya": dosya,
-                "gosterdigi": str(aday.get("aciklama") or "")[:ACIKLAMA_SINIRI],
+                "gosterdigi": gosterdigi,
                 "tarih": str(aday.get("tarih") or "")[:40],
             }
         )
@@ -4992,8 +5068,28 @@ def run_generator(
         # kalinlastirildi (3 → 5). Siyah serit kalkinca beyaz metnin acik
         # zeminde (mavi gokyuzu, kum tasi, bulut) kaybolmamasi yalnizca
         # kontura bagli.
+        # ⚠️ 5 -> 7 (2026-08-17). Olculdu (16-17 Agu, 7 render): altyazi
+        # kapisi 7 koşumun DORDUNDE dustu — 65, 70, 72, 78; kapi 80. Hakem
+        # gerekceyi her seferinde ayni yazdi:
+        #
+        #   "white text lacks sufficient contrast against cloudy skies"
+        #   "light text on light uniform details / on light paper background"
+        #
+        # Yani kontur 5 acik zeminde (bulut, kum tasi, kagit) tek basina
+        # yetmiyor ve serit kalkinca okunabilirligi ayakta tutan tek sey o.
+        #
+        # ⚠️ SERIT ACILMADI ve acilmayacak — kanal sahibinin istegi (DW-103):
+        # "metin dogrudan goruntunun uzerinde dursun". Yari saydam kutu
+        # secenegi (`--rounded-subtitle-background`, kod hazir) 17 Agu'da
+        # ACIKCA soruldu ve REDDEDILDI. Tek kaldirac kontur; golge destegi
+        # bu hatta yok (`cli.py`de shadow parametresi yok).
+        #
+        # ⚠️ 7 bilincli bir TAVAN: 56px fontta 7px kontur ~%12,5 ve bunun
+        # ustu harflerin ic bosluklarini (a, e, o) kapatmaya baslar. Sonraki
+        # koşumda altyazi skoru olculecek; harfler bozulursa 6'ya inilir,
+        # yukari CIKILMAZ.
         "--stroke-width",
-        "5",
+        "7",
         # Siyah serit yok: metin dogrudan goruntunun uzerinde durur (DW-103).
         # Serit alt ucte biri kapatiyordu ve Shorts'ta goruntuden calinan her
         # piksel pahali.
