@@ -37,8 +37,15 @@ def _aday(baslik: str, kimlik: str = "k1") -> notion_kuyrugu.Aday:
     )
 
 
-def _hazirla(monkeypatch, *, mevcut, yeni, menuler, kullanilmis=()):
-    monkeypatch.setattr(notion_kuyrugu, "kuyrugu_oku", lambda **_k: list(mevcut))
+def _hazirla(monkeypatch, *, mevcut, yeni, menuler, kullanilmis=(), takilan=()):
+    # ⚠️ Sahte kuyruk DURUMA duyarli olmali: `takilanlari_kurtar` ayni
+    # fonksiyonu `durum="Üretiliyor"` ile cagiriyor. Durumu yok sayan bir
+    # sahte, `Secildi` adaylarini "takilmis" sanip serbest biraktiriyordu.
+    monkeypatch.setattr(
+        notion_kuyrugu,
+        "kuyrugu_oku",
+        lambda **k: list(takilan if k.get("durum") == "Üretiliyor" else mevcut),
+    )
     monkeypatch.setattr(huni_besle, "yeni_adaylar", lambda *_a, **_k: list(yeni))
     monkeypatch.setattr(huni_besle, "_kullanilmis_capalar", lambda: list(kullanilmis))
     monkeypatch.setattr(
@@ -194,3 +201,70 @@ def test_terfi_hatasi_digerlerini_engellemiyor(monkeypatch):
 
     assert gecen == ["a2"]
     assert ozet["terfi"] == ["B"]
+
+
+def test_TAKILAN_aday_kurtariliyor(monkeypatch):
+    """⚠️ Olculdu (2026-08-16): `Ernst Hanfstaengl` 10 GUNDUR `Uretiliyor`da,
+    `Video URL` bos. 6 Agustos'ta bir koşum kapip sonra olmus ve `adayi_birak`
+    hic cagrilmamis. Kuyruk yalnizca `Secildi` okudugu icin o aday bir daha
+    gorunmuyordu — sessiz kayip.
+
+    Zaman damgasi gerekmiyor: besleyici uretimden ONCE ve ayni kilit altinda
+    koşuyor, yani bu noktada `Uretiliyor` duran her kayit OKSUZ."""
+    _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Dolu", "d1")] * 6,
+        yeni=[],
+        menuler={},
+        takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
+    )
+    birakilan: list[str] = []
+    monkeypatch.setattr(
+        notion_kuyrugu,
+        "adayi_birak",
+        lambda aday, **_k: birakilan.append(aday.baslik),
+    )
+
+    huni_besle.besle()
+
+    assert birakilan == ["Ernst Hanfstaengl"]
+
+
+def test_KURU_kipte_takilan_aday_birakilmiyor(monkeypatch):
+    """`--kuru` hicbir kosulda Notion'a yazmamali."""
+    _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Dolu", "d1")] * 6,
+        yeni=[],
+        menuler={},
+        takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
+    )
+    birakilan: list[str] = []
+    monkeypatch.setattr(
+        notion_kuyrugu,
+        "adayi_birak",
+        lambda aday, **_k: birakilan.append(aday.baslik),
+    )
+
+    huni_besle.besle(kuru=True)
+
+    assert birakilan == []
+
+
+def test_takilan_taranamazsa_besleme_SURUYOR(monkeypatch):
+    """⚠️ Kurtarma bir IYILESTIRME; beslemeyi dusuremez."""
+    _hazirla(
+        monkeypatch,
+        mevcut=[],
+        yeni=[_aday("Karnak", "a1")],
+        menuler={"Karnak": 20},
+    )
+
+    def patla(**k):
+        if k.get("durum") == "Üretiliyor":
+            raise RuntimeError("Notion kopuk")
+        return []
+
+    monkeypatch.setattr(notion_kuyrugu, "kuyrugu_oku", patla)
+
+    assert huni_besle.besle()["terfi"] == ["Karnak"]

@@ -107,6 +107,7 @@ def kuyrugu_oku(
     ytoto_path: str | None = None,
     format_adi: str | None = None,
     limit: int = 5,
+    durum: str = "Seçildi",
 ) -> list[Aday]:
     """`Secildi` kuyrugunu okur — insanin "bunu uret" dedigi adaylar.
 
@@ -133,7 +134,7 @@ def kuyrugu_oku(
     ANINDA (Notion'da hangi aday `Seçildi`ye alinir) karar veriliyor, bu
     fonksiyonda degil.
     """
-    argumanlar = ["aday", "listele", "--durum", "Seçildi", "--json", "--limit", str(limit)]
+    argumanlar = ["aday", "listele", "--durum", durum, "--json", "--limit", str(limit)]
     if format_adi:
         argumanlar += ["--format", format_adi]
     sonuc = _kos(argumanlar, ytoto_path=ytoto_path)

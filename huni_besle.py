@@ -118,8 +118,43 @@ def _kullanilmis_capalar() -> list[str]:
     return engellenen_capalar()
 
 
+def takilanlari_kurtar(kuru: bool = False) -> list[str]:
+    """`Uretiliyor`da kalmis adaylari `Secildi`ye geri alir.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-16). Notion'da `Ernst Hanfstaengl` **10
+    gundur** `Uretiliyor` durumundaydi, `Video URL` bos: 6 Agustos'ta bir
+    koşum kapip sonra olmus ve `adayi_birak` hic cagrilmamis. Kuyruk yalnizca
+    `Secildi` okudugu icin o aday bir daha GORUNMUYOR — sessiz kayip.
+
+    ⚠️ ZAMAN DAMGASI GEREKMIYOR, kilit yetiyor: bu fonksiyon `uret.sh`
+    icinde uretimden ONCE ve ayni kilit altinda koşuyor (eszamanli koşum
+    "atlandi | onceki kosum suruyor" ile engelleniyor). Yani bu noktada
+    `Uretiliyor` duran her kayit tanim geregi OKSUZ — kilidi tutan biziz ve
+    henuz hicbir aday kapmadik.
+    """
+    try:
+        takilanlar = notion_kuyrugu.kuyrugu_oku(
+            ytoto_path=YTOTO_PATH, durum="Üretiliyor", limit=HEDEF_DERINLIK
+        )
+    except Exception as hata:  # kurtarma bir IYILESTIRME, beslemeyi dusuremez
+        print(f"  ⚠️ takilan aday taranamadi ({str(hata)[:80]})", flush=True)
+        return []
+    kurtarilan: list[str] = []
+    for aday in takilanlar:
+        print(f"  ♻️ takilmis aday kurtarildi: {aday.baslik}", flush=True)
+        if not kuru:
+            notion_kuyrugu.adayi_birak(
+                aday,
+                gerekce="onceki koşum bitmeden oldu; besleyici `Secildi`ye geri aldi",
+                ytoto_path=YTOTO_PATH,
+            )
+        kurtarilan.append(aday.baslik)
+    return kurtarilan
+
+
 def besle(kuru: bool = False) -> dict:
     """Kuyrugu hedef derinlige kadar doldurur; ozet doner."""
+    takilanlari_kurtar(kuru)
     mevcut = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH, limit=HEDEF_DERINLIK)
     eksik = HEDEF_DERINLIK - len(mevcut)
     print(f"`Seçildi` kuyruğu: {len(mevcut)}/{HEDEF_DERINLIK} — eksik {max(eksik, 0)}")
