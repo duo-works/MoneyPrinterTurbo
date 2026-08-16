@@ -198,9 +198,18 @@ EDITORIAL_ANCHOR_POOL = [
     "Knossos",                  # 14
     "Jerash",                   # 14
     "Copan",                    # 14
-    "Karnak",                   # 13
     "Aphrodisias",              # 12
     "Todai-ji",                 # 27
+    # ⚠️ "Karnak" ONCE EKLENDI, SONRA CIKARILDI — olcum araci ile KAPININ
+    # kendisi ayrisiyor. `arsiv_arzi_olc.py` 13 dedi, ama uretimin gercekten
+    # kullandigi `arsiv_envanteri` yalnizca 6 dosya veriyor. Ikisi ayni seyi
+    # saymiyor: betik `kategori_gorselleri` + dosya adinda anahtar ararken,
+    # kapi menuyu kendi suzgecinden geciriyor.
+    #
+    # Ders: havuza capa eklerken olcumu KAPININ fonksiyonuyla dogrula —
+    # `arsiv_envanteri(konu, sinir=40, bicim=...)`. Eklenen diger sekiz capa
+    # bu ikinci olcumden gecti: Colosseum 40, Knossos 24, Jerash 17,
+    # Aphrodisias 17, Abu Simbel 14, Mycenae 14, Copan 15, Todai-ji 13.
 ]
 
 
