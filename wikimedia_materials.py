@@ -937,28 +937,67 @@ def commons_kategorisi(konu: str) -> str | None:
     return sonuc
 
 
+KATEGORI_TUR_TAVANI = 6
+"""`kategori_gorselleri` en fazla kac API turu atabilir.
+
+⚠️ SINIRSIZ OLMAMALI. Huni terfi olcumu aday BASINA menu kuruyor ve
+`arsiv_menusu` onbelleklenmiyor (yalnizca kategori/QID aramalari onbellekli,
+`:792-794`); ustelik her zamanlayici slotu ayri bir surec. 40 adaylik bir
+pencerede tur sayisi dogrudan istek sayisi demek.
+"""
+
+
 def kategori_gorselleri(kategori: str, limit: int = 100) -> list[dict[str, Any]]:
-    """Bir Commons kategorisindeki dosyalari `search_commons` bicimiyle dondurur."""
-    try:
-        yanit = _get_with_retry(
-            API_URL,
-            params={
-                "action": "query",
-                "generator": "categorymembers",
-                "gcmtitle": f"Category:{kategori}",
-                "gcmtype": "file",
-                "gcmlimit": str(limit),
-                "prop": "imageinfo",
-                "iiprop": "url|size|mime|extmetadata",
-                "iiurlwidth": "1080",
-                "format": "json",
-                "formatversion": "2",
-            },
-            timeout=30,
-        )
-        return yanit.json().get("query", {}).get("pages", [])
-    except (requests.RequestException, ValueError):
-        return []
+    """Bir Commons kategorisindeki dosyalari `search_commons` bicimiyle dondurur.
+
+    ⚠️ SAYFALAMA SART — olculdu (2026-08-16). Commons `prop=imageinfo`'yu
+    batch basina yalnizca **50 sayfa** icin dolduruyor ve `imageinfo`'suz
+    sayfalar `_puanli_adaylar`'da sessizce atiliyor. Eskiden `continue`
+    belirteci takip edilmiyordu, yani `gcmlimit=500` istemek hicbir sey
+    degistirmiyordu:
+
+        Karnak kategorisi   380 sayfa geldi -> 13 aday   (imageinfo 50'de)
+        Masada kategorisi   500 sayfa geldi -> 47 aday   (≈50 tavani)
+
+    Yani `MENU_KATEGORI_SINIRI` ilan ettigi arzin ~%10'unu okuyordu.
+
+    Ayni sayfa birden fazla turda gelebilir (`iicontinue` ayni sayfalarin
+    `imageinfo`'sunu tamamlar), bu yuzden sayfalar kimlige gore BIRLESTIRILIYOR
+    ve eksik `imageinfo` sonraki turdan dolduruluyor.
+    """
+    toplanan: dict[Any, dict[str, Any]] = {}
+    devam: dict[str, str] = {}
+    for _ in range(KATEGORI_TUR_TAVANI):
+        parametreler = {
+            "action": "query",
+            "generator": "categorymembers",
+            "gcmtitle": f"Category:{kategori}",
+            "gcmtype": "file",
+            "gcmlimit": str(limit),
+            "prop": "imageinfo",
+            "iiprop": "url|size|mime|extmetadata",
+            "iiurlwidth": "1080",
+            "format": "json",
+            "formatversion": "2",
+        }
+        parametreler.update(devam)
+        try:
+            veri = _get_with_retry(API_URL, params=parametreler, timeout=30).json()
+        except (requests.RequestException, ValueError):
+            break
+        for sayfa in veri.get("query", {}).get("pages", []):
+            anahtar = sayfa.get("pageid") or sayfa.get("title")
+            mevcut = toplanan.get(anahtar)
+            if mevcut is None:
+                toplanan[anahtar] = sayfa
+            elif sayfa.get("imageinfo") and not mevcut.get("imageinfo"):
+                mevcut["imageinfo"] = sayfa["imageinfo"]
+        if sum(1 for s in toplanan.values() if s.get("imageinfo")) >= limit:
+            break
+        devam = veri.get("continue") or {}
+        if not devam:
+            break
+    return list(toplanan.values())
 
 
 def dosya_sayfasi(baslik: str) -> dict[str, Any] | None:
@@ -997,7 +1036,19 @@ def dosya_sayfasi(baslik: str) -> dict[str, Any] | None:
     return None
 
 
-MENU_KATEGORI_SINIRI = 500
+MENU_KATEGORI_SINIRI = 200
+"""Menu kurarken kategoriden okunacak `imageinfo`'lu dosya sayisi.
+
+⚠️ 500'DEN 200'E INDIRILDI (2026-08-16) — bu bir DARALTMA DEGIL, GENISLETME.
+500 yaziliydi ama `kategori_gorselleri` `continue` takip etmedigi icin fiilen
+50 dosya okunuyordu. Sayfalama eklendiginde 500 istemek aday basina 10 API
+turu demek olurdu; huni 40 adayi tek tek olcuyor ve `arsiv_menusu`
+onbelleklenmiyor.
+
+200 secildi cunku menunun kendi siniri `sinir=40` ve suzgecler ham havuzun
+~%25'ini geciriyor (Karnak: 50 sayfadan 13 aday). 200 sayfa ~4 tur ve
+~50 aday demek — `sinir`i doyurmaya yeter, fazlasi bosa istek.
+"""
 
 
 def arsiv_menusu(
