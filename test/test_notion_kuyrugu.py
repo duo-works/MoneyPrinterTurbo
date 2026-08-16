@@ -165,6 +165,12 @@ def hat(monkeypatch, tmp_path):
     monkeypatch.setattr(ya, "LOCK_FILE", tmp_path / "lock")
     monkeypatch.setattr(ya, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(ya, "YTOTO_PATH", "/sahte/ytoto")
+    # ⚠️ Kapma artik arsiv olcumunden geciyor (2026-08-16): arzi yetmeyen aday
+    # kapilmadan atlaniyor. Gercek `arsiv_envanteri` aga cikardi ve bu
+    # fixture'in sozu "disariya hic dokunmadan" — olcum de taklit ediliyor.
+    # Bol menu donuyor, yani bu dosyanin konusu (kuyruk sozlesmesi) kapiya
+    # takilmiyor; kapinin KENDI testleri `test_bayat_aday.py`de.
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda konu, **_k: [{"dosya": "x"}] * 40)
     return ya
 
 

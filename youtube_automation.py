@@ -5428,6 +5428,42 @@ def run_cycle(
         # ⚠️ "Kapmadan uretme" guvencesi KORUNUYOR: kapilamayan aday
         # uretilmiyor, yalnizca ATLANIYOR. Tehlikeli olan tersiydi.
         for sirasiyla in adaylar:
+            # ⚠️ KAPMADAN ONCE OLC. Olculdu (2026-08-16, iki koşum arka arkaya):
+            # `Ernst Hanfstaengl` `Secildi`de duruyordu ve uretim onu her
+            # slotta kuyrugun basinda buldu; 18:00 ve 18:57 koşumlarinin
+            # ALTI denemesi de yandi (ikisi tam render).
+            #
+            #     Ernst Hanfstaengl  menu  8   <- konu, kapi 12: GECEMEZ
+            #     Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy fotografcisi
+            #
+            # Uretim arsivi zengin olan dedeyi capa secti, ama bir
+            # fotografcinin kategorisi kendi resimleriyle degil CEKTIGI
+            # kisilerle dolu: hakem her karede baskasini gordu (Wagner,
+            # Rietschel, Ludwig II) ve "anlatilan kisi degil" yazdi.
+            #
+            # ⚠️ Huni terfide olcuyordu (`huni_besle.uretilebilir_mi`) ama
+            # kuyruga BASKA yollardan da aday giriyor: insan elle `Secildi`
+            # yapabiliyor, ve takilan aday kurtarilabiliyor. Terfi kapisi tek
+            # basina yetmiyor — tuketen uc de olcmeli.
+            #
+            # Esik huninin esigiyle ayni tanim (6 sahne x kare yuvasi) ve
+            # olcum uretimin KENDI envanteriyle yapiliyor; `arsiv_envanteri`
+            # onbellekli, yani bu cagri hattin ilerisinde yeniden kullaniliyor
+            # ve ek ag maliyeti getirmiyor.
+            #
+            # ⚠️ Menu kurulamazsa `arsiv_envanteri` BOS donuyor (kendi
+            # sozlesmesi) ve aday atlaniyor. Bu bilincli: yedek capa havuzu
+            # saglikli (50 uygun capa), yani atlamanin bedeli bir yedek kip
+            # videosu; kapmanin bedeli ise yanmis bir slot.
+            asgari_menu = 6 * bicim.kare_yuvasi
+            envanter = arsiv_envanteri(sirasiyla.baslik, bicim=bicim)
+            if len(envanter) < asgari_menu:
+                print(
+                    f"ℹ️ aday atlandı ({sirasiyla.baslik}): arşiv menüsü "
+                    f"{len(envanter)} < {asgari_menu} — üretim slotu yakardı",
+                    flush=True,
+                )
+                continue
             try:
                 notion_kuyrugu.adayi_kap(sirasiyla, ytoto_path=YTOTO_PATH)
             except notion_kuyrugu.KopruHatasi as hata:

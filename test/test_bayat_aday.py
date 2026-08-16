@@ -37,7 +37,7 @@ def _aday(baslik: str) -> notion_kuyrugu.Aday:
     )
 
 
-def _hat(monkeypatch, adaylar, kapilamayanlar):
+def _hat(monkeypatch, adaylar, kapilamayanlar, menuler=None):
     kapilan: list[str] = []
 
     def sahte_kap(aday, **_k):
@@ -47,6 +47,15 @@ def _hat(monkeypatch, adaylar, kapilamayanlar):
             )
         kapilan.append(aday.baslik)
 
+    # ⚠️ Envanter TAKLIT EDILMELI: kapma artik olcumden geciyor ve gercek
+    # `arsiv_envanteri` aga cikardi. Varsayilan bol (40), yani bu dosyanin
+    # asil konusu — bayat kayit — olcumden etkilenmiyor.
+    olculen = menuler or {}
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda konu, **_k: [{"dosya": f"{konu}-{i}"} for i in range(olculen.get(konu, 40))],
+    )
     monkeypatch.setattr(notion_kuyrugu, "kuyrugu_oku", lambda **_k: list(adaylar))
     monkeypatch.setattr(notion_kuyrugu, "adayi_kap", sahte_kap)
     monkeypatch.setattr(
@@ -116,6 +125,94 @@ def test_hicbiri_kapilamazsa_yedek_kipe_dusuluyor(monkeypatch, capsys):
     cikti = capsys.readouterr().out
     assert "aday atlandı" in cikti, "atlama SESSIZ olmamali"
     assert "yedek konu kipi" in cikti
+
+
+# --- Arsivi yetmeyen aday (2026-08-16) -----------------------------------
+
+
+def test_ARSIVI_YETMEYEN_aday_KAPILMIYOR(monkeypatch, capsys):
+    """⚠️ Olculdu (2026-08-16, iki koşum arka arkaya): `Ernst Hanfstaengl`
+    `Secildi`de duruyordu ve uretim onu her slotta kuyrugun basinda buldu;
+    18:00 ve 18:57 koşumlarinin ALTI denemesi de yandi (ikisi tam render).
+
+        Ernst Hanfstaengl  menu  8   <- konu, kapi 12: GECEMEZ
+        Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy fotografcisi
+
+    Uretim arsivi zengin olan dedeyi capa secti; bir fotografcinin Commons
+    kategorisi kendi resimleriyle degil CEKTIGI kisilerle dolu oldugu icin
+    hakem her karede baskasini gordu ("anlatilan kisi degil").
+
+    ⚠️ Huni terfide olcuyordu ama kuyruga BASKA yollardan da aday giriyor
+    (insan elle `Secildi` yapabiliyor, takilan aday kurtarilabiliyor), yani
+    tuketen uc de olcmek zorunda.
+    """
+    kapilan = _hat(
+        monkeypatch,
+        [_aday("Ernst Hanfstaengl"), _aday("Tipasa")],
+        kapilamayanlar=set(),
+        menuler={"Ernst Hanfstaengl": 8},
+    )
+
+    def dur(*_a, **_k):
+        raise RuntimeError("PLAN ASAMASINA ULASILDI")
+
+    monkeypatch.setattr(ya, "generate_content_plan", dur)
+
+    try:
+        ya.run_cycle(kuyruktan=True)
+    except RuntimeError as hata:
+        assert "ULASILDI" in str(hata)
+    else:
+        raise AssertionError("plan asamasina gecilmeliydi")
+
+    assert kapilan == ["Tipasa"], "arzi yetmeyen aday atlanip sonraki kapilmali"
+    assert "arşiv menüsü 8" in capsys.readouterr().out, "atlama SESSIZ olmamali"
+
+
+def test_arsivi_YETEN_aday_engellenMIYOR(monkeypatch):
+    """⚠️ Sinir bekcisi: esik TAM degerde engellememeli."""
+    kapilan = _hat(
+        monkeypatch,
+        [_aday("Tipasa")],
+        kapilamayanlar=set(),
+        menuler={"Tipasa": 6 * ya.SHORTS_BICIMI.kare_yuvasi},
+    )
+
+    def dur(*_a, **_k):
+        raise RuntimeError("PLAN ASAMASINA ULASILDI")
+
+    monkeypatch.setattr(ya, "generate_content_plan", dur)
+
+    try:
+        ya.run_cycle(kuyruktan=True)
+    except RuntimeError:
+        pass
+
+    assert kapilan == ["Tipasa"]
+
+
+def test_arzi_yetmeyen_TEK_aday_yedek_kipe_dusuruyor(monkeypatch, capsys):
+    """Slot bosa gitmemeli: yedek capa havuzu saglikli (50 uygun capa)."""
+    _hat(
+        monkeypatch,
+        [_aday("Ernst Hanfstaengl")],
+        kapilamayanlar=set(),
+        menuler={"Ernst Hanfstaengl": 8},
+    )
+
+    def dur(*_a, **_k):
+        raise RuntimeError("YEDEK KIPE ULASILDI")
+
+    monkeypatch.setattr(ya, "generate_content_plan", dur)
+
+    try:
+        ya.run_cycle(kuyruktan=True, yedek_konu=True)
+    except RuntimeError as hata:
+        assert "ULASILDI" in str(hata)
+    else:
+        raise AssertionError("yedek kipe gecilmeliydi")
+
+    assert "yedek konu kipi" in capsys.readouterr().out
 
 
 def test_kapilan_aday_uretime_giriyor(monkeypatch):
