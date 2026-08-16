@@ -799,6 +799,26 @@ def test_visual_anchor_duplicate_detection_uses_distinctive_entity_words():
     assert not is_duplicate_visual_anchor("Roman Pantheon", ["Roman Concrete"])
 
 
+def test_YAPISAL_isim_tek_basina_tekrar_sayilmiyor():
+    """⚠️ Olculdu (2026-08-16): havuzda YALNIZCA bu yuzden engellenen iki capa.
+
+        Notre Dame Cathedral  <- Chartres Cathedral  (ortak: cathedral)
+        Brooklyn Bridge       <- Boyacá Bridge       (ortak: bridge)
+
+    Bunlar yapinin TURU; iki farkli katedralin ikisinin de katedral olmasi
+    ayni konu olduklarini gostermez.
+    """
+    assert not is_duplicate_visual_anchor("Notre Dame Cathedral", ["Chartres Cathedral"])
+    assert not is_duplicate_visual_anchor("Brooklyn Bridge", ["Boyaca Bridge"])
+
+
+def test_yapisal_isim_GERCEK_tekrari_hala_yakaliyor():
+    """⚠️ Jenerik kumeyi buyutmek tekrar savunmasini zayiflatabilir — ayirt
+    edici kelime varsa kapi kapali kalmali."""
+    assert is_duplicate_visual_anchor("Chartres Cathedral", ["Chartres Cathedral"])
+    assert is_duplicate_visual_anchor("Golden Gate Bridge", ["Golden Gate Bridge"])
+
+
 def test_run_generator_reviews_ai_fallback_before_render(monkeypatch, tmp_path):
     monkeypatch.setattr("youtube_automation.AI_VISUAL_FALLBACK_ENABLED", True)
     plan = valid_plan()

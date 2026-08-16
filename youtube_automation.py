@@ -406,6 +406,15 @@ def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
         "ancient", "roman", "greek", "great", "city", "temple", "lighthouse",
         "mechanism", "shipwreck", "pyramid", "pyramids", "construction",
         "engineering", "road", "ruins", "site", "statue",
+        # ⚠️ YAPISAL ISIMLER (2026-08-16). Bunlar bir yapinin TURU; iki farkli
+        # yapinin ayni turden olmasi ayni konu olduklarini gostermez.
+        # Olculdu — havuzda YALNIZCA bu yuzden engellenen iki capa vardi:
+        #     Notre Dame Cathedral  <- Chartres Cathedral  (ortak: cathedral)
+        #     Brooklyn Bridge       <- Boyacá Bridge       (ortak: bridge)
+        # ⚠️ Liste KORLEMESINE genisletilmedi: kumeyi buyutmek tekrar
+        # savunmasini zayiflatir. Once "hangi capa yalnizca yapisal bir isim
+        # yuzunden engelli" olculdu, sonra yalnizca kanitlananlar eklendi.
+        "cathedral", "bridge",
     }
     candidate_words = _normalize_topic(candidate)
     if not candidate_words:
