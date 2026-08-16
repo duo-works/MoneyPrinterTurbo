@@ -210,6 +210,38 @@ EDITORIAL_ANCHOR_POOL = [
     # `arsiv_envanteri(konu, sinir=40, bicim=...)`. Eklenen diger sekiz capa
     # bu ikinci olcumden gecti: Colosseum 40, Knossos 24, Jerash 17,
     # Aphrodisias 17, Abu Simbel 14, Mycenae 14, Copan 15, Todai-ji 13.
+    #
+    # ⚠️ 2026-08-16 DORDUNCU tur — ilk kez capalar ELLE SECILMEDI. Adaylar
+    # Yt_Automation'daki arsiv-once kaynagin (`trend/arsiv.py`, PR #59)
+    # buldugu Commons kategorilerinden geldi: kaynak arsivi zengin
+    # kategorileri tarayip Wikidata koprusuyle makaleye baglıyor. Havuzu
+    # besleyen sey artik bir tahmin degil bir OLCUM.
+    #
+    # ⚠️ KOPRU ILE ARAMA AYRISIYOR — olculdu (29 kategori adayi):
+    #     Wikidata koprusu cozdu      12  -> hepsi gercek konu
+    #     metin aramasina dustu        5  -> 5'i de COP (Plumbing,
+    #        List_of_shipwrecks_in_1952, Art_in_Ruins, Taban_ruins,
+    #        Ruins_(comics))
+    #     hic cozulmedi               12  -> kategori adi, makale degil
+    # Yani yedek arama kolu bu kaynak icin deger uretmiyor.
+    #
+    # ⚠️ HAM DOSYA SAYISI KULLANILABILIR ARZI ONGORMUYOR. Kaynagin kendi
+    # esigi ham sayiya bakiyor (`arsiv.ASGARI_DOSYA = 25`) ama iki olcum
+    # ILISKISIZ cikti: Scythian Neapolis 200 ham -> 6 kullanilabilir,
+    # Tabula Traiana 56 -> 4, Roman roads 66 -> 10. Olcegi buyutmek
+    # duzeltmez; kapi zaten kendi fonksiyonuyla yeniden olcuyor.
+    #
+    # Elenenler kayda geciyor ki tekrar denenmesin: Roman roads 10,
+    # Groma (surveying) 8, Scythian Neapolis 6, SS Choctaw 6,
+    # Tabula Traiana 4.
+    #
+    # ⚠️ "Antikythera wreck" MENUYU GECTI (21) ama capa kapisinda elendi:
+    # `is_duplicate_visual_anchor` onu yanan "Antikythera mechanism"
+    # capasiyla ayni sayiyor. Dogru davranis — ayni videoyu iki kez
+    # cekmemek icin var — ve kararı fonksiyonun kendisi verdi.
+    "Roman aqueduct",           # 20
+    "Cryptoporticus",           # 16
+    "Mastaba",                  # 15
 ]
 
 
