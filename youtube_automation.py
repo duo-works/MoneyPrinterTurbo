@@ -242,6 +242,28 @@ EDITORIAL_ANCHOR_POOL = [
     "Roman aqueduct",           # 20
     "Cryptoporticus",           # 16
     "Mastaba",                  # 15
+    #
+    # ⚠️ Ikinci hasat (ayni gun): tohum kumesi ANIT/SIT agirlikli genisletildi
+    # (Ziggurats, Hittite sites, Mesoamerican pyramids, Ancient Roman baths...),
+    # 83 alt kategori tarandi, 9'u Wikidata koprusuyle makaleye baglandi.
+    # Tamami Commons+Wikidata, yani ANAHTARSIZ ve KREDISIZ.
+    "Ziggurat of Ur",           # 24
+    "Tepe Sialk",               # 40
+    "Tipasa",                   # 40
+    # Menu kapisinda kalanlar: Dur-Kurigalzu 2, San Andres 0, Amasra Fortress 6.
+    # "Karnak" yine cikti ve capa kapisi onu dogru sekilde eledi.
+    #
+    # ⚠️ MENU KAPISI ARZI OLCER, EDITORYAL UYGUNLUGU DEGIL — iki aday kapiyi
+    # GECTI ama ELLE elendi ve sebebi buraya yaziliyor ki tekrar denenmesin:
+    #
+    #   Getty Villa   menu 31 — 1974 yapimi Kaliforniya REPLIKASI, antik yapi
+    #                 degil. Arsivi zengin diye almak, `RESMEDILEMEZ_KALIPLAR`
+    #                 ile ayni gun kapatilan "konuyla ilgisiz modern goruntu"
+    #                 kusurunu elle geri koymak olurdu. Zaten kayitli bir vaka.
+    #   Monopteros    menu 33 — mimari TUR, ve Cryptoporticus'tan farkli:
+    #                 kriptoportik yalnizca antik Roma'da var, monopteros'un
+    #                 unlu ornekleri 19. yuzyil (Munih Englischer Garten).
+    #                 Arsivi donem olarak karisik, "donem uyusmuyor" riski.
 ]
 
 
