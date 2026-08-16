@@ -215,7 +215,7 @@ def test_TAKILAN_aday_kurtariliyor(monkeypatch):
         monkeypatch,
         mevcut=[_aday("Dolu", "d1")] * 6,
         yeni=[],
-        menuler={},
+        menuler={"Ernst Hanfstaengl": 20},
         takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
     )
     birakilan: list[str] = []
@@ -230,13 +230,41 @@ def test_TAKILAN_aday_kurtariliyor(monkeypatch):
     assert birakilan == ["Ernst Hanfstaengl"]
 
 
+def test_URETILEMEYEN_takilan_aday_KURTARILMIYOR(monkeypatch):
+    """⚠️ Kurtarma bir TERFIDIR, ayni kapidan gecmeli.
+
+    Olculdu (2026-08-16 aksami): kosulsuz kurtarilan `Ernst Hanfstaengl`
+    `Secildi`ye geri kondu ve 18:00 slotunun UC denemesini de yakti (biri tam
+    render). Konunun kendi menusu 8, kapi 12; uretim ise arsivi zengin olan
+    DEDESINI (`Franz Hanfstaengl`, menu 40, 19. yy fotografcisi) capa secti ve
+    hakem her karede baskasini gordu (Wagner, Rietschel, Ludwig II).
+    """
+    _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Dolu", "d1")] * 6,
+        yeni=[],
+        menuler={"Ernst Hanfstaengl": 8},
+        takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
+    )
+    birakilan: list[str] = []
+    monkeypatch.setattr(
+        notion_kuyrugu,
+        "adayi_birak",
+        lambda aday, **_k: birakilan.append(aday.baslik),
+    )
+
+    huni_besle.besle()
+
+    assert birakilan == [], "kapiyi gecemeyen aday kuyrugun basina konmamali"
+
+
 def test_KURU_kipte_takilan_aday_birakilmiyor(monkeypatch):
     """`--kuru` hicbir kosulda Notion'a yazmamali."""
     _hazirla(
         monkeypatch,
         mevcut=[_aday("Dolu", "d1")] * 6,
         yeni=[],
-        menuler={},
+        menuler={"Ernst Hanfstaengl": 20},
         takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
     )
     birakilan: list[str] = []

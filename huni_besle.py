@@ -131,6 +131,30 @@ def takilanlari_kurtar(kuru: bool = False) -> list[str]:
     "atlandi | onceki kosum suruyor" ile engelleniyor). Yani bu noktada
     `Uretiliyor` duran her kayit tanim geregi OKSUZ — kilidi tutan biziz ve
     henuz hicbir aday kapmadik.
+
+    ⚠️ KURTARMA BIR TERFIDIR, DOLAYISIYLA AYNI KAPIDAN GECMELI (olculdu
+    2026-08-16, ayni gun). Ilk surum KOSULSUZ kurtariyordu ve bedeli aksam
+    goruldu: `Ernst Hanfstaengl` `Secildi`ye geri kondu, uretim onu kuyrugun
+    basinda buldu ve 18:00 slotunun UC denemesini de yakti (biri tam render).
+
+        Ernst Hanfstaengl  menu  8   <- asil konu, kapi 12: GECEMEZ
+        Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy FOTOGRAFCISI
+
+    Uretim arsivi zengin olan dedeyi capa secti; ama bir fotografcinin
+    Commons kategorisi kendi resimleriyle degil CEKTIGI kisilerle doludur.
+    Hakem tam bunu yazdi: "Scene 1: Image shows Richard Wagner", "Scene 2:
+    Ernst Rietschel", "Scene 6: King Ludwig II". Gorsel 85 aldi ama iki agir
+    kusur ("anlatilan kisi degil") ve altyazi 75 ile dustu.
+
+    Aday bir kez `Secildi` olmus olabilir ama bu garanti degil: terfi kapisi
+    ondan SONRA duzeldi (H2/H3 menuyu bambaska olcuyor) ve arsiv arzi zaten
+    zamanla degisiyor.
+
+    ⚠️ Olcum basarisiz olursa aday kurtarilMIYOR ve bu bilincli: fonksiyon
+    HER uretim slotunda kosuyor, yani gecici bir ag hatasi kayip degil bir
+    slotluk gecikme demek. `uretilebilir_mi` ag hatasini `(False, 0)` ile
+    donduruyor; ikisini ayirmaya gerek yok, iki halde de aday kuyrugun basina
+    konmamali.
     """
     try:
         takilanlar = notion_kuyrugu.kuyrugu_oku(
@@ -141,7 +165,18 @@ def takilanlari_kurtar(kuru: bool = False) -> list[str]:
         return []
     kurtarilan: list[str] = []
     for aday in takilanlar:
-        print(f"  ♻️ takilmis aday kurtarildi: {aday.baslik}", flush=True)
+        yeter, olculen = uretilebilir_mi(aday.baslik)
+        if not yeter:
+            # Sessiz DEGIL: aday `Uretiliyor`da kaliyor ve her slotta bu satir
+            # yeniden basiliyor, yani insan Notion'da temizleyebilsin diye
+            # gorunur kalıyor. Sessiz kayip bu fonksiyonun kapattigi kusurdu.
+            print(
+                f"  ⛔ takilmis aday kurtarilMADI: {aday.baslik} "
+                f"(menu {olculen} < {ASGARI_MENU}) — uretim slotu yakardi",
+                flush=True,
+            )
+            continue
+        print(f"  ♻️ takilmis aday kurtarildi: {aday.baslik} (menu {olculen})", flush=True)
         if not kuru:
             notion_kuyrugu.adayi_birak(
                 aday,
