@@ -794,7 +794,25 @@ class VideoBicimi:
 
 SHORTS_BICIMI = VideoBicimi(
     ad="shorts",
-    kelime_araligi=(80, 120),
+    # ⚠️ TAVAN 120'den 150'ye CIKARILDI (2026-08-16, kanal sahibinin karari).
+    #
+    # Gerekce olculdu: cikarim arka ucu Kimi'ye gectikten sonra model dogal
+    # olarak 122-151 kelime yaziyor ve 120 tavani bunu her seferinde
+    # reddediyordu. Tek koşumda olculen redler: 122, 127, 146, 151, 249 —
+    # yani bes denemenin dordu SIRF kelime sayisi yuzunden yaniyordu ve her
+    # deneme bir model cagrisi.
+    #
+    # 150 GUVENLI: 170 kelime/dk olculdu (bkz. `UZUN_BICIMI`), yani
+    #     120 kelime = 42,4 sn   (eski tavan)
+    #     150 kelime = 52,9 sn   (yeni tavan)
+    #     170 kelime = 60,0 sn   (YouTube Shorts SINIRI)
+    # Yeni tavan sinirin 7 saniye altinda kaliyor.
+    #
+    # ⚠️ Eski 120'nin yazili bir gerekcesi YOKTU — olculmus bir tutunma
+    # degeri degil, editoryal bir secimdi. Video uzunlugu ~42 sn'den ~50
+    # sn'ye cikiyor; tutunma bundan etkilenirse ilk bakilacak yer burasi
+    # (kanalin olculen kusuru izleyicinin ILK KESMEDE gitmesi).
+    kelime_araligi=(80, 150),
     sahne_araligi=(6, 10),
     # Sahne basina iki kare: gorsel altyazi ritmine yaklassin (2026-08-14,
     # kanal sahibinin sesli notu).

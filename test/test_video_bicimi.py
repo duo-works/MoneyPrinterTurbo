@@ -59,8 +59,36 @@ def test_varsayilan_bicim_SHORTS():
     """Mevcut cagrilar degismeden calismali."""
     ya.validate_content_plan(_plan(100, 8))
 
-    with pytest.raises(ValueError, match="80-120 words"):
+    with pytest.raises(ValueError, match="80-150 words"):
         ya.validate_content_plan(_plan(1500, 8))
+
+
+def test_SHORTS_tavani_60_SANIYENIN_altinda():
+    """⚠️ Tavanin gercek siniri editoryal degil YAPISAL: 60 sn'yi gecen video
+    Shorts sayilmaz.
+
+    Tavan 2026-08-16'da 120'den 150'ye cikarildi cunku Kimi dogal olarak
+    122-151 kelime yaziyor ve tek koşumda bes denemenin dordu SIRF kelime
+    sayisindan yaniyordu. 170 kelime/dk olculdu, yani:
+        150 kelime = 52,9 sn  ·  170 kelime = 60,0 sn (SINIR)
+    """
+    _, en_cok = ya.SHORTS_BICIMI.kelime_araligi
+
+    assert en_cok / ya.KELIME_HIZI * 60 < 58, "Shorts 60 saniyeyi gecemez"
+
+
+def test_SHORTS_tavani_modelin_OLCULEN_ciktisini_kapsiyor():
+    """Olculen redler: 122, 127, 146, 151.
+
+    ⚠️ 151 tavanin BIR KELIME ustunde kaliyor ve bu bilerek boyle: tavan
+    kanal sahibinin karari (150 = 52,9 sn), 60 saniyelik Shorts sinirina
+    7 saniye pay birakiyor. Yani dagilimin ust ucundaki tek bir cikti hala
+    reddedilebilir — kazanc dorttur ucunun kurtarilmasi, hepsinin degil.
+    """
+    _, en_cok = ya.SHORTS_BICIMI.kelime_araligi
+
+    assert en_cok >= 146, "olculen kumenin govdesi kabul edilmeli"
+    assert en_cok == 150, "tavan kanal sahibinin sectigi deger"
 
 
 def test_uzun_bicim_2000_kelimeyi_KABUL_ediyor():
