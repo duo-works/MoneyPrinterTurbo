@@ -161,6 +161,46 @@ EDITORIAL_ANCHOR_POOL = [
     "Bayeux Tapestry",          # 15
     "Eiffel Tower",             # 12
     "Trevi Fountain",           # 27
+    # ⚠️ 2026-08-16 UCUNCU tur — havuz YINE sifirlandi ve bu kez bedeli
+    # olculdu: kanal 27 SAAT sessiz kaldi. 04:18 koşumunun logu birebir
+    # "⚠️ Editoryal capa havuzu TUKENDI" yazdi, model konusunu serbest
+    # secti ("Library of Alexandria"), o arsiv Ohio ve Minnesota'daki
+    # Alexandria halk kutuphaneleriyle doluydu ve bes denemenin besi de
+    # yandi. Zamanlayici bunu yalnizca "red | skor 0" diye raporluyor.
+    #
+    # ⚠️ HAVUZ TEK BASINA SUCLU DEGIL: Notion hunisi de terfi edemiyordu
+    # (`huni_besle` ciktisi, ayni saat): sekiz adayin ucu "menu 0-3 < 12",
+    # dordu "benzeri uretilmis". Adaylarin HEPSI kisiydi ve kisi arsivleri
+    # yapisal olarak ince (bkz. `MIN_SOURCE_VISUAL_SCORE` gerekcesi).
+    # Havuz bu yuzden ANIT/YER agirlikli dolduruluyor — olculen kusur
+    # orani o sinifta en dusuk.
+    #
+    # Ayni olcut (Commons kategorisinde 12+ kadraj VE lisans VE ozne
+    # gecen gorsel) 36 adaya uygulandi, 9'u gecti.
+    #
+    # Elenenler kayda geciyor ki tekrar denenmesin: Taj Mahal 9, Volubilis
+    # 9, Paestum 8, Parthenon 7, Aqueduct of Segovia 7, Neuschwanstein
+    # Castle 7, Great Wall of China 6, Chan Chan 6, Machu Picchu 5,
+    # Sanchi 5, Westminster Abbey 5, Pergamon 4, Palenque 4, Monte Alban 4,
+    # Tower of London 4, Carcassonne 4, Cologne Cathedral 3, Delphi 2,
+    # Potala Palace 2, Registan 2, Saint Basil's Cathedral 1, Mosque-
+    # Cathedral of Cordoba 1, Ostia Antica 1, Valley of the Kings 0,
+    # Himeji Castle 0.
+    #
+    # ⚠️ "Forbidden City" 27 OLCTU ama ALINMADI: `arsiv_arzi_olc.ayirt_edici`
+    # basligin SON kelimesini anahtar aliyor ve burada o kelime "city" —
+    # icinde "city" gecen her dosya sayiliyor, yani sayi guvenilir degil.
+    # Ayni tuzak "Great Wall of China" → "china", "Valley of the Kings" →
+    # "kings", "Himeji Castle" → "castle" icin de var.
+    "Mycenae",                  # 20
+    "Abu Simbel",               # 19
+    "Colosseum",                # 15
+    "Knossos",                  # 14
+    "Jerash",                   # 14
+    "Copan",                    # 14
+    "Karnak",                   # 13
+    "Aphrodisias",              # 12
+    "Todai-ji",                 # 27
 ]
 
 
