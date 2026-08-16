@@ -56,7 +56,23 @@ ettigi konunun havuzun reddettigi konu olmasi demek olurdu.
 
 
 def yeni_adaylar(limit: int = 40) -> list[notion_kuyrugu.Aday]:
-    """`Yeni` kuyrugunu okur — `kuyrugu_oku`nun `Secildi` ikizi."""
+    """`Yeni` kuyrugunu okur — `kuyrugu_oku`nun `Secildi` ikizi.
+
+    ⚠️ SINIFA GORE SIRALANIYOR (2026-08-16). Notion listeyi `Bosluk skoru`
+    AZALAN veriyor ve o skor yapisal olarak AZ BILINEN KISIYI one aliyor:
+    talep/arz bosluğu buyukse konu genelde az bilinen bir kisidir, az bilinen
+    kisinin de kamu mali gorseli yoktur. Canli kuyrukta 114 `Yeni` adayin
+    ezici cogunlugu kisi; huni de tam o dilimin ilk 40'ini okuyordu.
+
+    Olculdu — alti besleme koşumunda 48 atlama, 24'u "menu < 12":
+        Rogelio Mortimer 0 · Antigua Confederación Suiza 0
+        Franz Count of Meran 3 · Henry Macandrew 3      (hepsi kisi)
+
+    `sinifa_gore_sirala` ELEME DEGIL SIRALAMA: kisi adayi kuyrukta kalir,
+    yalnizca sona duser (Mehmed II bir kisi konusuydu ve 84 aldi). Ayni
+    fonksiyon `kuyrugu_oku`da (`notion_kuyrugu.py:153`) zaten kullaniliyor;
+    burasi ikinci cagri yeri, yeni kod degil.
+    """
     sonuc = subprocess.run(
         [
             notion_kuyrugu._ytoto_yolu(YTOTO_PATH),
@@ -74,7 +90,9 @@ def yeni_adaylar(limit: int = 40) -> list[notion_kuyrugu.Aday]:
             f"ytoto aday listele cikti vermedi (cikis {sonuc.returncode}): "
             f"{sonuc.stderr.strip()[-300:] or '(stderr bos)'}"
         )
-    return [notion_kuyrugu.Aday.sozlukten(k) for k in json.loads(metin)]
+    return notion_kuyrugu.sinifa_gore_sirala(
+        [notion_kuyrugu.Aday.sozlukten(k) for k in json.loads(metin)]
+    )
 
 
 def uretilebilir_mi(baslik: str) -> tuple[bool, int]:

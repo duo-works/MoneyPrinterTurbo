@@ -81,6 +81,42 @@ def test_siniflandirma_patlarsa_kuyruk_okunmaya_devam(monkeypatch):
     assert [a.baslik for a in sira] == ["A", "B"]
 
 
+def test_YENI_kuyrugu_da_siralaniyor(monkeypatch):
+    """⚠️ ASIL DELIK BURADAYDI (2026-08-16).
+
+    `kuyrugu_oku` (`Secildi`) siralaniyordu ama `huni_besle.yeni_adaylar`
+    (`Yeni`) siralanmiyordu — oysa TERFI KARARI orada veriliyor. Notion
+    listeyi `Bosluk skoru` AZALAN veriyor ve o skor yapisal olarak az bilinen
+    KISIYI one aliyor; huni de 114 adaylik kuyrugun en kisi-agirlikli 40'lik
+    dilimini okuyordu. Alti besleme koşumunda terfi: 0.
+    """
+    import json
+    import subprocess
+
+    import huni_besle
+
+    kayitlar = [
+        {"kimlik": "1", "baslik": "Rogelio Mortimer de Chirk", "sayfa_url": "u1"},
+        {"kimlik": "2", "baslik": "Watson Brake", "sayfa_url": "u2"},
+    ]
+    monkeypatch.setattr(
+        huni_besle.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess([], 0, json.dumps(kayitlar), ""),
+    )
+    monkeypatch.setattr(
+        huni_besle.notion_kuyrugu, "_ytoto_yolu", lambda *_a, **_k: "ytoto"
+    )
+    _siniflar(monkeypatch, {"Rogelio Mortimer de Chirk": True, "Watson Brake": False})
+
+    adaylar = huni_besle.yeni_adaylar()
+
+    assert [a.baslik for a in adaylar] == [
+        "Watson Brake",
+        "Rogelio Mortimer de Chirk",
+    ]
+
+
 def test_kuyrugu_oku_siralamayi_uyguluyor(monkeypatch):
     """Baglanti testi — fonksiyon dogru olsa bile cagrilmazsa kusur surer."""
     import json
