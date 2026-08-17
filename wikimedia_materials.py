@@ -1352,6 +1352,29 @@ def ikincil_gorseller(
         # yuvada gosterir (`kare_yerlesimi` -> [A, A]), yani bugunku
         # davranisa doner. Yanlis gorsel koymaktansa gorsel koymamak.
         #
+        # ⚠️ OLCULDU (Palmyra kategorisi, 100 dosya, gercek model terimleriyle
+        # — 01 slotunun kendi `revised_search_terms` alani):
+        #
+        #   kor secim (sorgusuz) ilk uc aday:
+        #       Camel Rider / Camelcam / "children in Ba'ath Vanguard
+        #       uniforms welcome the French Prime Minister"
+        #     — yani canlida videoya giren UC BOZUK KARENIN AYNISI.
+        #   sorgulu secim, dort terimin dordunde de: ADAY YOK.
+        #
+        # Yani bu duzeltme bozugu ELIYOR ama Palmyra icin yerine bir sey
+        # KOYMUYOR: o kategoride sahnelere uyan ikinci gorsel yok. Gorsel
+        # ritmini geri getirmek ayri bir is ve dogru kaynak KATEGORI DEGIL
+        # ARSIV MENUSU (`arsiv_envanteri`, aciklama suzgecli) — plan oradan
+        # `kaynak_dosya_2` secmeli.
+        #
+        # ⚠️ KALAN DELIK, kapatilmadi cunku olculmedi: terim sayisi 2'ye
+        # duserse `_puanli_adaylar` esigi 1'e iner ve capa kelimesi
+        # ("Palmyra") kategorideki HER dosyada gectigi icin tek basina
+        # yeterli olur — o zaman bayrakli cocuklar geri gelir. Gercek model
+        # terimleri 5'er terimdi, yani delik simdilik kuramsal. Kapatmak
+        # gerekirse yol belli: sorgudan capa kelimelerini AYIKLA, boylece
+        # yalnizca sahneye ozgu terimler sayilir.
+        #
         # Kirpilabilen bir birincil icin bu yapilmiyor — o kare zaten tam
         # ekran ve iyi duruyor, ikiye bolmek onu kucultmek olurdu.
         if aday is None and kategori_havuzu and (esleme_gerekli or [])[index - 1 : index] == [True]:
