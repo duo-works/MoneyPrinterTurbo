@@ -245,8 +245,10 @@ EDITORIAL_ANCHOR_POOL = [
     #
     # ⚠️ DORDU DE HAVUZDAN CIKARILDI — ilk hali "cikarilmadi" diyordu ve o
     # karar AYNI GECE yanlislandi. 01 slotu yedek kipte kostu, model Masada'yi
-    # secti (menu 11) ve ucuncu deneme gorsel 45 aldi — pencerenin en dusuk
-    # skoru. Yedek kipte capa secimi menu boyutuna BAKMIYOR
+    # secti (menu 11) ve ucuncu deneme KAYNAK KAPISINDA 45 ile dustu
+    # (`state.json` -> `stage: source_materials`), yani render'a bile
+    # varmadan. Bedel yine de tam bir deneme: indirmeler + bir gorü cagrisi.
+    # Yedek kipte capa secimi menu boyutuna BAKMIYOR
     # (`eligible_anchors` yalnizca tekrar kapisini uyguluyor), yani havuzda
     # duran ince capa er gec secilir.
     #
