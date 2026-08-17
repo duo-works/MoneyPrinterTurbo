@@ -608,6 +608,93 @@ def engellenen_capalar(state: dict[str, Any] | None = None) -> list[str]:
     return engelli
 
 
+ADAY_SOGUMA_SAATI = 24
+"""Reddedilen bir Notion adayinin kuyrukta yeniden gorunmesi icin gecmesi
+gereken sure.
+
+⚠️ NEDEN VAR — olculdu (2026-08-17), `state.json`. Kuyruk kipli 12 reddin
+SEKIZI tek bir adayda:
+
+    8  King Philip's War    <- uc ayri slot; 14:00 slotu tek basina alti deneme
+    4  Ernst Hanfstaengl    <- menu kapisiyla 16 Agu'da ayrica kapandi
+
+Sebep kapali bir dongu: uretim dustugunde `adayi_birak` adayi `Seçildi`ye
+geri cekiyor, `adaylari_getir` ise `Boşluk skoru` DESCENDING siraliyor. Skor
+degismedigi icin aday tam da geldigi yere — kuyrugun basina — donuyor ve
+sonraki koşum onu yeniden ilk sirada buluyor. Yani red bir SONUC DOGURMUYOR.
+
+⚠️ SURE BAZLI, DENEME BUTCESI DEGIL. Ayrimi bilerek koruyoruz:
+`RET_DENEME_BUTCESI` CAPA duzeyinde calisir ve kalici kapatir; burasi ADAY
+duzeyinde calisir ve yalnizca ERTELER. Insanin `Seçildi`ye aldigi bir aday
+sessizce cope atilamaz — arsiv zamanla degisiyor ve bugun 8 dosyasi olan
+konunun yarin 40 dosyasi olabilir.
+
+24 saat bir gunun butun slotlarini kapsiyor: aday ertesi gun kendiliginde
+geri geliyor, o gun ise slot yakmiyor.
+"""
+
+
+def _aday_anahtari(ad: str) -> str:
+    return str(ad or "").strip().casefold()
+
+
+def adayin_son_reddi(baslik: str, state: dict[str, Any]) -> datetime | None:
+    """Bu Notion adayinin en son ne zaman reddedildigi — yoksa `None`.
+
+    ⚠️ IKI ESLESME YOLU var ve ikincisi bir GECIS KOPRUSU. `aday_basligi`
+    alani 2026-08-17'de eklendi; ondan onceki 235 kayitta yok. Eski kayitlar
+    icin `kaynak == "huni"` olanlarda `topic`e dusuluyor, cunku kuyruk kipinde
+    model konuyu bazen aynen biraktiginda ikisi esitleniyor (King Philip's
+    War'un sekiz kaydinda oyle).
+
+    ⚠️ Kopru EKSIK ESLESIR ve bu bilincli: Hanfstaengl'in dort kaydinda model
+    konuyu yeniden yazmis, dordu de birbirinden farkli. Yani eski kayitlarin
+    bir kismi soguma uretmeyecek. Alternatifi — bulanik eslesme — YANLIS
+    adaylari sogutur, ki bu insanin secimini sessizce yok saymak demek.
+    Kopru bir kac gun icinde kendiliginden gereksizlesiyor.
+    """
+    anahtar = _aday_anahtari(baslik)
+    if not anahtar:
+        return None
+
+    en_son: datetime | None = None
+    for kayit in state.get("rejected", []):
+        kayitli = kayit.get("aday_basligi")
+        if kayitli is None and kayit.get("kaynak") == "huni":
+            kayitli = kayit.get("topic")
+        if _aday_anahtari(kayitli) != anahtar:
+            continue
+        ham = str(kayit.get("rejected_at", "")).strip()
+        if not ham:
+            continue
+        try:
+            ne_zaman = datetime.fromisoformat(ham)
+        except ValueError:
+            # Bozuk zaman damgasi sogumayi dusurmemeli; o kayit yok sayilir.
+            continue
+        if en_son is None or ne_zaman > en_son:
+            en_son = ne_zaman
+    return en_son
+
+
+def aday_sogumada_mi(
+    baslik: str, state: dict[str, Any], *, simdi: datetime | None = None
+) -> float:
+    """Adayin soguma bitimine kalan SAAT; sogumada degilse 0.
+
+    Sayi donuyor cunku cagiran taraf bunu loga basiyor — "atlandi" demek tek
+    basina yetmez, insan ne kadar bekleyecegini gormeli.
+    """
+    son_red = adayin_son_reddi(baslik, state)
+    if son_red is None:
+        return 0.0
+    an = simdi or datetime.now(ZoneInfo(TIMEZONE_NAME))
+    if son_red.tzinfo is None:
+        son_red = son_red.replace(tzinfo=an.tzinfo)
+    kalan = ADAY_SOGUMA_SAATI - (an - son_red).total_seconds() / 3600
+    return max(0.0, kalan)
+
+
 KANAL_SESI = """You are the editorial producer of an English global-history YouTube Shorts channel.
 
 THE CHANNEL HAS ONE FIXED EDITORIAL ANGLE, AND EVERY SCRIPT MUST HAVE IT: the gap between what people assume happened and what the surviving evidence actually shows. Not "here are facts about a place", but "here is what the record says, and it is not what you were told."
@@ -5929,7 +6016,28 @@ def run_cycle(
         #
         # ⚠️ "Kapmadan uretme" guvencesi KORUNUYOR: kapilamayan aday
         # uretilmiyor, yalnizca ATLANIYOR. Tehlikeli olan tersiydi.
+        #
+        # Soguma yuzunden atlananlar AYRICA tutuluyor: aday bulunamadiginda
+        # gerekce "kuyruk bos" demek yanlis olur — kuyruk dolu, yalnizca
+        # bekliyor. Insan Notion'a bakip "aday duruyor, neden uretmiyor"
+        # dememeli.
+        sogumada: list[str] = []
         for sirasiyla in adaylar:
+            # ⚠️ SOGUMA KAPISI ONCE — bedavaya eleyen kapi, agdan okuyan
+            # kapinin ONUNDE durmali. Asagidaki menu olcumu `arsiv_envanteri`
+            # cagiriyor; sogumadaki bir adayi once olcup sonra atlamak bos
+            # yere ag trafigi demek. Ayni sira `huni_besle.besle` icinde de
+            # var (tekrar kapisi olcum tavanindan once).
+            kalan_saat = aday_sogumada_mi(sirasiyla.baslik, state)
+            if kalan_saat > 0:
+                print(
+                    f"ℹ️ aday atlandı ({sirasiyla.baslik}): son red üstünden "
+                    f"{ADAY_SOGUMA_SAATI - kalan_saat:.1f} saat geçti, "
+                    f"{kalan_saat:.1f} saat daha soğumada",
+                    flush=True,
+                )
+                sogumada.append(sirasiyla.baslik)
+                continue
             # ⚠️ KAPMADAN ONCE OLC. Olculdu (2026-08-16, iki koşum arka arkaya):
             # `Ernst Hanfstaengl` `Secildi`de duruyordu ve uretim onu her
             # slotta kuyrugun basinda buldu; 18:00 ve 18:57 koşumlarinin
@@ -5980,6 +6088,15 @@ def run_cycle(
                 "reason": (
                     "`Seçildi` kuyrugunda kapilabilir aday yok — Notion'da bir adayi "
                     "bu duruma alin. Konu uydurulmadi."
+                    + (
+                        # Kuyruk BOS DEGIL, bekliyor. Ayrimi soylemezsek insan
+                        # Notion'da duran adaya bakip hattin bozuldugunu sanar.
+                        f" ⏳ {len(sogumada)} aday soğumada "
+                        f"({', '.join(sogumada[:3])}) — son redlerinin üstünden "
+                        f"{ADAY_SOGUMA_SAATI} saat geçmedi."
+                        if sogumada
+                        else ""
+                    )
                 ),
             }
         if aday is None:
@@ -6115,6 +6232,14 @@ def run_cycle(
                         # oldu" sorusu cevaplanamiyordu.
                         "slot": slot,
                         "kaynak": kaynak,
+                        # ⚠️ HANGI NOTION ADAYI. `topic` bu soruyu
+                        # cevaplamiyor: model konuyu yeniden yaziyor.
+                        # Olculdu — Ernst Hanfstaengl'in dort reddinde dort
+                        # AYRI `topic` var, King Philip's War'un sekizinde
+                        # ise aday basligiyla birebir ayni. Yani ikisini
+                        # ayirt etmenin yolu yoktu ve soguma kapisi
+                        # (`aday_sogumada_mi`) tam da bu alani okuyor.
+                        "aday_basligi": aday.baslik if aday else None,
                         "topic": rejected_topic,
                         "visual_anchor": plan.visual_anchor,
                         "task_id": None,
@@ -6178,6 +6303,8 @@ def run_cycle(
                         "stage": "video",
                         "slot": slot,
                         "kaynak": kaynak,
+                        # Gerekce yukaridaki kaynak asamasi kaydinda.
+                        "aday_basligi": aday.baslik if aday else None,
                         "topic": rejected_topic,
                         "visual_anchor": plan.visual_anchor,
                         "task_id": task_id,
@@ -6278,6 +6405,10 @@ def run_cycle(
             # Hangi kip uretti: huni adayi mi, model-secimli yedek mi.
             # Arayuz ve `uretim rapor` bu alanla kirilim yapiyor.
             "kaynak": kaynak,
+            # Hangi Notion adayi bu videoyu uretti. Red kayitlarindaki ayni
+            # alanla eslesiyor, yani bir adayin kac deneme sonunda tuttugu
+            # geriye donuk sayilabiliyor.
+            "aday_basligi": aday.baslik if aday else None,
             # ⚠️ DENEY KOLU. Sahne sayisi, klip suresini (`ses ÷ sahne`) ve
             # dolayisiyla ilk kesmenin ne zaman geldigini belirliyor. Bu alan
             # yazilmazsa hangi videonun hangi kolda oldugu SONRADAN
