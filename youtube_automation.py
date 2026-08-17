@@ -15,6 +15,7 @@ import unicodedata
 import zlib
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, cast
 from zoneinfo import ZoneInfo
@@ -332,6 +333,14 @@ class ContentPlan:
     scenes: list[dict[str, str]]
     description: str
     tags: list[str]
+    ruh_hali: str = ""
+    """Anlatimin tonu — arka plan muzigi secimi icin (`RUH_HALLERI`).
+
+    ⚠️ VARSAYILANI VAR ve bu bilincli: alan istemde ISTEGE BAGLI. Bu depoda
+    plan semasina ZORUNLU alan eklemek bes denemenin dordunu yakmis bir kusur
+    sinifi. Model alani yazmazsa ya da tanimayan bir deger verirse bos kalir
+    ve muzik havuz genelinden secilir — bugunku davranis.
+    """
 
 
 @dataclass
@@ -740,7 +749,8 @@ What you write in `description` is placed UNDER a fixed one line channel signatu
 END ON A REASON TO COME BACK, NOT ON A SUMMARY. The last sentence is the only moment a viewer decides whether this channel is worth following, and a closing that merely restates the video ("the mystery remains unsolved") gives them nothing. Close instead on what this channel keeps doing: the next thing in the archive, the pattern this story belongs to, the question the next one answers. Say it in the video's own voice and in a different shape every time; never write "subscribe", "follow", "like and comment" or any other stock call to action, and never repeat a closing line you have used before.
 NEVER USE A DASH CHARACTER ANYWHERE IN THE SCRIPT OR THE SCENE NARRATION: no em dash, no en dash, no hyphen. Rephrase instead: write "single handedly", not "single-handedly"; use a comma or a full stop where you would reach for an em dash; write year ranges as "1652 to 1674". Titles and tags may keep an ordinary hyphen inside a proper name.
 Tags must be an array of 6-10 concise strings mixing three kinds: exact named entities including the subject's alternative and popular spellings, broad category terms an interested viewer browses ("ancient history", "archaeology", "lost civilization"), and one format term. Tags are search terms, not a summary; never write a phrase nobody would type into a search box.
-JSON keys: topic, visual_anchor, title, script, scenes, description, tags."""
+Optionally add "mood": one of "agirbasli" (grave: war, death, collapse, loss), "merak" (curious: a puzzle, an unexplained find, an open question), "gorkemli" (grand: monuments, empires, engineering, ceremony). It only picks the background music, so choose the one that fits the script's dominant tone and omit the key entirely if none clearly fits. Never distort the script to match a mood.
+JSON keys: topic, visual_anchor, title, script, scenes, description, tags, and optionally mood."""
 """Sozlesmenin geri kalani — kanal kimliginden AYRI tutuluyor.
 
 ⚠️ Ikisi de modul duzeyinde sabit. Testler eskiden prompt'u KAYNAK
@@ -2036,6 +2046,87 @@ def adsiz_sahne_tarifi(terim: str, capa: str) -> str:
 
 MUZIK_UZANTILARI = (".mp3", ".m4a", ".aac", ".wav", ".flac", ".ogg", ".opus", ".wma")
 MUZIK_GECMISI = ROOT / "storage" / "youtube_automation" / "muzik_gecmisi.json"
+MUZIK_KUNYESI = ROOT / "resource" / "muzik_kunye.json"
+
+RUH_HALLERI = ("agirbasli", "merak", "gorkemli")
+"""Parcaya ve konuya verilebilecek ruh hali etiketleri.
+
+⚠️ UC TANE ve bilerek az. Her etiket havuzu boluyor; 15 parcalik bir havuzda
+alti etiket, etiket basina iki-uc parca demek olurdu ve tekrar korumasi
+(`muzik_sec` penceresi) ile birlikte secimi tek secenege dusururdu.
+"""
+
+MUZIK_SES_TABANI = 0.2
+"""Anlatimin ustunde muzigin taban seviyesi.
+
+CLI varsayilani; konusma uzerinde muzigi duyulur ama bastirmaz tutuyor.
+Parca basina `ses_kazanci` ile CARPILIYOR — gerekce `muzik_kazanci`'nda.
+"""
+
+
+@lru_cache(maxsize=1)
+def muzik_kunyesi() -> dict[str, dict]:
+    """Parca kunyesi — lisans, baslik, ses kazanci, ruh hali.
+
+    ⚠️ Kunye bir IYILESTIRME, on kosul degil: okunamazsa bos sozluk doner ve
+    hat kazancsiz/etiketsiz calismaya devam eder. Muzik ugruna video uretimi
+    dusmemeli — ayni ilke `muzik_sec`te de yazili.
+    """
+    try:
+        ham = json.loads(MUZIK_KUNYESI.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return ham if isinstance(ham, dict) else {}
+
+
+def muzik_kazanci(ad: str) -> float:
+    """Parcanin ses carpani — havuzu tek seviyeye getiren duzeltme.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-17). Havuzdaki 22 parcanin ilk 40
+    saniyesi (videonun gercekten duydugu kisim) 44,1 dB'ye yayilmisti;
+    kullanilamayacak kadar sessiz olani ayikladiktan sonra bile 15,0 dB
+    kaliyordu:
+
+        en sessiz   Tchaikovsky, Dance of the Flutes   -27,8 dB
+        en gurultulu Tchaikovsky, Serenade melancolique -12,8 dB
+
+    Karistirma yolu (`app/services/video.py`) `MultiplyVolume(bgm_volume)`,
+    yani DUZ BIR CARPAN. Sabit 0,2 ayari bu yuzden her parcada BASKA bir sey
+    demekti: biri anlatimla yarisiyor, oburu hic duyulmuyordu. Kanal
+    sahibinin "muzikler BAZEN siritiyor" demesi teshisin kendisi — sabit
+    degil, parcadan parcaya degisen bir kusur.
+
+    Kazanc havuz MEDYANINA (-20,3 dB) gore hesaplandi ve kunyeye yazildi.
+    Medyan secildi cunku 0,2 tabani bugunku orta seviyeye gore ayarlanmisti;
+    keyfi bir yayin hedefi (LUFS) o ayari gecersiz kilardi.
+
+    ⚠️ DOSYALAR DEGISTIRILMEDI. Normalize edilmis dosya yazmak, kunyedeki
+    `bayt` alanini gecersiz kilardi — o alan hem indirme dogrulamasi hem de
+    havuz butunluk kontrolu (`muzik_havuzu_kur.py`), yani her kurulumda
+    parcalar "eksik" sanilip yeniden indirilirdi. Kazanc bir SAYI olarak
+    kunyede duruyor: makineden bagimsiz, git'te gorunur, ffmpeg surumune
+    duyarsiz.
+
+    Kunyede yoksa 1.0 doner — yani bugunku davranis.
+    """
+    try:
+        deger = float(muzik_kunyesi().get(ad, {}).get("ses_kazanci", 1.0))
+    except (TypeError, ValueError):
+        return 1.0
+    # Cilgin bir kunye degeri sesi patlatmasin; olculen aralik 0,42-2,37.
+    return min(max(deger, 0.1), 4.0)
+
+
+def _ruh_halini_coz(ham: object) -> str:
+    """Serbest metni bilinen bir etikete indirger; tanimazsa bos doner.
+
+    ⚠️ TANIMAYAN DEGER HATA DEGIL. Alan istemde ISTEGE BAGLI: bu depoda plan
+    semasina ZORUNLU alan eklemek bes denemenin dordunu yakmis bir kusur
+    sinifi. Model alani hic yazmazsa ya da uydurursa muzik havuz genelinden
+    secilir — yani bugunku davranis.
+    """
+    etiket = str(ham or "").strip().casefold()
+    return etiket if etiket in RUH_HALLERI else ""
 
 
 def muzik_secenekleri() -> list[str]:
@@ -2056,7 +2147,10 @@ def muzik_secenekleri() -> list[str]:
 
 
 def muzik_sec(
-    secenekler: list[str] | None = None, gecmis_yolu: Path | None = None
+    secenekler: list[str] | None = None,
+    gecmis_yolu: Path | None = None,
+    *,
+    ruh_hali: str = "",
 ) -> str:
     """Bu video icin bir parca sec ve secimi KAYDA GECIR (DW-120).
 
@@ -2080,6 +2174,17 @@ def muzik_sec(
 
     Parca yoksa BOS DONER; cagiran taraf muziksiz devam eder — muzik
     ugruna video uretimi dusmemeli.
+
+    ⚠️ RUH HALI (2026-08-17) bir TERCIH, filtre degil. Uc kademe var:
+
+        1. etiketi konuya UYAN parcalar
+        2. etiketi OLMAYAN parcalar        <- "bilmiyorum" ne odul ne ceza
+        3. havuzun tamami
+
+    Bir ust kademe tekrar penceresinden sonra bos kalirsa bir alt kademeye
+    inilir. Filtre olsaydi ii ruh hali etiketi az olan bir havuzda secim tek
+    parcaya duser, tekrar korumasi anlamsizlasirdi — ayni gerekce
+    `sinifa_gore_sirala`da da yazili: eleme degil siralama.
     """
     havuz = secenekler if secenekler is not None else muzik_secenekleri()
     if not havuz:
@@ -2097,7 +2202,27 @@ def muzik_sec(
     # kalana kadar secimi tek secenege dusurur ve "rastgele" anlamsizlasir.
     pencere = max(1, len(havuz) // 2)
     yakinda_kullanilan = set(gecmis[-pencere:])
-    uygun = [ad for ad in havuz if ad not in yakinda_kullanilan] or list(havuz)
+
+    istenen = _ruh_halini_coz(ruh_hali)
+    kunye = muzik_kunyesi()
+    kademeler: list[list[str]] = []
+    if istenen:
+        kademeler.append(
+            [a for a in havuz if _ruh_halini_coz(kunye.get(a, {}).get("ruh_hali")) == istenen]
+        )
+        kademeler.append(
+            [a for a in havuz if not _ruh_halini_coz(kunye.get(a, {}).get("ruh_hali"))]
+        )
+    kademeler.append(list(havuz))
+
+    uygun: list[str] = []
+    for kademe in kademeler:
+        uygun = [ad for ad in kademe if ad not in yakinda_kullanilan]
+        if uygun:
+            break
+    # Butun kademeler pencereye takildiysa tekrar korumasindan vazgeciliyor:
+    # muziksiz video, tekrar eden muzikten kotu.
+    uygun = uygun or list(havuz)
     secilen = random.choice(uygun)
 
     gecmis.append(secilen)
@@ -3636,6 +3761,9 @@ def generate_content_plan(
             ],
             description=tiresiz_baslik(str(data.get("description", "")).strip()),
             tags=[str(tag).strip() for tag in data.get("tags", []) if str(tag).strip()],
+            # ⚠️ ISTEGE BAGLI. Yoksa ya da tanimiyorsak bos kalir; dogrulama
+            # bunu kusur saymaz. Gerekce `_ruh_halini_coz`da.
+            ruh_hali=_ruh_halini_coz(data.get("mood")),
         )
         for scene in plan.scenes:
             scene["search_term"] = _ensure_visual_anchor(
@@ -5460,8 +5588,22 @@ def run_generator(
 
     # ⚠️ Secim LOGA basiliyor (DW-120). Bu satir olmadigi icin hangi videoda
     # hangi parcanin caldigini ogrenmek ses korelasyonu olcmeyi gerektirdi.
-    secilen_muzik = muzik_sec()
-    print(f"muzik: {secilen_muzik or 'yok (parca bulunamadi)'}", flush=True)
+    secilen_muzik = muzik_sec(ruh_hali=plan.ruh_hali)
+    # ⚠️ Kazanc LOGA basiliyor. Ayni gerekce parca adinda da vardi (DW-120):
+    # kayit tutulmadigi icin "hepsinde ayni muzik var" iddiasini sinamak
+    # korelasyon olcmeyi gerektirmisti. Seviye de olculebilir kalmali.
+    muzik_sesi = round(MUZIK_SES_TABANI * muzik_kazanci(secilen_muzik), 3)
+    print(
+        f"muzik: {secilen_muzik or 'yok (parca bulunamadi)'}"
+        + (
+            f" · ruh hali {plan.ruh_hali or 'belirtilmemis'}"
+            f" · ses {muzik_sesi} (taban {MUZIK_SES_TABANI}"
+            f" × kazanc {muzik_kazanci(secilen_muzik)})"
+            if secilen_muzik
+            else ""
+        ),
+        flush=True,
+    )
 
     command = [
         sys.executable,
@@ -5547,10 +5689,15 @@ def run_generator(
             if secilen_muzik
             else ["--bgm-type", "none"]
         ),
-        # Anlatim onde kalmali: 0.2 CLI varsayilani ve konusma uzerinde muzigi
-        # duyulur ama bastirmaz seviyede tutuyor.
+        # Anlatim onde kalmali: taban 0.2, konusma uzerinde muzigi duyulur
+        # ama bastirmaz seviyede tutuyor.
+        #
+        # ⚠️ ARTIK SABIT DEGIL — parca basina kazancla carpiliyor (2026-08-17).
+        # Olculdu: havuzun ilk 40 saniyeleri 15,0 dB'ye yayilmisti ve
+        # karistirma duz bir carpan, yani sabit 0,2 her parcada BASKA bir sey
+        # demekti. Gerekcenin tamami `muzik_kazanci` docstring'inde.
         "--bgm-volume",
-        "0.2",
+        str(muzik_sesi),
         "--subtitle-enabled",
         "--subtitle-position",
         "custom",

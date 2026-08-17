@@ -1,53 +1,14 @@
 {
-  "ia-ecos-de-plate-op.-42.mp3": {
-    "kaynak": "https://archive.org/details/ecos-de-plate-op.-42",
-    "baslik": "Ecos de Plata, Op.42",
-    "sanatci": "Mariano Cruz",
-    "lisans": "https://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 6526415
-  },
-  "ia-LamentViPartIi-AndanteLamentoso.mp3": {
-    "kaynak": "https://archive.org/details/LamentViPartIi-AndanteLamentoso",
-    "baslik": "Lament VI Part II - Andante Lamentoso",
-    "sanatci": "Cory J Flynn",
-    "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 5584158
-  },
-  "ia-LaCasaEmbrujada-theHauntedHouse-.mp3": {
-    "kaynak": "https://archive.org/details/LaCasaEmbrujada-theHauntedHouse-",
-    "baslik": "La Casa Embrujada -The haunted house-",
-    "sanatci": "Jorge Luis Valverde Valverde",
-    "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 19039839
-  },
-  "ia-v-disc-no-2.mp3": {
-    "kaynak": "https://archive.org/details/v-disc-no-2",
-    "baslik": "Ain't Necessarily So (From \"Porgy And Bess\") / Home On The Range / Take Me Back To My Boots And Saddle",
-    "sanatci": "Dinah Shore And Bing Crosby With Orchest",
-    "lisans": "https://creativecommons.org/publicdomain/mark/1.0/",
-    "bayt": 2410021
-  },
-  "ia-henpecked-blues-by-ben-bernie-orches.mp3": {
-    "kaynak": "https://archive.org/details/henpecked-blues-by-ben-bernie-orchestra-1921",
-    "baslik": "HENPECKED BLUES By Ben Bernie Orchestra 1921",
-    "sanatci": "Ben Bernie and his Orchestra / Vocalion ",
-    "lisans": "https://creativecommons.org/publicdomain/mark/1.0/",
-    "bayt": 4051415
-  },
-  "ia-all-star-trio-and-their-orchestra-ho.mp3": {
-    "kaynak": "https://archive.org/details/all-star-trio-and-their-orchestra-hortense",
-    "baslik": "Hortense (Better copy)",
-    "sanatci": "All Star Trio and Their Orchestra",
-    "lisans": "http://creativecommons.org/publicdomain/mark/1.0/",
-    "bayt": 2730360
-  },
   "klasik-bach-parso-08d22eb3ecaa461fe4bd.mp3": {
     "besteci": "Bach",
     "kaynak": "https://archive.org/details/parso-08d22eb3ecaa461fe4bd46fea54cd2aaf8dc3d86",
     "baslik": "Johann Sebastian Bach — Partita No. 2 in C minor, BWV 826",
     "sanatci": "Johann Sebastian Bach",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 4255984
+    "bayt": 4255984,
+    "ses_kazanci": 0.813,
+    "olculen_db": -18.5,
+    "ruh_hali": "agirbasli"
   },
   "klasik-bach-PachbelCanonD.mp3": {
     "besteci": "Bach",
@@ -55,7 +16,10 @@
     "baslik": "pachbel Canon D",
     "sanatci": "bach",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 5070848
+    "bayt": 5070848,
+    "ses_kazanci": 1.496,
+    "olculen_db": -23.8,
+    "ruh_hali": "agirbasli"
   },
   "klasik-mozart-parso-falaaa03a9d2db4b6e1d.mp3": {
     "besteci": "Mozart",
@@ -63,7 +27,9 @@
     "baslik": "Wolfgang Amadeus Mozart — Decca 02 L",
     "sanatci": "Wolfgang Amadeus Mozart",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 6813415
+    "bayt": 6813415,
+    "ses_kazanci": 0.708,
+    "olculen_db": -17.3
   },
   "klasik-mozart-parso-fal5c3a792db8dc52776.mp3": {
     "besteci": "Mozart",
@@ -71,7 +37,9 @@
     "baslik": "Wolfgang Amadeus Mozart — DB 02 R",
     "sanatci": "Wolfgang Amadeus Mozart",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 7301439
+    "bayt": 7301439,
+    "ses_kazanci": 0.881,
+    "olculen_db": -19.2
   },
   "klasik-beethoven-parso-0343af17bd0711060615.mp3": {
     "besteci": "Beethoven",
@@ -79,7 +47,10 @@
     "baslik": "Ludwig van Beethoven — Sonata No. 13 in E-flat Major, Op. 27 No. 1",
     "sanatci": "Ludwig van Beethoven",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 7327668
+    "bayt": 7327668,
+    "ses_kazanci": 2.317,
+    "olculen_db": -27.6,
+    "ruh_hali": "agirbasli"
   },
   "klasik-beethoven-Beethoven__Ludwig_-_String.mp3": {
     "besteci": "Beethoven",
@@ -87,7 +58,10 @@
     "baslik": "Beethoven, Ludwig - String Quartet F Maj Op 59 no 1 mvmt 4",
     "sanatci": "Beethoven, Ludwig",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 8796611
+    "bayt": 8796611,
+    "ses_kazanci": 1.318,
+    "olculen_db": -22.7,
+    "ruh_hali": "agirbasli"
   },
   "klasik-chopin-parso-1c3dd0e23ed79b7462b8.mp3": {
     "besteci": "Chopin",
@@ -95,7 +69,10 @@
     "baslik": "Frédéric Chopin — Variations in A major 'Souvenir de Paganini', B. 37",
     "sanatci": "Frédéric Chopin",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 4763707
+    "bayt": 4763707,
+    "ses_kazanci": 1.0,
+    "olculen_db": -20.3,
+    "ruh_hali": "merak"
   },
   "klasik-chopin-parso-1ae35c3dc4699f9fa0c1.mp3": {
     "besteci": "Chopin",
@@ -103,7 +80,10 @@
     "baslik": "Frédéric Chopin — Allegro de concert, Op. 46",
     "sanatci": "Frédéric Chopin",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 16285113
+    "bayt": 16285113,
+    "ses_kazanci": 1.012,
+    "olculen_db": -20.4,
+    "ruh_hali": "gorkemli"
   },
   "klasik-vivaldi-vivaldi_concertos.mp3": {
     "besteci": "Vivaldi",
@@ -111,7 +91,9 @@
     "baslik": "vivaldi_concertos",
     "sanatci": "vivaldi_concertos",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 4948117
+    "bayt": 4948117,
+    "ses_kazanci": 1.38,
+    "olculen_db": -23.1
   },
   "klasik-vivaldi-parso-19df9720a290ff3dd767.mp3": {
     "besteci": "Vivaldi",
@@ -119,7 +101,10 @@
     "baslik": "Antonio Vivaldi — The Four Seasons: Spring, Op. 8, RV 269",
     "sanatci": "Antonio Vivaldi",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 8546237
+    "bayt": 8546237,
+    "ses_kazanci": 1.0,
+    "olculen_db": -20.3,
+    "ruh_hali": "merak"
   },
   "klasik-handel-HandelMusicForTheRoyalFire.mp3": {
     "besteci": "Handel",
@@ -127,7 +112,10 @@
     "baslik": "Handel Music for the Royal Fireworks (2011)",
     "sanatci": "Paul Ayres/Handel",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 4393149
+    "bayt": 4393149,
+    "ses_kazanci": 0.989,
+    "olculen_db": -20.2,
+    "ruh_hali": "gorkemli"
   },
   "klasik-brahms-GrantCarterBrahms.mp3": {
     "besteci": "Brahms",
@@ -135,7 +123,10 @@
     "baslik": "Brahms Piano Sonata Opus 5, Andante",
     "sanatci": "Brahms",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 9176094
+    "bayt": 9176094,
+    "ses_kazanci": 0.724,
+    "olculen_db": -17.5,
+    "ruh_hali": "agirbasli"
   },
   "klasik-brahms-Brahms__Johannes_-_String_.mp3": {
     "besteci": "Brahms",
@@ -143,15 +134,10 @@
     "baslik": "Brahms, Johannes - String Quartet C minor Op 51 mvmt 4",
     "sanatci": "Brahms, Johannes",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 7799747
-  },
-  "klasik-schubert-parso-fal4b2c2489249270e43.mp3": {
-    "besteci": "Schubert",
-    "kaynak": "https://archive.org/details/parso-fal4b2c2489249270e43",
-    "baslik": "Franz Schubert — Ak, cik gaiši iznira tavs tēls",
-    "sanatci": "Franz Schubert",
-    "lisans": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-    "bayt": 1175918
+    "bayt": 7799747,
+    "ses_kazanci": 1.429,
+    "olculen_db": -23.4,
+    "ruh_hali": "agirbasli"
   },
   "klasik-tchaikovsky-PyotrIlyichTchaikovsky-mel.mp3": {
     "besteci": "Tchaikovsky",
@@ -159,7 +145,10 @@
     "baslik": "Pyotr Ilyich Tchaikovsky-Melanholicna Serenada Za Violino In Orkester Opus 26",
     "sanatci": "Pyotr Ilyich Tchaikovsky",
     "lisans": "http://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 13764472
+    "bayt": 13764472,
+    "ses_kazanci": 0.422,
+    "olculen_db": -12.8,
+    "ruh_hali": "agirbasli"
   },
   "klasik-tchaikovsky-TchaikovskyDanceOfTheFlute.mp3": {
     "besteci": "Tchaikovsky",
@@ -167,6 +156,9 @@
     "baslik": "Dance of the Flutes",
     "sanatci": "Pyotr Ilyich Tchaikovsky",
     "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 4310394
+    "bayt": 4310394,
+    "ses_kazanci": 2.371,
+    "olculen_db": -27.8,
+    "ruh_hali": "merak"
   }
 }
