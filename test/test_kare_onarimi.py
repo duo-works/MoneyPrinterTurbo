@@ -196,3 +196,97 @@ def test_eski_yol_YEDEK_olarak_duruyor():
 # bir degisken veriliyordu. Test yesil kaldi, uc uretim koşumu video render
 # edip `NameError` ile coktu. Kaynak metninde dize aramak, kodun
 # calistigini kanitlamaz.
+
+
+# --- IKINCIL yuva onarimi (2026-08-17) ------------------------------------
+#
+# ⚠️ Onarim yalnizca `kaynak_dosya`ya yaziyordu, yani sahnenin BIRINCI
+# karesine. Sahne basina iki kare var ve cift numarali kare IKINCIL yuva
+# (`kaynak_dosya_2`) — o kare bozuksa onarim temiz kareyi degistirip
+# bozugu birakiyordu, video ayni kusurla yeniden render ediliyordu.
+#
+# Olculdu: 84 agir kusur kare 9-12'ye yigildi ve skor kapilarini GECEN uc
+# render tek bir kusurla dustu:
+#     16:48  85/75  "kare 11: konuyla ilgisiz modern goruntu"
+#     18:28  78/85  "kare 10: anlatilan kisi degil"        <- IKINCIL
+
+
+def _plan2(*ciftler: tuple[str, str]) -> ya.ContentPlan:
+    """Her sahnenin iki yuvasi da dolu bir plan."""
+    plan = _plan(*[b for b, _ in ciftler])
+    for sahne, (_, ikincil) in zip(plan.scenes, ciftler):
+        sahne["kaynak_dosya_2"] = ikincil
+    return plan
+
+
+def test_IKINCIL_kare_bozuksa_ikincil_dosya_degisiyor(monkeypatch):
+    """18:28 koşumu: "kare 10" -> sahne 5'in IKINCI karesi."""
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "A2.jpg", "YENI.jpg"))
+    monkeypatch.setattr(
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
+    )
+    plan = _plan2(("A.jpg", "A2.jpg"))
+
+    degisen = ya.kareyi_onar(plan, _review("kare 2: anlatilan kisi degil"))
+
+    assert degisen == [1]
+    assert plan.scenes[0]["kaynak_dosya_2"] == "YENI.jpg", "bozuk olan IKINCIL yuvaydi"
+    assert plan.scenes[0]["kaynak_dosya"] == "A.jpg", "temiz birincil dokunulmamali"
+
+
+def test_BIRINCIL_kare_bozuksa_ikincile_DOKUNULMUYOR(monkeypatch):
+    """Karsit durum — yeni mantik eskiyi bozmamali."""
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "A2.jpg", "YENI.jpg"))
+    monkeypatch.setattr(
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 1, "source_file": "YENI.jpg"}]}
+    )
+    plan = _plan2(("A.jpg", "A2.jpg"))
+
+    ya.kareyi_onar(plan, _review("kare 1: konuyla ilgisiz modern goruntu"))
+
+    assert plan.scenes[0]["kaynak_dosya"] == "YENI.jpg"
+    assert plan.scenes[0]["kaynak_dosya_2"] == "A2.jpg", "temiz ikincil dokunulmamali"
+
+
+def test_IKINCIL_dosyalar_da_KULLANILMIS_sayiliyor(monkeypatch):
+    """⚠️ Yoksa onarim, ikinci yuvada ZATEN duran dosyayi 'bos' sanip secer
+    ve ayni goruntu videoda iki kez cikar.
+
+    Menude bir de gercekten bos dosya (`BOS.jpg`) var ki cikarim CAGRILSIN;
+    yoksa aday menu tamamen boşalir, fonksiyon erken doner ve test istemi
+    hic goremez — olcmek istedigi seyi olcemez.
+    """
+    monkeypatch.setattr(
+        ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "MEVCUT2.jpg", "BOS.jpg")
+    )
+    istem: dict = {}
+
+    def yakala(sistem, kullanici, **_):
+        istem["u"] = kullanici
+        return {"picks": []}
+
+    monkeypatch.setattr(ya, "_json_completion", yakala)
+    plan = _plan2(("A.jpg", "MEVCUT2.jpg"))
+
+    ya.kareyi_onar(plan, _review("kare 1: konuyla ilgisiz modern goruntu"))
+
+    assert "BOS.jpg" in istem["u"], "kullanilmamis dosya menude olmali"
+    assert "MEVCUT2.jpg" not in istem["u"], "ikincilde duran dosya menuye girmemeli"
+
+
+def test_UZUN_bicimde_ikincil_yuva_YOK(monkeypatch):
+    """`kare_yuvasi == 1`: her kare kendi sahnesi, ikincil yuva kavrami yok.
+
+    Cift numarali kareyi ikincil saymak, uzun formatta var olmayan bir alana
+    yazmak demek olurdu.
+    """
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_: _menu("A.jpg", "B.jpg", "YENI.jpg"))
+    monkeypatch.setattr(
+        ya, "_json_completion", lambda s, u, **_: {"picks": [{"n": 2, "source_file": "YENI.jpg"}]}
+    )
+    plan = _plan("A.jpg", "B.jpg")
+
+    ya.kareyi_onar(plan, _review("kare 2: donem uyusmuyor"), bicim=ya.UZUN_BICIMI)
+
+    assert plan.scenes[1]["kaynak_dosya"] == "YENI.jpg"
+    assert "kaynak_dosya_2" not in plan.scenes[1]

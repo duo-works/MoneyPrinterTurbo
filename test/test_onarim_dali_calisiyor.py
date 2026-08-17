@@ -117,9 +117,19 @@ def test_onarim_dali_NameError_vermeden_calisiyor(monkeypatch, tmp_path, capsys)
 
     assert sonuc["status"] == "rejected"
     # "kare 6" -> sahne 3 -> dizide 2. sira.
-    assert plan.scenes[ya.kareden_sahneye(6) - 1]["kaynak_dosya"].startswith(
+    #
+    # ⚠️ ALAN `kaynak_dosya_2` (2026-08-17). Kare 6 CIFT numarali, yani
+    # sahne 3'un IKINCI karesi; onarim artik bozuk olan YUVAYA yaziyor.
+    # Eskiden her kusur `kaynak_dosya`ya yazilirdi ve ikincil kare bozuksa
+    # onarim TEMIZ kareyi degistirip bozugu birakiyordu — canlida olculdu
+    # (18:28 koşumu 78/85 aldi, tek kusuru "kare 10: anlatilan kisi degil").
+    sahne = plan.scenes[ya.kareden_sahneye(6) - 1]
+    assert sahne["kaynak_dosya_2"].startswith(
         "YENI-"
-    ), "bozuk karenin gorseli degismeliydi"
+    ), "bozuk IKINCIL karenin gorseli degismeliydi"
+    assert (
+        sahne["kaynak_dosya"] == "eski-3.jpg"
+    ), "ayni sahnenin TEMIZ birincil karesi dokunulmamali"
     # Uc denemenin ucunde de onarim calisti: dal her turda yuruttuluyor.
     assert capsys.readouterr().out.count("kare onarımı") == 3
 

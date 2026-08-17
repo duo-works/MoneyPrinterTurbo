@@ -1685,6 +1685,21 @@ def kareyi_onar(
 
     Menu yoksa ya da kullanilmamis dosya kalmadiysa BOS DONER — cagiran
     taraf eski davranisa (arama terimlerini revize etme) duser.
+
+    ⚠️ IKINCIL KARE DE ONARILIYOR (2026-08-17). Eskiden yalnizca
+    `kaynak_dosya` degistiriliyordu, yani sahnenin BIRINCI karesi; sahnenin
+    ikinci karesi (`kaynak_dosya_2`) onarimdan muaftI. Shorts'ta sahne
+    basina iki kare var ve cift numarali kare ikincil yuvadir:
+
+        kare  9 -> sahne 5 birincil     kare 10 -> sahne 5 IKINCIL
+        kare 11 -> sahne 6 birincil     kare 12 -> sahne 6 IKINCIL
+
+    Sonucu olculdu — 84 agir kusurun dagilimi kare 9-12'ye yigiliyordu ve
+    skor kapilarini GECEN uc render tek bir kusurla dustu:
+
+        16:48  85/75  "kare 11: konuyla ilgisiz modern goruntu"
+        16:48  75/85  "kare 11: konuyla ilgisiz modern goruntu"
+        18:28  78/85  "kare 10: anlatilan kisi degil"      <- IKINCIL
     """
     bozuk = agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler)
     bozuk = [n for n in bozuk if 1 <= n <= len(plan.scenes)]
@@ -1697,7 +1712,16 @@ def kareyi_onar(
     )
     if not menu:
         return []
-    kullanilan = {str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes}
+    # ⚠️ IKINCIL DOSYALAR DA "kullanilmis" sayiliyor. Yalnizca `kaynak_dosya`
+    # toplansaydi onarim, sahnenin ikinci yuvasinda ZATEN duran bir dosyayi
+    # "bos" sanip secebilirdi; sonuc ayni videoda ayni goruntunun iki kez
+    # cikmasi olurdu ve tekrar kapisi (`ikincil_alintilari_temizle`) onu
+    # zaten kusur sayiyor.
+    kullanilan = {
+        str(sahne.get(alan, "")).strip()
+        for sahne in plan.scenes
+        for alan in ("kaynak_dosya", "kaynak_dosya_2")
+    } - {""}
     aday_menu = [girdi for girdi in menu if girdi["dosya"] not in kullanilan]
     if not aday_menu:
         return []
@@ -1707,13 +1731,28 @@ def kareyi_onar(
     # yapilmali; yapilmazsa kusur metni hicbir sahneye eslesmez ve model
     # neyin bozuk oldugunu ogrenmeden secim yapar.
     kusur_metni = {n: [] for n in bozuk}
+    # ⚠️ HANGI YUVA bozuk, o da takip ediliyor. Sahne basina iki kare var ve
+    # bunlar AYRI dosyalar: tek numarali kare `kaynak_dosya`, cift numarali
+    # `kaynak_dosya_2`. Yalnizca birincili degistirmek, hakemin isaretledigi
+    # kare ikincilse hicbir sey duzeltmez — video ayni kusurla yeniden
+    # render edilir. Olculdu: 18:28 koşumu 78/85 aldi ve tek kusuru
+    # "kare 10: anlatilan kisi degil"di, yani sahne 5'in IKINCIL karesi.
+    ikincil_bozuk: set[int] = set()
     for kusur in review.agir_kusurlar:
         if eslesme := re.match(r"kare (\d+): (.+)", kusur):
-            sahne_no = hakem_karesinden_sahne(
-                int(eslesme.group(1)), bicim.kare_yuvasi, ornekler
-            )
+            ham_kare = int(eslesme.group(1))
+            sahne_no = hakem_karesinden_sahne(ham_kare, bicim.kare_yuvasi, ornekler)
             if sahne_no in kusur_metni:
                 kusur_metni[sahne_no].append(eslesme.group(2))
+                gercek_kare = (
+                    ornekler[ham_kare - 1]
+                    if ornekler and ham_kare <= len(ornekler)
+                    else ham_kare
+                )
+                # Cift numarali kare = ikincil yuva. `kare_yuvasi == 1` olan
+                # uzun formatta ikincil yuva YOK, o yuzden kosul sart.
+                if bicim.kare_yuvasi > 1 and gercek_kare % 2 == 0:
+                    ikincil_bozuk.add(sahne_no)
     try:
         data = _json_completion(
             "Return JSON only: {\"picks\": [{\"n\": <scene number>, \"source_file\": "
@@ -1752,7 +1791,15 @@ def kareyi_onar(
         if numara not in bozuk or dosya not in gecerli or dosya in secilen:
             continue
         secilen.add(dosya)
-        plan.scenes[numara - 1]["kaynak_dosya"] = dosya
+        # ⚠️ BOZUK OLAN YUVAYA yaziliyor. Kusur sahnenin ikinci karesindeyse
+        # birincili degistirmek temiz bir kareyi bozup bozugu birakirdi.
+        # Sahnenin HER IKI karesi de isaretlenmisse ikisi de yenilenmeli:
+        # o durumda birincil bu dosyayi alir, ikincil bir sonraki turda
+        # (hakem yine isaretlerse) degisir — tek cikarimda iki dosya
+        # istemek, modelin ayni dosyayi iki yuvaya koyma riskini getirirdi
+        # ve tekrar kapisi zaten onu reddediyor.
+        alan = "kaynak_dosya_2" if numara in ikincil_bozuk else "kaynak_dosya"
+        plan.scenes[numara - 1][alan] = dosya
         degisen.append(numara)
     return sorted(degisen)
 
