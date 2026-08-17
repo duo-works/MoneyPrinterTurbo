@@ -327,6 +327,60 @@ def test_sogumadaki_aday_ATLANIP_sonrakine_geciliyor(monkeypatch, tmp_path):
     assert kapilanlar == ["Ellora Caves"], "soguyan atlanip sonraki kapilmaliydi"
 
 
+def test_PLANLAMA_dusunce_de_aday_sogumaya_giriyor(monkeypatch, tmp_path):
+    """⚠️ SOGUMANIN UCUNCU CIKIS YOLU — olculdu (2026-08-18), canli koşumda.
+
+    Soguma `state["rejected"]` okuyor. Plan uretilemeden dusen yol ise
+    yalnizca `reviews`e yaziyordu, yani aday HIC sogumuyordu ve ertesi
+    koşumda gene kuyrugun basindaydi.
+
+    Canli ornek: 01:10 koşumu `Orkhon Yazıtları`ni kapti, bes denemenin dordu
+    "capa arzi yetersiz" ile yandi (konu arsiv fakiri) ve `rejected` bos
+    kaldi. Video ve kaynak asamalari icin ayni kusur bir tur once
+    kapatilmisti; bu ucuncu yol atlanmisti.
+    """
+    durum = {"rejected": [], "published": [], "completed_slots": []}
+    yazilan: list[dict] = []
+    monkeypatch.setattr(ya, "save_state", lambda s: yazilan.append(s))
+    _kuyruk_hatti(monkeypatch, tmp_path, [_aday("Orkhon Yazıtları")], durum)
+
+    sonuc = ya.run_cycle(kuyruktan=True)
+
+    assert sonuc["status"] == "rejected"
+    kayitlar = durum.get("rejected", [])
+    assert kayitlar, "planlama reddi kayda gecmeliydi"
+    assert kayitlar[-1]["aday_basligi"] == "Orkhon Yazıtları"
+    assert kayitlar[-1]["stage"] == "planning"
+    assert ya.aday_sogumada_mi("Orkhon Yazıtları", durum) > 0, "aday sogumaliydi"
+
+
+def test_planlama_reddi_CAPA_YAKMIYOR(monkeypatch, tmp_path):
+    """⚠️ Kayitta capa BOS: plan hic kurulamadi, gecerli bir capa yok.
+
+    Bos capa `engellenen_capalar`a girmemeli — aksi halde planlama hatasi
+    sessizce bir capayi omur boyu yasaklardi.
+    """
+    durum = {"rejected": [], "published": [], "completed_slots": []}
+    monkeypatch.setattr(ya, "save_state", lambda _s: None)
+    _kuyruk_hatti(monkeypatch, tmp_path, [_aday("Orkhon Yazıtları")], durum)
+
+    ya.run_cycle(kuyruktan=True)
+
+    assert durum["rejected"][-1]["visual_anchor"] == ""
+    assert ya.engellenen_capalar(durum) == []
+
+
+def test_DRY_RUN_planlama_reddini_KAYDETMIYOR(monkeypatch, tmp_path):
+    """Kuru koşum durumu kirletmemeli; diger iki kayit yolu da boyle."""
+    durum = {"rejected": [], "published": [], "completed_slots": []}
+    monkeypatch.setattr(ya, "save_state", lambda _s: None)
+    _kuyruk_hatti(monkeypatch, tmp_path, [_aday("Orkhon Yazıtları")], durum)
+
+    ya.run_cycle(kuyruktan=True, dry_run=True)
+
+    assert durum["rejected"] == []
+
+
 def test_SOGUMAMIS_aday_normal_kapiliyor(monkeypatch, tmp_path):
     """Kapinin yalnizca soguyanlari eledigini gosteren karsit ornek."""
     durum = {

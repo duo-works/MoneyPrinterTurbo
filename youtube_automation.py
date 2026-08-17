@@ -6383,6 +6383,42 @@ def run_cycle(
                     "video": "",
                 }
             )
+            # ⚠️ PLANLAMA REDDI DE KAYDA GECIYOR — olculdu (2026-08-18) ve
+            # #38'in sogumasindaki delik tam buydu.
+            #
+            # Soguma `state["rejected"]` okuyor; bu yol ise yalnizca
+            # `reviews`e yaziyordu. Yani plan uretilemeden dusen bir koşum
+            # adayi HIC sogutmuyordu ve aday ertesi koşumda yine kuyrugun
+            # basindaydi — kapatmaya calistigimiz dongunun aynisi, yalnizca
+            # baska bir kapidan.
+            #
+            # Canli ornek: 01:10 koşumu `Orkhon Yazıtları` adayini kapti, bes
+            # denemenin dordu "capa arzi yetersiz" ile yandi (konu arsiv
+            # fakiri) ve aday kayitsiz kaldi. Iki tur once ayni kusuru video
+            # asamasi icin kapatmistik; bu ucuncu cikis yolu atlanmisti.
+            #
+            # ⚠️ `visual_anchor` BOS biraliyor: burada gecerli bir capa YOK
+            # (plan hic kurulamadi). Bos capa `engellenen_capalar`a girmiyor,
+            # yani bu kayit bir CAPAYI yakmiyor — yalnizca ADAYI sogutuyor.
+            # Ikisinin ayri kalmasi bilincli: capa butcesi (`RET_DENEME_BUTCESI`)
+            # kalici kapatir, soguma yalnizca erteler.
+            if not dry_run:
+                state.setdefault("rejected", []).append(
+                    {
+                        "stage": "planning",
+                        "slot": slot,
+                        "kaynak": kaynak,
+                        "aday_basligi": aday.baslik if aday else None,
+                        "topic": "",
+                        "visual_anchor": "",
+                        "task_id": None,
+                        "visual_alignment_score": 0,
+                        "issues": [str(hata)],
+                        "agir_kusurlar": [],
+                        "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                    }
+                )
+                save_state(state)
             return {
                 "status": "rejected",
                 "slot": slot,

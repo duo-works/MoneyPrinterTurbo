@@ -99,11 +99,22 @@ def test_red_kayitlari_slot_tasiyor():
         yerler.append(konum)
         konum = kaynak.find(capa, konum + 1)
 
-    assert len(yerler) == 2, f"iki kalici red kaydi bekleniyordu, {len(yerler)} bulundu"
-    for konum in yerler:
-        govde = kaynak[konum : konum + 900]
+    # ⚠️ UC KAYIT YERI (2026-08-18'de ikiden uce cikti): kaynak asamasi, video
+    # asamasi ve PLANLAMA. Ucuncusu #38'in sogumasindaki deligi kapatiyor —
+    # plan uretilemeden dusen koşum adayi hic sogutmuyordu ve aday ertesi
+    # koşumda yine kuyrugun basindaydi (canlida olculdu, `Orkhon Yazıtları`).
+    # Sayi burada tutuluyor ki yeni bir cikis yolu SESSIZCE eklenmesin.
+    assert len(yerler) == 3, f"uc kalici red kaydi bekleniyordu, {len(yerler)} bulundu"
+    # ⚠️ Govde SONRAKI kayda kadar aliniyor, sabit uzunlukla degil: kaynak
+    # asamasi kaydinin ustunde uzun bir gerekce yorumu var ve 900 karakterlik
+    # pencere alanlara ulasmadan bitiyordu. Sabit pencere buyutmek de yanlis
+    # olurdu — bir sonraki kaydin govdesine tasip yanlis yesil verir.
+    sinirlar = yerler[1:] + [len(kaynak)]
+    for konum, son in zip(yerler, sinirlar):
+        govde = kaynak[konum:son]
         assert '"slot": slot' in govde, "her kalici red kaydi slot tasimali"
         assert '"kaynak": kaynak' in govde
+        assert '"aday_basligi"' in govde, "soguma bu alani okuyor"
 
 
 def test_cli_bayragi_hatta_bagli():
