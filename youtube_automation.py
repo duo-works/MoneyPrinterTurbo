@@ -737,7 +737,7 @@ Every scene needs narration and a concrete 3-7 word English Wikimedia Commons se
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. Repeating one query ("Murad III", "Murad III", ...) returns the same ranked archive results every time, and the video becomes a row of near-identical portraits, which is the single most common reason a video is rejected. Write instead: "Murad III tughra", "Murad III imperial berat", "Murad III Topkapi palace", "Murad III Ottoman map", which is the anchor plus the concrete thing THIS scene is about.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
-NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF. "No one can reconstruct every transition from this summary alone" and "the record here does not name each turning point" are not narration; they are padding you reach for when you do not know enough about the subject, and no archive image can illustrate them, so that scene is guaranteed to show something unrelated. If you cannot fill a scene with a concrete thing that happened, a named person, a place, an object, or a date, write fewer scenes. Honest uncertainty ABOUT THE WORLD stays welcome ("locals still claim...", "his body was never found").
+NEVER WRITE A SENTENCE WHOSE SUBJECT IS THE RECORD ITSELF. "No one can reconstruct every transition from this summary alone" and "the record here does not name each turning point" are not narration; they are padding you reach for when you do not know enough about the subject, and no archive image can illustrate them, so that scene is guaranteed to show something unrelated. If you cannot fill a scene with a concrete thing that happened, a named person, a place, an object, or a date, write fewer scenes. This ALSO bans naming the source material as the subject: "photographs show the walls", "portraits from the same era show him", "the images do not show" are the same mistake wearing a specific noun; write what the walls WERE and what he DID. Honest uncertainty ABOUT THE WORLD stays welcome ("locals still claim...", "his body was never found", "no one has found the tomb", "the record stops here" as a closing line about the world, not as a scene subject).
 Every planned scene must be illustratable either by a real view of the visual_anchor or by an honest historical illustration of the moment being described. Scenes may show a specific event, a named person, a discovery, a disappearance, or a legend as long as the narration stays truthful about what is known and what is only told.
 NEVER BUILD A SCENE ON THE MODERN RECOVERY EPISODE OR ON LABORATORY ANALYSIS. Sentences like "a sponge diver found a bronze arm in 1900", "salvagers dragged the marble up with hooks", "a CT scan revealed the hidden join" or "radiocarbon dating placed it at 1600 BC" cannot be illustrated here, because every search term must carry the visual_anchor and the archive holds the ancient object itself, not the dive, the winch, or the scanner. The archive will return a present day museum photograph instead and the scene will be marked as an unrelated modern image. Say what the object IS and what happened to it in its own time; if the date came from a laboratory, state the date as a fact and leave the instrument out.
 TELL A STORY, DO NOT DESCRIBE AN OBJECT. A list of a monument's features is not a video; a specific thing that happened there is. Build every script around one of: a documented event with a beginning and an end, a discovery or a disappearance, a legend or myth the culture itself told about the place, a mystery that is still unsolved, or a person whose fate is tied to the anchor. Name people, dates, and outcomes when they are known.
@@ -778,6 +778,19 @@ soylenenden kopuyor.
 """
 
 
+KELIME_CUMLESI = "The script must be 80-120 spoken English words"
+"""`EDITORYAL_YONERGE` icindeki kelime araligi cumlesi — HER KIPTE degistiriliyor.
+
+⚠️ Buradaki 80-120 bir DEGER DEGIL, bir CAPADIR: metinde ne yaziyorsa o,
+`editoryal_sistem_yonergesi` onu bicimin `kelime_araligi`'yla degistiriyor.
+Yani bu sayilari gormek "modele 120 deniyor" anlamina gelmez.
+
+Sabit ayri duruyor ki `EDITORYAL_YONERGE` metni degistiginde `_yonerge_degistir`
+TEK yerde patlasin ve iki kip birden duzeltilsin. Eskiden capa dize iki ayri
+yerde ciplak yaziliydi ve yalnizca uzun kipte kullaniliyordu.
+"""
+
+
 def _yonerge_degistir(metin: str, eski: str, yeni: str) -> str:
     """Istem cumlesini degistirir; hedef cumle YOKSA PATLAR.
 
@@ -807,13 +820,31 @@ def editoryal_sistem_yonergesi(bicim: "VideoBicimi | None" = None) -> str:
     ⚠️ `bicim` varsayilani `None`, `SHORTS_BICIMI` degil: bu fonksiyon
     dosyada `SHORTS_BICIMI`den ONCE tanimli ve varsayilan degerler `def`
     aninda hesaplaniyor. Ayni sinif kusur bu oturumda uc koşum oldurdu.
+
+    ⚠️ KELIME ARALIGI ARTIK BICIMDEN TURETILIYOR, iki yerde ayri ayri
+    yazilmiyor — olculdu (2026-08-18) ve iki gun boyunca uretimi yiyen kusur
+    tam olarak buydu:
+
+        istem  (`EDITORYAL_YONERGE`)  "80-120 spoken English words"
+        kapi   (`kelime_araligi`)      (80, 150)
+
+    16 Agustos'ta tavan 120'den 150'ye cikarildi (`6d409ed`) ama istemdeki
+    SABIT METIN guncellenmedi. Yani modele 120 soyleniyor, dogrulama 150
+    istiyor ve red mesaji "must contain 80-150 words" diyordu: model uc ayri
+    sayi goruyordu. Shorts dali bu satira kadar sozlesmeyi HIC
+    degistirmiyordu, o yuzden tutarsizlik yalnizca Shorts'ta vardi — ve hat
+    yalnizca Shorts uretiyor.
     """
     bicim = bicim or SHORTS_BICIMI
-    if bicim.ad == SHORTS_BICIMI.ad:
-        return KANAL_SESI + EDITORYAL_YONERGE
-
     kelime_en_az, kelime_en_cok = bicim.kelime_araligi
     sahne_en_az, sahne_en_cok = bicim.sahne_araligi
+
+    if bicim.ad == SHORTS_BICIMI.ad:
+        return KANAL_SESI + _yonerge_degistir(
+            EDITORYAL_YONERGE,
+            KELIME_CUMLESI,
+            f"The script must be {kelime_en_az}-{kelime_en_cok} spoken English words",
+        )
 
     kimlik = _yonerge_degistir(
         KANAL_SESI,
@@ -822,7 +853,7 @@ def editoryal_sistem_yonergesi(bicim: "VideoBicimi | None" = None) -> str:
     )
     sozlesme = _yonerge_degistir(
         EDITORYAL_YONERGE,
-        "The script must be 80-120 spoken English words",
+        KELIME_CUMLESI,
         f"The script must be {kelime_en_az}-{kelime_en_cok} spoken English words",
     )
     sozlesme = _yonerge_degistir(

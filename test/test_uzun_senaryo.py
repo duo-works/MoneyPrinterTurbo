@@ -56,13 +56,35 @@ def _istemi_yakala(monkeypatch, menu, konu="Herculaneum", **ek):
 # --- Sistem yonergesi ------------------------------------------------------
 
 
-def test_SHORTS_yonergesi_BIREBIR_ayni():
-    """⚠️ Shorts hatti olculerek kalibre edildi; uzun format ona dokunmamali."""
-    assert ya.editoryal_sistem_yonergesi() == ya.KANAL_SESI + ya.EDITORYAL_YONERGE
-    assert (
-        ya.editoryal_sistem_yonergesi(ya.SHORTS_BICIMI)
-        == ya.editoryal_sistem_yonergesi()
+def test_SHORTS_yonergesi_YALNIZCA_kelime_araligi_kadar_farkli():
+    """⚠️ Shorts hatti olculerek kalibre edildi; uzun format ona dokunmamali.
+
+    ⚠️ IDDIA 2026-08-18'de DEGISTI ve bu bir test duzeltmesi DEGIL: eskiden
+    Shorts yonergesi `EDITORYAL_YONERGE` ile BIREBIR ayniydi, cunku Shorts
+    dali sozlesmeyi hic degistirmiyordu. Kusur tam da oydu — tavan 16 Agu'da
+    150'ye cikarildi ama istemdeki sabit metin "80-120" kaldi, yani modele
+    tutturamayacagi bir hedef soyleniyordu (bkz. `test_istem_kapiyla_tutarli`).
+
+    Artik iki kip de sayiyi bicimden enjekte ediyor. Testin KORUDUGU sey
+    degismedi: uzun formata ozgu hicbir metin Shorts'a sizmamali; Shorts
+    yonergesi ile ham sozlesme arasindaki TEK fark kelime araligi olmali.
+    """
+    shorts = ya.editoryal_sistem_yonergesi(ya.SHORTS_BICIMI)
+
+    assert shorts == ya.editoryal_sistem_yonergesi(), "varsayilan bicim Shorts olmali"
+
+    # Kelime cumlesi geri konunca ham sozlesmenin AYNISI cikmali: baska hicbir
+    # sey degismedi.
+    en_az, en_cok = ya.SHORTS_BICIMI.kelime_araligi
+    geri = shorts.replace(
+        f"The script must be {en_az}-{en_cok} spoken English words",
+        ya.KELIME_CUMLESI,
     )
+    assert geri == ya.KANAL_SESI + ya.EDITORYAL_YONERGE
+
+    # Uzun kipe ozgu metinler Shorts'a SIZMAMALI.
+    assert "documentary channel" not in shorts
+    assert "NEVER put #Shorts" not in shorts
 
 
 def test_uzun_yonergede_SHORTS_SAYILARI_YOK():
