@@ -66,7 +66,35 @@ TIMEZONE_NAME = "Europe/Istanbul"
 # yanlis-kisi kusuru TASIMIYORDU — yalnizca tekrarlayan portre ve olay-
 # spesifik gorsel eksikligi. Kaynak arzi tarihi kisiler icin yapisal
 # olarak portre agirlikli; 80 bu konu sinifini sistemik olarak eliyordu.
-MIN_VISUAL_SCORE = 80
+#
+# ⚠️ 80'den 75'e INDIRILDI (2026-08-17, kanal sahibinin karari). Yukaridaki
+# 2026-08-12 kalibrasyonu 10 YAYINLANMIS videonun skoruyla yapilmisti; o
+# gunden beri hat degisti (menu disiplini, ikincil gorsel denetimi, capa
+# arzi kapisi) ve esik bir daha olculmedi. 16-17 Agu'da uretilen 31 RENDER
+# olculdu — kaynak asamasi retleri HARIC, cunku `review_source_materials`
+# altyaziya sabit 100 yaziyor ve onlari render saymak bu oturumda iki kez
+# yapilmis bir hata:
+#
+#     gorsel  >= 80     3/31
+#     altyazi >= 80    16/31
+#     IKISI BIRDEN      0/31      <- iki gunde SIFIR yayin
+#
+# Gorsel skorunun dagilimi darbogazi acikca gosteriyor:
+#
+#     85 ▏1  ·  82 ▏▏2  ·  78 ▏▏▏▏▏▏▏▏▏▏▏11  ·  72 ▏▏▏▏▏▏▏▏▏▏▏▏12  ·  <72 ▏▏▏▏▏5
+#
+# 23 render tam 72-78 bandinda. Hakem bu hatta pratikte 80 ustu vermiyor,
+# yani esik ulasilabilir bandin USTUNDE duruyordu ve kaliteyi degil
+# URETIMI engelliyordu. Agir kusuru SIFIR olan 13 render da ayni bantta
+# takildi — orn. Hadrian's Wall 72/85, agir kusur 0.
+#
+# ⚠️ AGIR KUSUR KAPISI DEGISMEDI ve asil koruma odur: `agir_kusurlar` dolu
+# olan video skoru ne olursa olsun reddediliyor. 2026-08-12'de elenen 50
+# esiginden farki tam bu — o zaman boyle bir kapi YOKTU, yani "issues dolu"
+# kume yayina gidiyordu. Bugun gitmiyor.
+#
+# ⚠️ 75, MIN_SOURCE_VISUAL_SCORE'un (70) USTUNDE kalmali; testi koruyor.
+MIN_VISUAL_SCORE = 75
 MIN_SOURCE_VISUAL_SCORE = 70
 MIN_SUBTITLE_SCORE = 80
 AI_VISUAL_FALLBACK_ENABLED = str(

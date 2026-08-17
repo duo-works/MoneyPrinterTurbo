@@ -69,6 +69,45 @@ def test_esik_sabitlerden_geliyor_elle_yazilmiyor():
     assert not re.search(r"<\s*50\b", govde)
 
 
+def test_gorsel_esigi_ULASILABILIR_bantta():
+    """⚠️ Esik hattin URETEBILDIGI bandin icinde olmali (2026-08-17).
+
+    Olculdu — 16-17 Agu'da uretilen 31 render (kaynak asamasi retleri
+    haric, onlarin altyazisi sabit 100):
+
+        gorsel  >= 80     3/31
+        altyazi >= 80    16/31
+        IKISI BIRDEN      0/31      <- iki gunde sifir yayin
+
+        85 ▏1 · 82 ▏▏2 · 78 ▏▏▏▏▏▏▏▏▏▏▏11 · 72 ▏▏▏▏▏▏▏▏▏▏▏▏12 · <72 ▏▏▏▏▏5
+
+    23 render tam 72-78 bandinda; hakem bu hatta pratikte 80 ustu vermiyor.
+    80'e geri cikarmak, kaliteyi degil URETIMI durdurur — agir kusuru sifir
+    olan render'lar bile gecemez (Hadrian's Wall 72/85, agir kusur 0).
+
+    Bu test esigi DONDURMUYOR: yukseltmek icin gerekce yeni bir SKOR
+    DAGILIMI olmali, tahmin degil. 78 bandinin ustune cikildigi olculurse
+    burasi bilerek guncellenir.
+    """
+    assert MIN_VISUAL_SCORE <= 78, (
+        "31 render'in 23'u 72-78 bandinda; 78 ustu esik uretimi durduruyor. "
+        "Yukseltmeden once yeni bir skor dagilimi olculmeli."
+    )
+
+
+def test_agir_kusur_kapisi_esikten_BAGIMSIZ_duruyor():
+    """⚠️ Esik indirildi (80 -> 75); asil koruma agir kusur kapisi OLMALI.
+
+    2026-08-12'de 50 esigi "issues dolu" kumeyi yayina geciriyordu diye
+    elenmisti. Bugun 75'in guvenli olmasinin sebebi o gun OLMAYAN bir kapi:
+    `agir_kusurlar` dolu olan video skoru ne olursa olsun reddediliyor.
+    O kapi kalkarsa bu esik bir daha savunulamaz.
+    """
+    kaynak = KAYNAK.read_text(encoding="utf-8")
+    assert "agir_kusurlar" in kaynak
+    assert "def agir_kusur_var" in kaynak or "agir_kusurlu_kareler" in kaynak
+
+
 def test_iki_skor_da_esigi_gecerse_uygun():
     assert yayina_uygun(MIN_VISUAL_SCORE, MIN_SUBTITLE_SCORE) is True
 

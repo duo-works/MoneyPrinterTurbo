@@ -12,6 +12,8 @@ from PIL import Image
 from youtube_automation import (
     _seconds_until_not_before,
     _recent_titles,
+    MIN_SUBTITLE_SCORE,
+    MIN_VISUAL_SCORE,
     ContentPlan,
     DistinctTopicUnavailableError,
     QualityReview,
@@ -408,8 +410,14 @@ def test_commons_credits_are_added_to_description_without_duplicate_links():
 
 
 def test_should_publish_requires_visual_and_subtitle_quality_thresholds():
-    good = QualityReview(True, 80, 80, [])
-    bad_visuals = QualityReview(True, 79, 95, ["Modern footage conflicts with narration"])
+    # ⚠️ Esikler SABITTEN okunuyor, elle yazilmiyor. Eskiden 80/79 yaziyordu
+    # ve esik 75'e indirilince (2026-08-17) "esigin altI" ornegi esigin
+    # USTUNDE kaldi: test sessizce anlamini yitirdi, kapiyi degil bir sayiyi
+    # olcuyordu.
+    good = QualityReview(True, MIN_VISUAL_SCORE, MIN_SUBTITLE_SCORE, [])
+    bad_visuals = QualityReview(
+        True, MIN_VISUAL_SCORE - 1, 95, ["Modern footage conflicts with narration"]
+    )
 
     assert should_publish(good)
     assert not should_publish(bad_visuals)
