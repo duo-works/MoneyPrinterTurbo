@@ -2178,23 +2178,59 @@ def _json_completion(
         raise RuntimeError(f"unsupported inference backend: {INFERENCE_BACKEND}")
     client, model = _openai_client()
     base_url = str(config.app.get("openai_base_url", "")).strip()
-    response = client.chat.completions.create(
-        model=model,
-        temperature=0.65,
-        response_format={"type": "json_object"},
-        max_tokens=AZAMI_CIKTI_TOKEN,
-        # ⚠️ Zaman asimi ISTEMCIYE de veriliyor. Verilmezse `hermes` yolunda
-        # yakalanan asilma burada SESSIZCE sonsuza kadar bekler ve
-        # zamanlayici slotunu yer.
-        timeout=float(zaman_asimi),
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        **_akil_yurutmeyi_kapat(base_url),
-    )
-    return _json_govdesi(response.choices[0].message.content)
+    # ⚠️ METIN YOLU DA TEKRAR DENIYOR (2026-08-17). Gerekce `GORU_JSON_DENEMESI`
+    # docstring'inde ve o ders 2026-08-16'da YALNIZCA gorü yoluna
+    # uygulanmisti; metin yolu tek bir bos cevapta hala coküyordu. Ayni
+    # istisna 17 Agu 12:35 koşumunu oldurdu:
+    #
+    #     RuntimeError: model bos cevap dondurdu
+    #
+    # Ret degil ÇÖKME: `run_cycle` yigin iziyle oluyor, slot kayboluyor ve
+    # zamanlayici "HATA | cikis 1" yaziyor. O koşum plani uc kez kurmus,
+    # Tikal icin arsivi indirmis ve iki kez render'a kadar gitmisti.
+    #
+    # ⚠️ Metin denemesi gorü denemesinden UCUZ (goruntu yok), yani 3 burada
+    # daha da rahat savunulur. `temperature=0.65` denemeler arasinda gorü
+    # yolundakinden (0.1) daha fazla degisiklik birakiyor.
+    son_hata: Exception | None = None
+    for deneme in range(1, METIN_JSON_DENEMESI + 1):
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.65,
+            response_format={"type": "json_object"},
+            max_tokens=AZAMI_CIKTI_TOKEN,
+            # ⚠️ Zaman asimi ISTEMCIYE de veriliyor. Verilmezse `hermes` yolunda
+            # yakalanan asilma burada SESSIZCE sonsuza kadar bekler ve
+            # zamanlayici slotunu yer.
+            timeout=float(zaman_asimi),
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            **_akil_yurutmeyi_kapat(base_url),
+        )
+        try:
+            return _json_govdesi(response.choices[0].message.content)
+        except (RuntimeError, ValueError) as hata:
+            # ⚠️ `ValueError` `json.JSONDecodeError`i de kapsiyor — 06:13
+            # koşumunu olduren buydu.
+            son_hata = hata
+            print(
+                f"⚠️ metin cikarimi okunamadi ({deneme}/{METIN_JSON_DENEMESI}): {hata}",
+                flush=True,
+            )
+    raise son_hata if son_hata else RuntimeError("metin cikarimi basarisiz")
 
+
+METIN_JSON_DENEMESI = 3
+"""Metin modeli okunamayan cevap verirse kac kez tekrar denenecek.
+
+⚠️ AYNI DERS, IKINCI YOL. `GORU_JSON_DENEMESI` 2026-08-16'da eklendi ama
+yalnizca gorü yoluna; metin yolu tek bir bos cevapta cökmeye devam etti ve
+17 Agu 12:35 koşumunu ayni istisna oldurdu (`model bos cevap dondurdu`).
+Cozum depoda hazir duruyordu, buraya uygulanmamisti — `kaynak_ornegi`
+docstring'indeki ayni sinif korluk.
+"""
 
 GORU_JSON_DENEMESI = 3
 """Görü modeli okunamayan cevap verirse kac kez tekrar denenecek.

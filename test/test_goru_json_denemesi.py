@@ -85,3 +85,49 @@ def test_hepsi_duserse_ACIK_hata(monkeypatch, tmp_path):
         ya._vision_json({"soru": "x"}, gorsel)
 
     assert cagri["adet"] == ya.GORU_JSON_DENEMESI
+
+
+# --- METIN yolu: ayni ders, ikinci yol -----------------------------------
+#
+# ⚠️ Yukaridaki duzeltme 2026-08-16'da YALNIZCA gorü yoluna uygulandi. Metin
+# yolu tek bir bos cevapta cökmeye devam etti ve 17 Agu 12:35 koşumunu ayni
+# istisna oldurdu:
+#
+#     RuntimeError: model bos cevap dondurdu
+#       ...run_cycle -> generate_content_plan -> _json_completion
+#
+# O koşum plani uc kez kurmus, Tikal arsivini indirmis ve iki kez render'a
+# kadar gitmisti. Cozum depoda hazir duruyordu, buraya uygulanmamisti.
+
+
+def test_METIN_bos_cevaptan_sonra_tekrar_deniyor(monkeypatch, tmp_path):
+    _, cagri = _hazirla(monkeypatch, tmp_path, ["", '{"topic": "x"}'])
+
+    assert ya._json_completion("sistem", "kullanici") == {"topic": "x"}
+    assert cagri["adet"] == 2, "ilk bos cevaptan sonra tekrar denenmeli"
+
+
+def test_METIN_bozuk_JSON_sonrasi_tekrar_deniyor(monkeypatch, tmp_path):
+    _, cagri = _hazirla(monkeypatch, tmp_path, ["<html>502</html>", '{"topic": "y"}'])
+
+    assert ya._json_completion("sistem", "kullanici") == {"topic": "y"}
+    assert cagri["adet"] == 2
+
+
+def test_METIN_ilk_denemede_calisirsa_tekrar_YOK(monkeypatch, tmp_path):
+    _, cagri = _hazirla(monkeypatch, tmp_path, ['{"topic": "z"}'])
+
+    ya._json_completion("sistem", "kullanici")
+
+    assert cagri["adet"] == 1
+
+
+def test_METIN_hepsi_duserse_ACIK_hata(monkeypatch, tmp_path):
+    """⚠️ Sessizce bos sozluk DONMEMELI: cagiran taraf plani uretilmis sanip
+    bos bir videoyu isleme sokardi."""
+    _, cagri = _hazirla(monkeypatch, tmp_path, [""])
+
+    with pytest.raises(RuntimeError):
+        ya._json_completion("sistem", "kullanici")
+
+    assert cagri["adet"] == ya.METIN_JSON_DENEMESI
