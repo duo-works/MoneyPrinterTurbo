@@ -3154,9 +3154,12 @@ def generate_content_plan(
     model kendi havuzundan sectI ve ayni gecede iki Roma muhendisligi videosu
     cikti. Huni beslemesinin varlik sebebi bu.
 
-    ⚠️ UZUN BICIM `konu` ZORUNLU KILIYOR. Kaynak metin ve arsiv menusu
-    bloklarinin ikisi de `if konu:` dalinin icinde; `konu=None` ile uzun bir
-    plan istemek, modelden 2.000 kelimeyi HAFIZADAN yazmasini istemek ve
+    ⚠️ UZUN BICIM `konu` ZORUNLU KILIYOR — ve bu yasak 2026-08-17'den sonra da
+    duruyor. Kaynak metin + arsiv menusu artik yedek kipte de kuruluyor
+    (`_yedek_capa_sec` bir capa bulursa), ama YALNIZCA bulursa: havuz
+    tukendiginde ya da menu cekilemediginde dal menusuz eski davranisa dusuyor.
+    Yani yedek kipte menu bir GARANTI degil. `konu=None` ile uzun bir plan
+    istemek, o dususte modelden 2.000 kelimeyi HAFIZADAN yazmasini istemek ve
     alinti kapisini sessizce kapatmak olurdu. Uydurma bu hatta olculmus bir
     kusur (DW-114, "Franziska Scanagatta") ve uzun formatta kelime basina
     degil kelime SAYISIYLA olcekleniyor.
@@ -3468,10 +3471,13 @@ def generate_content_plan(
                 f"{exc}. Return a completely corrected plan that follows every constraint."
             )
             continue
-        # ⚠️ HER IKI KIPTE de calisiyor. Huni kipinde menu zaten isteme
-        # veriliyor; yedek kipte capayi model sectigi icin menu istemde HIC
-        # yok ve ancak bu kapinin geri bildirimiyle geliyor. Gerekce
-        # `alinti_kusuru` docstring'inde.
+        # ⚠️ HER IKI KIPTE de calisiyor — ama sebebi 2026-08-17'de degisti.
+        # Eskiden yedek kipte capayi model sectigi icin menu istemde HIC yoktu
+        # ve ancak bu kapinin geri bildirimiyle geliyordu. Artik capayi kod
+        # seciyor ve menu bastan veriliyor (bkz. `_yedek_capa_sec`), yani kapi
+        # cogu koşumda "menuyu tanistiran" degil "menuye uymayani yakalayan"
+        # rolde. Kaldirilamaz: havuz tukendiginde dal hala menusuz kaliyor ve o
+        # durumda tek savunma bu. Gerekce `alinti_kusuru` docstring'inde.
         if yumusak_kapilar_acik and (
             kusur := alinti_kusuru(
                 plan, konu or "", sinir=envanter_sinir, bicim=bicim
