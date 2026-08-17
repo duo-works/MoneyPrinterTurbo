@@ -63,9 +63,16 @@ def _indirmeyi_taklit(monkeypatch, tmp_path):
 
     monkeypatch.setattr(wm, "_download", sahte_indir)
     monkeypatch.setattr(wm, "_alinti_adayi", lambda *_a, **_k: None)
-    monkeypatch.setattr(wm, "_kategori_adaylari", lambda havuz, kullanilan: [
-        a for a in havuz if a["title"] not in kullanilan
-    ])
+    # ⚠️ `query` 2026-08-17'de eklendi: kor secim yerine sahnenin arama terimi
+    # veriliyor. Bu stub imza uyumu icin esnetildi; SORGUNUN GERCEKTEN
+    # GECTIGI ayri dosyada olculuyor (`test_ikincil_secimi.py`).
+    monkeypatch.setattr(
+        wm,
+        "_kategori_adaylari",
+        lambda havuz, kullanilan, *_a, **_k: [
+            a for a in havuz if a["title"] not in kullanilan
+        ],
+    )
     return inen
 
 

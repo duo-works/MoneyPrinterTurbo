@@ -630,14 +630,28 @@ def _kategori_adaylari(
     pages: list[dict[str, Any]],
     used_titles: set[str],
     hedef_oran: float = SHORTS_ORANI,
+    *,
+    query: str = "",
 ) -> list[dict[str, Any]]:
-    """Kategori havuzunu puana gore siralar — capa ve sorgu kontrolu olmadan.
+    """Kategori havuzunu puana gore siralar — capa kontrolu olmadan.
 
     Cagiran taraf listeyi bastan gezebilsin diye TEK aday degil LISTE
     donuyor: indirme dusebilir ya da aday tekrar cikabilir, o zaman
     sonrakine gecilmeli.
+
+    ⚠️ `query` BOSSA SIRALAMA KOR ve bu olculdu (2026-08-17). Sorgu terimi
+    olmayinca `_puanli_adaylar` yalnizca en-boy oranina ve boyuta bakiyor,
+    yani "kategorinin en iyi kadrajlanmis dosyasi" donuyor — o dosyanin
+    sahneyle ilgisi olup olmadigi HIC sorulmuyor. Ikincil gorsel yolu tam
+    bu yuzden bozuktu (bkz. `ikincil_gorseller`). Sorgu verilince ayni
+    fonksiyon terimlerin baslikta/aciklamada gecmesini ZORUNLU kiliyor —
+    yeni suzgec yazilmiyor, var olan sinyal baglaniyor.
+
+    ⚠️ Anahtar kelimeli: `hedef_oran` bazi cagrilarda KONUMSAL veriliyor
+    (`kategori_menusu`), araya konumsal bir parametre eklemek onu sessizce
+    bozardi.
     """
-    return _puanli_adaylar(pages, used_titles, "", "", hedef_oran)
+    return _puanli_adaylar(pages, used_titles, query, "", hedef_oran)
 
 
 def _puanli_adaylar(
@@ -1319,12 +1333,31 @@ def ikincil_gorseller(
         # gorseller olmamali, cok kalitesiz duruyor" dedigi sey. Lycurgus
         # Cup koşumunda 12 karenin 2'si boyle cikti ve hakem de yazdi.
         #
-        # Kategori havuzundan esleme guvenli: uyeligi Commons'in kendi
-        # kuratoryasi belirliyor, yani OZNE garantili. Kirpilabilen bir
-        # birincil icin bu yapilmiyor — o kare zaten tam ekran ve iyi
-        # duruyor, ikiye bolmek onu kucultmek olurdu.
+        # ⚠️ "Kategori uyeligi OZNEYI garanti eder" varsayimi 2026-08-17'de
+        # YANLISLANDI. Dogru olan yalnizca YER: Commons'in Palmyra kategorisi
+        # Palmyra'nin modern turist fotograflarini da icerir. Ozne dogru,
+        # ANLATIM ve DONEM yanlis cikiyordu:
+        #
+        #   scene-04b  deveye binmis modern turist  ("Aurelian ... altin
+        #              zincirlerle Roma'da gezdirdi" cumlesinin altinda)
+        #   scene-05b  askeri hava ussunde bayrakli cocuklar, 20. yy
+        #   scene-06b  bir PowerPoint slaydi (Gobekli koşumu)
+        #
+        # Sebep secimin KOR olmasiydi: `_kategori_adaylari` sorgusuz
+        # cagriliyordu, yani siralama yalnizca kadraj/boyuta bakiyordu.
+        # Artik sahnenin KENDI arama terimi veriliyor ve puanlayici
+        # terimlerin baslikta/aciklamada gecmesini zorunlu kiliyor.
+        #
+        # ⚠️ Aday CIKMAYABILIR ve bu dogru sonuc: o sahne birincil kareyi iki
+        # yuvada gosterir (`kare_yerlesimi` -> [A, A]), yani bugunku
+        # davranisa doner. Yanlis gorsel koymaktansa gorsel koymamak.
+        #
+        # Kirpilabilen bir birincil icin bu yapilmiyor — o kare zaten tam
+        # ekran ve iyi duruyor, ikiye bolmek onu kucultmek olurdu.
         if aday is None and kategori_havuzu and (esleme_gerekli or [])[index - 1 : index] == [True]:
-            adaylar = _kategori_adaylari(kategori_havuzu, kullanilan)
+            adaylar = _kategori_adaylari(
+                kategori_havuzu, kullanilan, query=str(scene.get("search_term", ""))
+            )
             aday = adaylar[0] if adaylar else None
         if aday is None:
             dosyalar.append(None)
