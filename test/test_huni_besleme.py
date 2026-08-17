@@ -12,8 +12,17 @@ sebep hattin kendisi degil BESLENMEMESIYDI:
 doldurur ama uretimi duzeltmez: konu uretilemezse koşum yine bos doner,
 ustelik bu kez bir uretim slotu yakarak. Ilk canli kuru koşumda tam bunun
 kanitI cikti — `Yeni` kuyrugundaki 40 adayin 40'i elendi (Rogelio
-Mortimer menu 0, Franz Count of Meran 3, Henry Macandrew 3): huni KISI
-konulari seciyor ve kisilerin arsiv arzi yok.
+Mortimer menu 0, Franz Count of Meran 3, Henry Macandrew 3).
+
+⚠️ O ELENMENIN SEBEBI 2026-08-17'de OLCULDU ve buradaki ilk teshis
+("huni KISI konulari seciyor ve kisilerin arsiv arzi yok") YANLIS cikti.
+Kuyrugun tamami olculdugunde sinif ile esik arasinda anlamli fark yoktu:
+
+    yer/nesne   12+ gecen  25%      kisi   12+ gecen  24%
+
+Yani kisi olmak tek basina eleme sebebi degil; `sinifa_gore_sirala` zaten
+kisiyi sona atiyordu, dolayisiyla terfi eden aday kisi de OLMUYORDU —
+hic terfi olmuyordu. Asil sebep PENCEREYDI (asagidaki testlerin basligi).
 """
 
 import sys
@@ -296,3 +305,141 @@ def test_takilan_taranamazsa_besleme_SURUYOR(monkeypatch):
     monkeypatch.setattr(notion_kuyrugu, "kuyrugu_oku", patla)
 
     assert huni_besle.besle()["terfi"] == ["Karnak"]
+
+
+# --- Pencere ve olcum tavani (2026-08-17) ---------------------------------
+#
+# ⚠️ Dosyanin basindaki tesis "huni KISI konulari seciyor" diyordu. Olculdu
+# ve YANLIS cikti: `sinifa_gore_sirala` kisiyi zaten sona atiyor, yani terfi
+# eden aday kisi olmuyordu — hic terfi olmuyordu.
+#
+# Asil sebep PENCERE: kesme ytoto okumasinda (`--limit`), siralama yalnizca
+# okunan dilimin icinde yer degistiriyor. `Yeni` kuyrugunun tamami (100 aday)
+# olculdugunde esigi gecen 12 aday cikti ve 12'sinin de ham sirasi 40'in
+# OTESINDEYDI (Ignatius of Loyola #87 menu 40, H. G. Wells #88 menu 35,
+# King Philip's War #57 menu 16). Huni her koşumda listenin uretilemeyen
+# basini tarayip 0 terfiyle donuyordu.
+
+
+def test_PENCERE_ytotoya_gecen_limit(monkeypatch):
+    """Genisletilen pencere OKUMAYA yansimali; yoksa hicbir sey degismez."""
+    yakalanan: dict = {}
+
+    class _Sonuc:
+        returncode = 0
+        stdout = "[]"
+        stderr = ""
+
+    def sahte_kos(args, **_k):
+        yakalanan["args"] = args
+        return _Sonuc()
+
+    monkeypatch.setattr(huni_besle.subprocess, "run", sahte_kos)
+    monkeypatch.setattr(huni_besle.notion_kuyrugu, "_ytoto_yolu", lambda _p: "ytoto")
+    monkeypatch.setattr(notion_kuyrugu, "sinifa_gore_sirala", lambda a: a)
+
+    huni_besle.yeni_adaylar()
+
+    assert "--limit" in yakalanan["args"]
+    limit = yakalanan["args"][yakalanan["args"].index("--limit") + 1]
+    assert limit == str(huni_besle.PENCERE)
+    assert huni_besle.PENCERE > 40, "40'lik pencere olculen 12 adayin hicbirini gormuyordu"
+
+
+def test_TAVAN_dolunca_ilerideki_aday_gorulmuyor(monkeypatch):
+    """Tavanin ne yaptigini durust yaziyor: koruma bedava DEGIL.
+
+    Tavani dolduracak kadar kotu aday varsa ilerideki iyi aday O KOŞUMDA
+    kaciriliyor. Kabul edilen takas: besleme HER uretim slotunda kosuyor,
+    yani kayip bir slotluk gecikme; tavansiz hal ~12 dakikalik besleme, yani
+    uretimin kendisinin gecikmesi.
+    """
+    kotu = [_aday(f"Kotu{i}", f"k{i}") for i in range(huni_besle.OLCUM_TAVANI)]
+    iyi = _aday("King Philip's War", "iyi")
+    menuler = {f"Kotu{i}": 1 for i in range(len(kotu))}
+    menuler["King Philip's War"] = 16
+
+    secilenler = _hazirla(
+        monkeypatch, mevcut=[], yeni=kotu + [iyi], menuler=menuler
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == []
+    assert ozet["tavana_carpti"] is True
+    assert ozet["olcum"] == huni_besle.OLCUM_TAVANI
+    assert secilenler == []
+
+
+def test_tavan_ICINDEKI_iyi_aday_terfi_ediyor(monkeypatch):
+    """Tavan ELEME DEGIL sinir: altinda kalan ayni dizilim terfi etmeli."""
+    kotu = [_aday(f"Kotu{i}", f"k{i}") for i in range(huni_besle.OLCUM_TAVANI - 1)]
+    iyi = _aday("King Philip's War", "iyi")
+    menuler = {f"Kotu{i}": 1 for i in range(len(kotu))}
+    menuler["King Philip's War"] = 16
+
+    _hazirla(monkeypatch, mevcut=[], yeni=kotu + [iyi], menuler=menuler)
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == ["King Philip's War"]
+    assert ozet["tavana_carpti"] is False
+
+
+def test_BENZERLIK_elemesi_tavana_SAYILMIYOR(monkeypatch):
+    """⚠️ `is_duplicate_visual_anchor` aga gitmiyor — tavan AG maliyeti icin.
+
+    Benzerlik elemesini saymak, uzun bir 'benzeri uretilmis' serisinin
+    tavani bosa doldurup gercek adaylari gormemesi demek olurdu.
+    """
+    benzer = [_aday("Palmyra", f"p{i}") for i in range(60)]
+    iyi = _aday("King Philip's War", "iyi")
+
+    _hazirla(
+        monkeypatch,
+        mevcut=[],
+        yeni=benzer + [iyi],
+        menuler={"King Philip's War": 16},
+        kullanilmis=["Palmyra"],
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == ["King Philip's War"], (
+        "60 benzerlik elemesi aga gitmiyor, tavani doldurmamali"
+    )
+    assert ozet["olcum"] == 1, "yalnizca gercek olcum sayilmali"
+    assert ozet["tavana_carpti"] is False
+
+
+def test_tavan_dolunca_SESSIZ_kesilmiyor(monkeypatch, capsys):
+    """'Kuyruk kuru' ile 'kuyrugu tarayamadim' ayni gorunmemeli."""
+    kotu = [_aday(f"Kotu{i}", f"k{i}") for i in range(huni_besle.OLCUM_TAVANI + 5)]
+
+    _hazirla(
+        monkeypatch,
+        mevcut=[],
+        yeni=kotu,
+        menuler={f"Kotu{i}": 1 for i in range(len(kotu))},
+    )
+
+    huni_besle.besle()
+
+    assert "ölçüm tavanı" in capsys.readouterr().out
+
+
+def test_olcum_TEMBEL_kalmali(monkeypatch):
+    """Eksik kadar terfi bulununca olcum DURMALI — tavan bunu bozmamali."""
+    yeni = [_aday(f"Iyi{i}", f"i{i}") for i in range(20)]
+
+    _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Var", "v1")] * 3,
+        yeni=yeni,
+        menuler={f"Iyi{i}": 20 for i in range(20)},
+    )
+
+    ozet = huni_besle.besle()
+
+    assert len(ozet["terfi"]) == 3, "eksik 3, fazlasi terfi etmemeli"
+    assert ozet["olcum"] == 3, "gereginden fazla Commons cagrisi yapilmamali"

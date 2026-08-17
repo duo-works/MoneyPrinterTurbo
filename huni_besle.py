@@ -46,6 +46,41 @@ tampon demek. Daha buyuk tutmak insanin sonradan fikrini degistirdigi
 adaylari da kilitlerdi (`Secildi` = "bunu uret" demek).
 """
 
+PENCERE = 120
+"""`Yeni` kuyrugundan kac aday OKUNSUN (ytoto `--limit`).
+
+⚠️ 40'ti; 2026-08-17'de olculup buyutuldu. Gerekcenin tamami
+`yeni_adaylar` docstring'inde: kuyrukta esigi gecen 12 aday vardi ve
+12'sinin de ham sirasi 40'in OTESINDEYDI, yani huni her koşumda listenin
+uretilemeyen basini tarayip 0 terfiyle donuyordu.
+
+120 secildi cunku canli kuyruk 100 aday ve tavan kuyrugun BUYUMESINE de
+yer birakmali; okuma tek bir Notion cagrisi, buyutmenin bedeli orada degil
+OLCUMDE (bkz. `OLCUM_TAVANI`).
+"""
+
+OLCUM_TAVANI = 45
+"""Bir besleme koşumunda en fazla kac adayin arsiv arzi olculsun.
+
+⚠️ PENCEREYI GENISLETMENIN BEDELI BURADA — olculdu (2026-08-17):
+`uretilebilir_mi` aday basina ~6,0 sn (Commons kategorisi + arama).
+
+Dongu `len(terfi) >= eksik` olunca kiriliyor, yani olcum TEMBEL: canli
+kuyrukla simulasyon pencere 120'de 24 olcumde 3 terfi verdi (~198 sn) —
+bugunku 40'lik pencereyle neredeyse ayni, cunku bugun de 24 aday olculup
+HIC terfi bulunamiyor.
+
+Tavan ORTALAMA hal icin degil EN KOTU hal icin var: hicbir aday gecmezse
+120 adayin hepsi olculurdu ve besleme ~12 dakika surerdi. Besleme HER
+uretim slotunda koşuyor (`uret.sh:105`) ve zamanlayici 3 saatte bir
+tetikliyor; 12 dakikalik bir besleme, uretimin kendisini geciktirir.
+
+45 secildi: simulasyonun gordugu en kotu hali (24 olcum) rahatca asiyor,
+ama en kotu hali ~4,5 dakikada tutuyor. Tavana carpilirsa satir basiliyor —
+sessiz kesme, "kuyruk kuru" ile "kuyrugu tarayamadim"i birbirine
+karistirirdi.
+"""
+
 ASGARI_MENU = 6 * KARE_YUVASI
 """Bir konunun uretilebilir sayilmasi icin gereken menu buyuklugu.
 
@@ -55,7 +90,7 @@ ettigi konunun havuzun reddettigi konu olmasi demek olurdu.
 """
 
 
-def yeni_adaylar(limit: int = 40) -> list[notion_kuyrugu.Aday]:
+def yeni_adaylar(limit: int = PENCERE) -> list[notion_kuyrugu.Aday]:
     """`Yeni` kuyrugunu okur — `kuyrugu_oku`nun `Secildi` ikizi.
 
     ⚠️ SINIFA GORE SIRALANIYOR (2026-08-16). Notion listeyi `Bosluk skoru`
@@ -72,6 +107,29 @@ def yeni_adaylar(limit: int = 40) -> list[notion_kuyrugu.Aday]:
     yalnizca sona duser (Mehmed II bir kisi konusuydu ve 84 aldi). Ayni
     fonksiyon `kuyrugu_oku`da (`notion_kuyrugu.py:153`) zaten kullaniliyor;
     burasi ikinci cagri yeri, yeni kod degil.
+
+    ⚠️ SIRALAMA PENCEREYI GENISLETMEZ — bu ayrim 2026-08-17'de olculdu ve
+    yukaridaki gerekcenin eksik kalan yariydi. Kesme `--limit` ile ytoto
+    OKUMASINDA oluyor; siralama yalnizca okunan dilimin ICINDE yer
+    degistiriyor. Yani pencere disinda kalan iyi aday siralamayla
+    KURTARILAMAZ, cunku listeye hic girmiyor.
+
+    Olculdu — `Yeni` kuyrugunun TAMAMI (100 aday), her biri uretimin kendi
+    `arsiv_menusu` olcutuyle:
+
+        esigi gecen aday          12
+        bunlarin penceredeki      0        <- hepsi #52 ve sonrasinda
+        pencerede gecen           0        <- huni bu yuzden 0 terfi ediyordu
+
+        Ignatius of Loyola  menu 40  (ham #87)
+        H. G. Wells         menu 35  (ham #88)
+        King Philip's War   menu 16  (ham #57)
+        Operation Storm     menu 15  (ham #78)
+
+    `Bosluk skoru` bir TALEP olcusu, arz olcusu degil; skoru yuksek adaylarin
+    arsivi yapisal olarak zayif oldugu icin listenin basi sistematik olarak
+    uretilemeyenlerle doluyor. Sıralama bunu duzeltemez, yalnizca kotu bir
+    kovanin icini karistirir.
     """
     sonuc = subprocess.run(
         [
@@ -199,14 +257,23 @@ def besle(kuru: bool = False) -> dict:
     kullanilmis = _kullanilmis_capalar()
     terfi: list[str] = []
     elenen: list[tuple[str, int]] = []
+    olcum = 0
+    tavana_carpti = False
     for aday in yeni_adaylar():
         if len(terfi) >= eksik:
             break
         # ⚠️ Uretilmis konuya benzeyeni terfi etmek, huninin sirasini
         # bozup slot yakar: `generate_content_plan` onu zaten reddediyor.
+        # AGA GITMIYOR, yani tavana sayilmiyor.
         if is_duplicate_visual_anchor(aday.baslik, kullanilmis):
             elenen.append((aday.baslik, -1))
             continue
+        if olcum >= OLCUM_TAVANI:
+            # ⚠️ Sessiz kesme OLMAZ: bu satir olmadan "kuyrukta uretilebilir
+            # aday yok" ile "kuyrugun geri kalanina bakmadim" ayni gorunurdu.
+            tavana_carpti = True
+            break
+        olcum += 1
         tamam, adet = uretilebilir_mi(aday.baslik)
         if not tamam:
             elenen.append((aday.baslik, adet))
@@ -232,7 +299,19 @@ def besle(kuru: bool = False) -> dict:
     for baslik, adet in elenen[:8]:
         sebep = "benzeri üretilmiş" if adet < 0 else f"menü {adet} < {ASGARI_MENU}"
         print(f"  – atlandı: {baslik[:46]} ({sebep})")
-    return {"terfi": terfi, "elenen": elenen, "eksik": eksik}
+    if tavana_carpti:
+        print(
+            f"  ⏱️ ölçüm tavanı ({OLCUM_TAVANI}) doldu — kuyruğun geri kalanına "
+            "BAKILMADI; sonraki slot kaldığı yerden değil baştan tarar",
+            flush=True,
+        )
+    return {
+        "terfi": terfi,
+        "elenen": elenen,
+        "eksik": eksik,
+        "olcum": olcum,
+        "tavana_carpti": tavana_carpti,
+    }
 
 
 def main() -> None:
