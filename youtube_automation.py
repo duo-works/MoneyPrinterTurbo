@@ -2741,6 +2741,64 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     return len(menu) >= sahne_sayisi * KARE_YUVASI
 
 
+def _capa_arzi_kusuru(
+    plan: ContentPlan,
+    *,
+    bicim: VideoBicimi,
+    sahne_sayisi: int | None = None,
+) -> str:
+    """Modelin sectigi CAPA'nin arsivi videoyu tasiyabilir mi. Tasiyorsa "".
+
+    ⚠️ NEDEN BURADA — olculdu (2026-08-17, slot 14, canli). Huni kipinde
+    terfi kapisi KUYRUK BASLIGINI olcuyor, uretim ise modelin sectigi
+    CAPA'yi kullaniyor ve bu ikisi ayni sey degil:
+
+        kuyruk basligi          menu | modelin capasi    menu
+        King Philip's War         16 | Metacom              1
+        Köktürk                   18 | Göktürks           10
+        Operation Storm           15 | Operation Storm    15   <- uyumlu
+        Cemal Bajá                13 | Djemal Pasha       29   <- uyumlu
+
+    King Philip's War kuyruktan cekildi, terfi kapisini 16 ile gecti ve
+    REDDEDILDI: model olayi birakip KISIYI (`Metacom`) capa secti, o kisinin
+    arsivi 1 dosya. Sahne 9-12 modern fotograflarla doldu ve hakem sekiz
+    agir kusur yazdi ("donem uyusmuyor", "konuyla ilgisiz modern goruntu").
+
+    ⚠️ TERFI KAPISINA EKLENEMEZ, ve bu #37'nin acilis tasariminin cürüdügü
+    yer: capayi MODEL seciyor, yani terfi aninda o menu heNUZ YOKTUR.
+    Kapinin dogru yeri plan kurulduktan SONRA — capa artik bilinir ve
+    dongu geri bildirimle yeniden deneyebilir.
+
+    ⚠️ OLCUT `ikinci_gorsel_istenebilir`in KENDISI, kopyasi degil. O
+    fonksiyon global `KARE_YUVASI`ye (2) bakiyor; uzun bicimde
+    `bicim.kare_yuvasi` 1. Burada `bicim.kare_yuvasi` ile ayri bir hesap
+    yazmak, kapinin reddettigi sayi ile mesajin soyledigi sayiyi
+    ayirirdi — `ASGARI_MENU` docstring'inin uyardigi kusurun aynisi, tek
+    fark bu kez ayni fonksiyonun icinde olurdu.
+
+    ⚠️ UZUN BICIMDE ZATEN BIR ON KONTROL VAR (`UzunFormatUygunDegilError`)
+    ve o `konu`yu olcuyor; burasi CAPAYI olcuyor, yani ikisi ayni sey degil
+    ve ust uste binmiyorlar.
+
+    Bos donmek (menu cekilemedi) kusur SAYILMIYOR: menu bir iyilestirme, on
+    kosul degil. Ag hatasi butun koşumu reddettirmemeli — `arsiv_envanteri`
+    zaten istisnayi yutup `[]` donduruyor ve o durumda uretim eski yoluna
+    (arama terimleri) dusuyor.
+    """
+    hedef = sahne_sayisi or len(plan.scenes) or bicim.sahne_araligi[1]
+    menu = arsiv_envanteri(
+        plan.visual_anchor, sinir=envanter_siniri(bicim), bicim=bicim
+    )
+    if not menu:
+        return ""
+    if ikinci_gorsel_istenebilir(menu, hedef):
+        return ""
+    return (
+        f"capa arzi yetersiz: {plan.visual_anchor!r} icin {len(menu)} gorsel, "
+        f"{hedef} sahne icin gereken {hedef * KARE_YUVASI} kareyi vermiyor"
+    )
+
+
 def _kaynak_ve_menu_blogu(
     konu: str,
     *,
@@ -3566,6 +3624,18 @@ def generate_content_plan(
                     f"\nThe visual anchor {plan.visual_anchor!r} was already used on this "
                     "channel. Keep the same subject but anchor the video on a different "
                     "concrete thing belonging to it."
+                )
+                continue
+            if kusur := _capa_arzi_kusuru(plan, bicim=bicim, sahne_sayisi=sahne_sayisi):
+                son_kusur = kusur
+                print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
+                user += (
+                    f"\nThe visual anchor {plan.visual_anchor!r} has too few usable "
+                    "archive images, so half the scenes would be filled with unrelated "
+                    "modern photographs. Keep the subject but anchor the video on a "
+                    "different concrete thing belonging to it — a place, a fortification, "
+                    "an object or a named site rather than a person, if the person's "
+                    "archive is thin."
                 )
                 continue
             return plan

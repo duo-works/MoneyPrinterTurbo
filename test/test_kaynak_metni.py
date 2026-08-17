@@ -152,6 +152,20 @@ def _cikarimi_yamala(monkeypatch, yakalanan: dict) -> None:
     monkeypatch.setattr(ya, "load_state", lambda: {})
     monkeypatch.setattr(ya, "_recent_titles", lambda: [])
     monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
+    # ⚠️ ARSIV DE YAMANMALI — yoksa test AGA CIKIYOR. Olculdu (2026-08-17):
+    # `_capa_arzi_kusuru` eklenince bu dosyadaki uc test dustu ve sebep
+    # kapinin yanlisligi degildi; plandaki capa (`Theresian Academy`)
+    # Commons'ta gercekten 8 dosya, esik 12. Yani testler o gune kadar
+    # SESSIZCE ag okumasi yapiyordu ve yeni kapi bunu gorunur kildi.
+    #
+    # Menu 40 veriliyor: bu dosyanin konusu KAYNAK METNI, arsiv arzi degil.
+    # Arzi burada gercege birakmak, ilgisiz bir kapinin bu testleri
+    # dusurmesi demek (nitekim oldu) ve ag kesildiginde CI'in kirilmasi.
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k, **_kw: [{"dosya": f"x{i}.jpg"} for i in range(40)],
+    )
 
 
 def _istemi_yakala(monkeypatch, *, ozet: str) -> str:
