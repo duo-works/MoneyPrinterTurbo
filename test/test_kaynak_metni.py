@@ -210,11 +210,41 @@ def test_istem_bosluğu_anlatmayi_istemiyor(monkeypatch):
         assert "invent" in istem
 
 
-def test_kaynak_yalnizca_huni_kipinde_cekiliyor(monkeypatch):
-    """Konu modelin kendi secimiyse ortada cekilecek bir baslik yok."""
+def test_yedek_kipte_kaynak_KOD_SECTIGI_capa_icin_cekiliyor(monkeypatch):
+    """⚠️ ONCULU DEGISTI (2026-08-17). Eski hali "yedek kipte kaynak
+    CEKILMEZ" diyordu ve o gun gerekcesi dogruydu: konu modelden geliyordu,
+    yani istem kuruldugu anda cekilecek bir baslik YOKTU.
+
+    Ayni sebeple ARSIV MENUSU de cekilemiyordu — menu bir ozne ister. Sonucu
+    olculdu: yedek kipte `source_file` ve `source_file_2` HIC istenmiyordu,
+    yani ikinci gorsel "bulunamiyor" degil hic SORULMUYORDU ve gorsel kor
+    kategori yedegine dusuyordu.
+
+    Artik ozneyi KOD seciyor (`_yedek_capa_sec`), yani baslik var ve hem
+    kaynak hem menu cekilebiliyor. Cekilmesi kusur degil AMACIN KENDISI.
+    """
     cagrildi = []
     _cikarimi_yamala(monkeypatch, {})
     monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *a, **k: cagrildi.append(a) or "")
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_kw: [{"dosya": "x"}] * 40)
+
+    ya.generate_content_plan()
+
+    assert cagrildi, "kod bir capa sectiyse kaynak da cekilmeli"
+
+
+def test_capa_HAVUZU_BOSSA_kaynak_cekilmiyor(monkeypatch):
+    """⚠️ Eski testin KORUDUGU guvence burada yasiyor: cekilecek baslik
+    gercekten yoksa ag istegi de olmamali.
+
+    Havuz tukendiginde hat serbest secime duser (menu bir iyilestirme, on
+    kosul degil) ve o dalda ortada hicbir ozne yoktur.
+    """
+    cagrildi = []
+    _cikarimi_yamala(monkeypatch, {})
+    monkeypatch.setattr(wm, "vikipedi_ozeti", lambda *a, **k: cagrildi.append(a) or "")
+    monkeypatch.setattr(ya, "EDITORIAL_ANCHOR_POOL", [])
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda _k, **_kw: [{"dosya": "x"}] * 40)
 
     ya.generate_content_plan()
 

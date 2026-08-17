@@ -2705,6 +2705,105 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     return len(menu) >= sahne_sayisi * KARE_YUVASI
 
 
+def _kaynak_ve_menu_blogu(
+    konu: str,
+    *,
+    bicim: VideoBicimi,
+    envanter_sinir: int,
+    sahne_sayisi: int | None = None,
+    sahne_tavani: int | None = None,
+) -> str:
+    """AUTHORITATIVE SOURCE + ARCHIVE MENU bloklari — iki kip de ayni metni alir.
+
+    ⚠️ ORTAK YARDIMCI OLDU (2026-08-17). Eskiden bu iki blok yalnizca
+    `generate_content_plan`in `if konu:` dalinda kuruluyordu, yani menu
+    disiplini SADECE kuyruk kipinde vardi. Yedek kipte model menuyu hic
+    gormuyordu ve `source_file` / `source_file_2` alanlari bos kaliyordu —
+    yani ikinci gorsel "bulunamiyor" degil HIC ISTENMIYORDU.
+
+    Bloklari iki dala kopyalamak yerine buraya alindi: kopyalansaydi iki kip
+    zamanla birbirinden sapardi ve kusur yalnizca birinde duzelirdi.
+    """
+    kaynak_cek = (
+        wikimedia_materials.vikipedi_ozeti
+        if bicim.dikey
+        else wikimedia_materials.vikipedi_tam_metin
+    )
+    if kaynak := kaynak_cek(konu):
+        blok = (
+            "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia "
+            + ("summary" if bicim.dikey else "article")
+            + " of the subject. "
+            "Every factual claim in your script, title, description and tags must be "
+            "consistent with it. Inventing a fact is the one failure this channel "
+            "cannot survive. Where the summary is silent, do NOT write a sentence "
+            "about the silence: narrow the video to an aspect the summary DOES cover "
+            "and build the scenes from that. A script about three well documented "
+            "events beats a script about eight events where five are unexplained.\n"
+            f"{json.dumps(kaynak, ensure_ascii=False)}"
+        )
+    else:
+        # Kaynak yoksa uretim durmuyor ama model UYARILIYOR: bos kaynak,
+        # "serbestsin" degil "temkinli ol" demek.
+        blok = (
+            "\n\nNo encyclopedia summary could be retrieved for this subject. Write only "
+            "what you are confident is true of THIS specific subject and keep the claims "
+            "few and general. Do not invent names, dates, professions or events to fill "
+            "the script, and do not fill it with sentences about the record being thin "
+            "either: write fewer scenes about what you do know."
+        )
+    # ⚠️ ARSIV MENUSU — gerekcesi `arsiv_envanteri`nde. Kaynak metni
+    # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
+    # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
+    if envanter := arsiv_envanteri(konu, sinir=envanter_sinir, bicim=bicim):
+        # Sahne sayisi verilmemisse (model bicimin araliginda secer) en
+        # KOTU ihtimale gore karar veriliyor: aralikin USTU icin yeterli
+        # degilse ikinci gorsel istenmiyor. Iyimser davranip sonra
+        # temizlemek, modelin bosuna dosya uydurmasini davet ederdi.
+        blok += _menu_talimati(
+            envanter,
+            sahne_sayisi or sahne_tavani or bicim.sahne_araligi[1],
+            bicim=bicim,
+        )
+    return blok
+
+
+def _yedek_capa_sec(
+    eligible_anchors: list[str],
+    *,
+    bicim: VideoBicimi,
+    envanter_sinir: int,
+    sahne_sayisi: int | None = None,
+) -> str:
+    """Yedek kip icin ARSIVI OLCULMUS bir capa secer; yoksa "" doner.
+
+    ⚠️ NEDEN KOD SECIYOR (kanal sahibinin karari, 2026-08-17). Menu bir
+    OZNE gerektiriyor, ozne ise bugune kadar modelden geliyordu — yani
+    menuyu istem kuruldugu anda cekmek imkansizdi ve yedek kip menusuz
+    kaliyordu. Ozneyi kod secince tavuk-yumurta kiriliyor ve yedek kip
+    kuyruk kipinin (iyi calisan) yoluna giriyor. Model yine aciyi, basligi
+    ve sahneleri yaziyor; yalnizca ozne sabitleniyor.
+
+    ⚠️ Alternatif ELENDI: once modele capayi sectirip SONRA menuyle sahneleri
+    yeniden yazdirmak. Iki cikarim cagrisi demekti ve ilk cagrinin sahneleri
+    copе gidiyordu.
+
+    ⚠️ Menusu yetmeyen capa ATLANIYOR. Havuzdaki capalarin hepsi 12+ olcmustu
+    (`8ad4b4c`) ama olcum onbellege ve Commons'a bagli; burada yeniden
+    dogrulaniyor. Hicbiri yetmezse "" doner ve cagiran taraf BUGUNKU serbest
+    secim davranisina duser — menu bir iyilestirme, on kosul degil.
+    """
+    for capa in eligible_anchors:
+        try:
+            menu = arsiv_envanteri(capa, sinir=envanter_sinir, bicim=bicim)
+        except Exception as hata:  # noqa: BLE001 - menu on kosul degil
+            print(f"⚠️ yedek capa menusu okunamadi ({capa}): {hata}", flush=True)
+            continue
+        if ikinci_gorsel_istenebilir(menu, sahne_sayisi or bicim.sahne_araligi[1]):
+            return capa
+    return ""
+
+
 def capayi_konuya_genislet(plan: ContentPlan, konu: str) -> str:
     """Dar secilmis capayi KONUNUN kendisi yapar; eski capa doner, yoksa "".
 
@@ -3119,57 +3218,61 @@ def generate_content_plan(
         # ⚠️ Uzun kipte OZET DEGIL TAM MAKALE. Olculdu (2026-08-15): ozet
         # 32-102 kelime, tam makale 1.492-7.539 (27-193 kat). 56 kelimelik
         # ozetten 2.000 kelime yazmasi istenen model aradaki farki uydurur.
-        kaynak_cek = (
-            wikimedia_materials.vikipedi_ozeti
-            if bicim.dikey
-            else wikimedia_materials.vikipedi_tam_metin
+        user += _kaynak_ve_menu_blogu(
+            konu,
+            bicim=bicim,
+            envanter_sinir=envanter_sinir,
+            sahne_sayisi=sahne_sayisi,
+            sahne_tavani=sahne_tavani,
         )
-        if kaynak := kaynak_cek(konu):
-            user += (
-                "\n\nAUTHORITATIVE SOURCE — this is the Wikipedia "
-                + ("summary" if bicim.dikey else "article")
-                + " of the subject. "
-                "Every factual claim in your script, title, description and tags must be "
-                "consistent with it. Inventing a fact is the one failure this channel "
-                "cannot survive. Where the summary is silent, do NOT write a sentence "
-                "about the silence: narrow the video to an aspect the summary DOES cover "
-                "and build the scenes from that. A script about three well documented "
-                "events beats a script about eight events where five are unexplained.\n"
-                f"{json.dumps(kaynak, ensure_ascii=False)}"
-            )
-        else:
-            # Kaynak yoksa uretim durmuyor ama model UYARILIYOR: bos kaynak,
-            # "serbestsin" degil "temkinli ol" demek.
-            user += (
-                "\n\nNo encyclopedia summary could be retrieved for this subject. Write only "
-                "what you are confident is true of THIS specific subject and keep the claims "
-                "few and general. Do not invent names, dates, professions or events to fill "
-                "the script, and do not fill it with sentences about the record being thin "
-                "either: write fewer scenes about what you do know."
-            )
-        # ⚠️ ARSIV MENUSU — gerekcesi `arsiv_envanteri`nde. Kaynak metni
-        # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
-        # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
-        if envanter := arsiv_envanteri(konu, sinir=envanter_sinir, bicim=bicim):
-            # Sahne sayisi verilmemisse (model bicimin araliginda secer) en
-            # KOTU ihtimale gore karar veriliyor: aralikin USTU icin yeterli
-            # degilse ikinci gorsel istenmiyor. Iyimser davranip sonra
-            # temizlemek, modelin bosuna dosya uydurmasini davet ederdi.
-            user += _menu_talimati(
-                envanter,
-                sahne_sayisi or sahne_tavani or bicim.sahne_araligi[1],
-                bicim=bicim,
-            )
     else:
         user = (
             "Create one new video plan. Do not repeat or closely paraphrase these existing topics/titles:\n"
             + json.dumps(previous[-50:], ensure_ascii=False)
             + "\nNever reuse any of these concrete visual anchors:\n"
             + json.dumps(previous_anchors, ensure_ascii=False)
-            + "\nChoose the visual_anchor from this unused editorial shortlist when it is non-empty:\n"
-            + json.dumps(eligible_anchors, ensure_ascii=False)
-            + "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
         )
+        # ⚠️ YEDEK KIP ARTIK ARSIV-ONCE (2026-08-17). Eskiden bu dal modele
+        # yalnizca kisa listeyi verip capayi ONA sectiriyordu; menu bir OZNE
+        # gerektirdigi icin istem kuruldugu anda cekilemiyordu ve yedek kip
+        # menusuz kaliyordu. Sonucu olculdu: `source_file` ve `source_file_2`
+        # HIC istenmiyordu, yani ikinci gorsel "bulunamiyor" degil hic
+        # SORULMUYORDU; gorsel tam metin aramasina, o da tutmayinca kor
+        # kategori yedegine dusuyordu (bkz. `ikincil_gorseller`).
+        #
+        # ⚠️ Menulu yolun ise yaradigi KOD YAZILMADAN olculdu (kuyruk kipi,
+        # ayni istem): Ephesus 8 sahnenin 5'inde, Borobudur 8'inde
+        # `source_file_2` doldu — 16 sahnenin 13'u. Yedek kipteki karsiligi
+        # yapisal olarak 0'di.
+        yedek_capa = _yedek_capa_sec(
+            eligible_anchors,
+            bicim=bicim,
+            envanter_sinir=envanter_sinir,
+            sahne_sayisi=sahne_sayisi,
+        )
+        if yedek_capa:
+            user += (
+                "\n\nBuild this video about this exact subject, chosen because its "
+                "public-domain archive was measured and is deep enough to illustrate "
+                f"every scene:\n{json.dumps(yedek_capa, ensure_ascii=False)}\n"
+                "Keep this subject and use it as the visual_anchor. You choose the "
+                "angle, the title and the scenes."
+            ) + _kaynak_ve_menu_blogu(
+                yedek_capa,
+                bicim=bicim,
+                envanter_sinir=envanter_sinir,
+                sahne_sayisi=sahne_sayisi,
+                sahne_tavani=sahne_tavani,
+            )
+        else:
+            # ⚠️ ESKI DAVRANIS AYNEN DURUYOR. Havuz tukendiginde ya da menu
+            # cekilemediginde uretim DURMAMALI; menu bir iyilestirme, on
+            # kosul degil. Havuz tukenmesinin kendi uyarisi yukarida basiliyor.
+            user += (
+                "\nChoose the visual_anchor from this unused editorial shortlist when it is non-empty:\n"
+                + json.dumps(eligible_anchors, ensure_ascii=False)
+            )
+        user += "\nPreferred content pillars: ancient engineering, surviving historic places, ingenious inventions, archaeology, navigation, strange verified events, and visible historical mysteries."
 
     # Sahne sayisi sabitlendiyse istem de bunu SOYLEMELI: yalnizca
     # dogrulamaya birakmak, modelin 8 yazip her seferinde reddedilmesi ve
