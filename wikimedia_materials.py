@@ -1367,13 +1367,25 @@ def ikincil_gorseller(
         # ARSIV MENUSU (`arsiv_envanteri`, aciklama suzgecli) — plan oradan
         # `kaynak_dosya_2` secmeli.
         #
-        # ⚠️ KALAN DELIK, kapatilmadi cunku olculmedi: terim sayisi 2'ye
-        # duserse `_puanli_adaylar` esigi 1'e iner ve capa kelimesi
-        # ("Palmyra") kategorideki HER dosyada gectigi icin tek basina
-        # yeterli olur — o zaman bayrakli cocuklar geri gelir. Gercek model
-        # terimleri 5'er terimdi, yani delik simdilik kuramsal. Kapatmak
-        # gerekirse yol belli: sorgudan capa kelimelerini AYIKLA, boylece
-        # yalnizca sahneye ozgu terimler sayilir.
+        # ⚠️ AYNI DELIK BURADA DA VAR: terim sayisi 2'ye duserse
+        # `_puanli_adaylar` esigi 1'e iner ve capa kelimesi ("Palmyra")
+        # kategorideki HER dosyada gectigi icin tek basina yeterli olur.
+        # Delik BU DEPODA ZATEN OLCULMUS ve belgelenmis — birincil yoldaki
+        # `select_candidate` cagrisinin yanindaki not: "Kusurun girdigi TEK
+        # kapi burasi ... iki terimlik bir sorguda asgari eslesme 1'e
+        # DUSUYOR."
+        #
+        # Burada kapatilmadi, cunku iki sebep var:
+        #   1. Bu yol `build_search_queries`ten GECMIYOR — sahnenin terimi
+        #      boluinmeden veriliyor, yani cokme birincil yoldaki kadar
+        #      kolay degil.
+        #   2. Asil guvence terim zenginligi DEGIL, KATMAN: kotu bir dosya
+        #      gecse bile `ikincil_gorselleri_denetle` onu render oncesi
+        #      goruyor ve dusuruyor (canlida 7/7). En kotu ihtimal bir bosa
+        #      indirme + bir gorü cagrisi; videoya kotu kare girmiyor.
+        #
+        # Kapatmak gerekirse yol belli: sorgudan capa kelimelerini AYIKLA,
+        # boylece yalnizca sahneye ozgu terimler sayilir.
         #
         # Kirpilabilen bir birincil icin bu yapilmiyor — o kare zaten tam
         # ekran ve iyi duruyor, ikiye bolmek onu kucultmek olurdu.
