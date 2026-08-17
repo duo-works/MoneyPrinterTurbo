@@ -5499,10 +5499,24 @@ def run_generator(
         # kanal sahibinin kendi isini yavaslatir.
         "--n-threads",
         str(ffmpeg_is_parcaciklari()),
-        # ⚠️ Zoom KAPALI (2026-08-14, kanal sahibinin sesli notu: "su zoom
-        # olayi hosuma gitmiyor"). Bayrak yalnizca bu hattı etkiliyor;
-        # webui ve varsayilan davranis degismedi.
-        "--no-video-zoom",
+        # ⚠️ Zoom GERI ACILDI, ama DONUSUMLU olarak (2026-08-17).
+        #
+        # 14 Agustos'ta tamamen kapatilmisti (sesli not: "su zoom olayi hosuma
+        # gitmiyor"). Kod okununca asil kusurun zoom'un KENDISI degil YONU
+        # oldugu gorüldü: her klip 1,00'dan basliyor, yani onceki klip
+        # 1,00+Δ'da biterken sinirda ani bir kucultme oluyordu. `kare_duzeni`
+        # uc durumdan ikisinde ayni gorseli iki ardisik yuvaya koyuyor
+        # ([A,A] ve [AB,AB]), yani sicrama piksel birebir ayniyken oluyordu —
+        # en gorunur hali.
+        #
+        # Donusumlu kipte tek numarali kare iceri, cift numarali kare disari
+        # zoomluyor; olcek HER sinirda surekli kaliyor ve ayni gorselin iki
+        # yuvaya kondugu durum bir kesme gibi degil yavas bir nefes gibi
+        # gorunuyor.
+        #
+        # Bayrak yalnizca bu hatti etkiliyor; webui varsayilani (duz zoom)
+        # degismedi.
+        "--video-zoom-alternating",
         "--voice-name",
         SES_ADI,
         "--voice-rate",

@@ -87,10 +87,21 @@ class VideoParams(BaseModel):
     # ikisinden birini kacinilmaz kiliyordu (bkz. cli.py --video-clip-duration).
     video_clip_duration: Optional[float] = 5
     # ⚠️ Varsayilan True: webui ayni servisi kullaniyor, bugunku davranis
-    # (duragan gorsele yavas buyutme) korunuyor. Yalnizca Shorts hatti
-    # kapatiyor — kanal sahibi 2026-08-14'te zoom'u begenmedigini soyledi, ve
-    # sahne basina iki kare duzeni zoom acikken ek yerinde sicrama uretiyor.
+    # (duragan gorsele yavas buyutme) korunuyor.
     video_zoom: Optional[bool] = True
+    # ⚠️ Zoom'un VARLIGI degil YONU. Acikken yon kare paritesine gore degisir
+    # ve olcek klip sinirlarinda SUREKLI kalir — gerekce ve olcum
+    # `video.preprocess_video` docstring'inde.
+    #
+    # Shorts hatti 2026-08-14'te zoom'u tamamen kapatmisti ("su zoom olayi
+    # hosuma gitmiyor"); asil kusur zoom'un kendisi degil her klip sinirinda
+    # 1,00'a sifirlanmasiydi, ve sahne basina iki kare duzeninde ayni gorsel
+    # iki yuvaya birden kondugu icin sicrama en gorunur haldeydi. Donusumlu
+    # kip o sicramayi yapisal olarak imkansiz kiliyor, boylece hat zoom'u
+    # 2026-08-17'de geri actı.
+    #
+    # Varsayilan False: bu hattin tercihi, webui'nin degil.
+    video_zoom_donusumlu: Optional[bool] = False
     video_clip_speed: Optional[float] = 1.0
     match_materials_to_script: bool = False
     video_count: Optional[int] = 1

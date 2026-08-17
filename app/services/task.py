@@ -570,6 +570,7 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             materials=params.video_materials,
             clip_duration=params.video_clip_duration,
             zoom=params.video_zoom,
+            donusumlu_zoom=params.video_zoom_donusumlu,
         )
         if not materials:
             _mark_task_failed(

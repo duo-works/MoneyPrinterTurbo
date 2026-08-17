@@ -283,6 +283,21 @@ Output and exit status:
         help="disable the slow zoom applied to still images",
     )
     video_group.add_argument(
+        # ⚠️ Ayni desen: yalnizca ACMA bayragi, varsayilan `None`. Zoom'un
+        # VARLIGINI degil YONUNU degistiriyor — tek numarali kare iceri, cift
+        # numarali kare disari zoomlar ve olcek klip sinirlarinda surekli
+        # kalir. Gerekce `video.preprocess_video` docstring'inde.
+        "--video-zoom-alternating",
+        dest="video_zoom_donusumlu",
+        action="store_const",
+        const=True,
+        default=None,
+        help=(
+            "alternate zoom direction per frame so the scale stays continuous "
+            "across clip boundaries (no effect with --no-video-zoom)"
+        ),
+    )
+    video_group.add_argument(
         "--match-materials-to-script",
         default=None,
         action=argparse.BooleanOptionalAction,
@@ -555,6 +570,7 @@ def build_video_params(args: argparse.Namespace) -> VideoParams:
         "video_transition_mode",
         "video_clip_duration",
         "video_zoom",
+        "video_zoom_donusumlu",
         "match_materials_to_script",
         "n_threads",
         "voice_volume",

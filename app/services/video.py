@@ -1282,19 +1282,37 @@ def generate_video(
         return bgm_mix_succeeded
 
 
-def preprocess_video(materials: List[MaterialInfo], clip_duration=4, zoom=True):
+def preprocess_video(
+    materials: List[MaterialInfo], clip_duration=4, zoom=True, donusumlu_zoom=False
+):
     """Duragan gorselleri klibe cevirir.
 
-    `zoom=True` (varsayilan) bugunku davranis: her gorsele yavas bir buyutme
-    uygulanir. ⚠️ Varsayilan BILEREK degistirilmedi — webui ayni servisi
-    kullaniyor ve davranisini topyekun degistirmek tek bir hattin tercihini
-    herkese dayatmak olurdu.
+    Uc davranis var ve ikisinin varsayilani BILEREK degismedi — webui ayni
+    servisi kullaniyor, tek bir hattin tercihini herkese dayatmak olmaz:
 
-    `zoom=False` gorseli duragan birakir. Iki sebeple isteniyor (2026-08-14,
-    kanal sahibinin sesli notu): zoom'un kendisi begenilmedi, ve sahne basina
-    iki kare duzeninde dikey yapistirilmis bir kare iki yuvaya birden
-    konuyor — her gorsel kendi mp4'u oldugu ve zoom her klip sinirinda %100'e
-    sifirlandigi icin ek yerinde gorunur bir sicrama olurdu.
+    - `zoom=True` (varsayilan): her kare 1,00'dan baslayip buyur. Bugunku
+      davranis.
+    - `zoom=False`: gorsel duragan kalir.
+    - `zoom=True, donusumlu_zoom=True`: yon kare paritesine gore degisir.
+
+    ⚠️ DONUSUMLU KIP NEDEN VAR — olculdu. Duz zoom'da her klip yeniden
+    1,00'dan basliyor, yani onceki klip 1,00+Δ'da biterken sinirda ani bir
+    kucultme oluyor. `youtube_automation.kare_duzeni` uc durumdan IKISINDE
+    ayni gorseli iki ardisik yuvaya koyuyor:
+
+        [A, B]     iki gorsel de kirpilabiliyor  -> farkli icerik
+        [AB, AB]   ikisi de bant ister           -> AYNI piksel
+        [A, A]     ikinci gorsel yok             -> AYNI piksel
+
+    Yani sicrama en gorunur halinde: piksel birebir ayni, yalnizca olcek
+    aniden degisiyor. Kanal sahibi 2026-08-14'te zoom'u tam bu yuzden
+    kapattirdi ("su zoom olayi hosuma gitmiyor").
+
+    Donusumlu kipte tek numarali kare 1,00 -> 1,00+Δ, cift numarali kare
+    1,00+Δ -> 1,00 gidiyor. Olcek HER sinirda surekli kaliyor (cift
+    sinirlarinda 1,00+Δ = 1,00+Δ, sahne sinirlarinda 1,00 = 1,00), yani
+    sicrama yapisal olarak imkansiz. Ayni gorselin iki yuvaya kondugu durum
+    da bir kesme gibi degil yavas bir nefes gibi gorunuyor.
     """
     # WebUI 在某些二次生成场景下可能传入空素材列表，这里直接返回空结果，避免抛出 NoneType 异常。
     if not materials:
@@ -1373,15 +1391,46 @@ def preprocess_video(materials: List[MaterialInfo], clip_duration=4, zoom=True):
                 # ⚠️ `clip` YENIDEN ATANMIYOR: asagidaki `close_clip(clip)`
                 # orijinal ImageClip'i kapatmali, sarmalayiciyi degil.
                 if zoom:
-                    render_clip = clip.resized(
-                        lambda t: 1 + (clip_duration * 0.03) * (t / clip.duration)
-                    )
+                    # ⚠️ YON KARE PARITESINE GORE. Ciktidaki sira esas
+                    # aliniyor (`valid_materials` uzunlugu), girdideki degil:
+                    # dusuk cozunurluklu materyal eleniyor ve sinirlar nihai
+                    # klip sirasinda olusuyor.
+                    buyume = clip_duration * 0.03
+                    if len(valid_materials) % 2 == 0:
+                        # Tek numarali kare (1., 3., ...): 1,00 -> 1,00+Δ
+                        render_clip = clip.resized(
+                            lambda t: 1 + buyume * (t / clip.duration)
+                        )
+                    elif donusumlu_zoom:
+                        # Cift numarali kare: 1,00+Δ -> 1,00. Onceki klip
+                        # 1,00+Δ'da bittigi icin sinirda olcek SUREKLI kaliyor.
+                        render_clip = clip.resized(
+                            lambda t: 1 + buyume * (1 - t / clip.duration)
+                        )
+                    else:
+                        render_clip = clip.resized(
+                            lambda t: 1 + buyume * (t / clip.duration)
+                        )
                 else:
                     render_clip = clip
 
                 # Optionally, create a composite video clip containing the zoomed clip.
                 # This is useful when you want to add other elements to the video.
-                final_clip = CompositeVideoClip([render_clip])
+                #
+                # ⚠️ TUVAL BOYUTU ACIKCA VERILIYOR — olculdu (2026-08-17).
+                # MoviePy tuvali t=0'daki klip boyutundan turetiyor. Iceri
+                # zoomlayan kare 1,00'dan basladigi icin tuval kaynak
+                # olcusunde cikiyor, DISARI zoomlayan kare ise 1,00+Δ'dan
+                # basliyor ve tuval o kadar BUYUYOR:
+                #
+                #     tek numarali kare  580x751   <- kaynak gorsel olcusu
+                #     cift numarali kare 597x773   <- %3 buyuk
+                #
+                # Yani donusumlu kip, boyutlari birbirini tutmayan klipler
+                # uretip `combine_videos`a veriyordu. Tuval sabitlenince
+                # tasan kisim ortalanip kirpiliyor — Ken Burns'un dogru
+                # davranisi zaten bu.
+                final_clip = CompositeVideoClip([render_clip], size=clip.size)
 
                 # Output the video to a file.
                 video_file = f"{material_source_path}.mp4"
