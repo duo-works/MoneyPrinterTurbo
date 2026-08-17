@@ -127,6 +127,27 @@ def test_kanal_sesinin_ISTEDIGI_cumle_kapidan_GECIYOR(cumle):
     )
 
 
+@pytest.mark.parametrize("bicim", BICIMLER)
+def test_istem_ORTAYI_hedeflemeyi_soyluyor(bicim):
+    """⚠️ NEDEN — olculdu (2026-08-18), tavan-ustu redlerin sayisal imzasi:
+
+        gozlenen  153, 154, 153 kelime / 6 sahne = 25,5 kelime/sahne
+        tavan     150 kelime / 6 sahne          = 25,0 kelime/sahne
+
+    Model sahne basina yarim kelime sapiyor ve alti sahnede bu 3-4 kelimelik
+    asima donusuyor. Yani model TAVANI hedefliyor ve dogal olarak biraz
+    asiyor; geri bildirim alinca 194'ten 153'e iniyor ama esigin ustunde
+    takiliyor.
+
+    ⚠️ Cozum ARALIGI GENISLETMEK DEGIL — 150 kelime = 52,9 sn ve Shorts
+    siniri 60 sn, yani pay neredeyse bitti; ustelik tavan 120'den 150'ye
+    cikarildiginda model de yukari kaydi (122-151'den 153-194'e). Aralik
+    ayni kaliyor, degisen sey modele verilen HEDEF.
+    """
+    yonerge = ya.editoryal_sistem_yonergesi(bicim)
+    assert "AIM FOR THE MIDDLE OF THAT RANGE, NOT ITS CEILING" in yonerge
+
+
 def test_istem_resmedilemez_kuralini_SOMUT_ornekle_anlatiyor():
     """Soyut ornek yetmedi — olculdu, 5 red hep somut kaynak adiyla geldi."""
     yonerge = ya.editoryal_sistem_yonergesi()
