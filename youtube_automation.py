@@ -675,6 +675,32 @@ def _aday_anahtari(ad: str) -> str:
     return str(ad or "").strip().casefold()
 
 
+def soguma_gecerliligi(state: dict[str, Any]) -> datetime | None:
+    """Bu andan ESKI redler sogumaya sayilmaz — yoksa `None`.
+
+    ⚠️ NEDEN VAR — soguma sessiz bir varsayim tasiyor: "ayni aday, ayni
+    kosullar, ayni sonuc". Bu varsayim bir KOD DEGISIKLIGI reddin sebebini
+    ortadan kaldirdiginda BOZULUYOR, ve o zaman soguma bir koruma degil bir
+    engel oluyor — duzeltilmis bir kusur yuzunden aday 24 saat daha bekliyor.
+    Olculdu 2026-08-18: kuyruktaki uc aday (King Philip's War, Cemal Bajá,
+    Köktürk) sogumadaydi ve redlerinin sebepleri o gece kapanmisti (#43 konu
+    yakmayi durdurdu, #44 ikinci gorseli acti, #46 arsiv esigini indirdi).
+
+    ⚠️ KAYITLAR SILINMIYOR. `state["rejected"]` denetim izi ve bu oturumda
+    birden fazla teshis ondan cikti; damga yalnizca SOGUMANIN penceresini
+    daraltiyor. Capa butcesi (`RET_DENEME_BUTCESI`) ve diger okuyucular
+    etkilenmiyor.
+    """
+    ham = str(state.get("soguma_gecerlilik", "")).strip()
+    if not ham:
+        return None
+    try:
+        return datetime.fromisoformat(ham)
+    except ValueError:
+        # Bozuk damga sogumayi TAMAMEN kapatmamali; yok sayilir.
+        return None
+
+
 def adayin_son_reddi(baslik: str, state: dict[str, Any]) -> datetime | None:
     """Bu Notion adayinin en son ne zaman reddedildigi — yoksa `None`.
 
@@ -694,6 +720,7 @@ def adayin_son_reddi(baslik: str, state: dict[str, Any]) -> datetime | None:
     if not anahtar:
         return None
 
+    gecerlilik = soguma_gecerliligi(state)
     en_son: datetime | None = None
     for kayit in state.get("rejected", []):
         kayitli = kayit.get("aday_basligi")
@@ -708,6 +735,9 @@ def adayin_son_reddi(baslik: str, state: dict[str, Any]) -> datetime | None:
             ne_zaman = datetime.fromisoformat(ham)
         except ValueError:
             # Bozuk zaman damgasi sogumayi dusurmemeli; o kayit yok sayilir.
+            continue
+        # ⚠️ Damgadan ESKI red sogutmuyor; gerekce `soguma_gecerliligi`nde.
+        if gecerlilik is not None and ne_zaman < gecerlilik:
             continue
         if en_son is None or ne_zaman > en_son:
             en_son = ne_zaman
@@ -7097,6 +7127,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--sogumayi-sifirla",
+        action="store_true",
+        help=(
+            "Bu andan ESKİ redleri soğumaya saymayı bırak ve çık — üretim "
+            "yapmaz. Soğuma 'aynı koşullar → aynı sonuç' varsayıyor; bir kod "
+            "değişikliği reddin sebebini kapattığında o varsayım bozulur ve "
+            "soğuma korumaz, engeller. Red KAYITLARI silinmez."
+        ),
+    )
+    parser.add_argument(
         "--sahne-sayisi",
         type=int,
         metavar="N",
@@ -7128,6 +7168,22 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    # ⚠️ URETIMDEN ONCE ve tek basina calisiyor: bu bayrak bir BAKIM islemi,
+    # koşum secenegi degil. Ayni komutta uretim de yapsaydi, "sogumayi
+    # sifirla" niyetiyle calistirilan her komut bir slot harcardi.
+    if args.sogumayi_sifirla:
+        state = load_state()
+        simdi = datetime.now(ZoneInfo(TIMEZONE_NAME))
+        onceki = soguma_gecerliligi(state)
+        state["soguma_gecerlilik"] = simdi.isoformat()
+        save_state(state)
+        print(
+            f"✅ soğuma sıfırlandı: {simdi:%Y-%m-%d %H:%M} öncesi redler artık "
+            "adayı soğutmuyor (kayıtlar silinmedi)"
+            + (f" · önceki damga {onceki:%Y-%m-%d %H:%M}" if onceki else ""),
+            flush=True,
+        )
+        return
     if args.sahne_sayisi is not None and not 6 <= args.sahne_sayisi <= 10:
         parser.error("--sahne-sayisi 6 ile 10 arasında olmalı")
     bicim = UZUN_BICIMI if args.uzun else SHORTS_BICIMI
