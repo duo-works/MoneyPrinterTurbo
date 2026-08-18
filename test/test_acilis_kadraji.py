@@ -154,7 +154,14 @@ def test_kapi_YUMUSAK():
     """⚠️ SART: bazi arsivlerde ozne yalnizca uzaktan fotograflanmis
     (Sigiriya kayasi boyle). Sert kapi olsaydi o konularda bes deneme de
     yanardi. Yumusak kapi ilk uc denemede zorluyor, sonra geciriyor."""
-    assert "if yumusak_kapilar_acik and (kusur := acilis_kadraji_kusuru(plan)):" in KAYNAK
+    # ⚠️ KAPI TASINDI (2026-08-18): saf yumusak kapilar artik tek geciste
+    # `yumusak_kapi_kusurlari` icinde degerlendiriliyor (kostebek oyunu).
+    # KORUNAN OZELLIK AYNI: kapi hâlâ YUMUSAK, yani ilk uc denemede zorluyor
+    # sonra geciriyor.
+    i = KAYNAK.index("def yumusak_kapi_kusurlari(")
+    j = KAYNAK.index("\ndef ", i + 10)
+    assert "acilis_kadraji_kusuru(plan)" in KAYNAK[i:j], "kapi toplayicida yok"
+    assert "if yumusak_kapilar_acik and (\n            yumusak := yumusak_kapi_kusurlari(" in KAYNAK
 
 
 def test_istem_de_1_SAHNEYI_ayri_soyluyor():

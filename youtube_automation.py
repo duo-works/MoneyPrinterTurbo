@@ -1588,6 +1588,67 @@ def validate_content_plan(
         raise ValueError(kusurlar[0])
 
 
+def yumusak_kapi_kusurlari(
+    plan: ContentPlan,
+    *,
+    onceki_kapanislar: list[str],
+    onceki_basliklar: list[str],
+    onceki_kancalar: list[str],
+) -> list[tuple[str, str]]:
+    """Yan etkisiz yumusak kapilarin HEPSINI degerlendirir.
+
+    Her ogesi (log etiketi, modele giden geri bildirim) ciftidir.
+
+    ⚠️ NEDEN TOPLU — `plan_kusurlari` ile ayni ders, donginin ikinci yarisi.
+    Kapilar tek tek `continue` ediyordu, yani bir deneme yalnizca BIR kapiyi
+    gosteriyordu. Olculdu (18 Agu 18:05 koşumu): bes deneme, bes AYRI kapi,
+    sifir video.
+
+    ⚠️ BURAYA YALNIZCA SAF KAPILAR GIRER. `alinti_kusuru` menuyu,
+    `_capa_arzi_kusuru` arsiv sorgusunu gerektiriyor; reddedilecek bir plan
+    icin onlari pesin calistirmak bosuna is ve ag trafigi demek. Ayrica
+    `_capa_arzi_kusuru` YUMUSAK DEGIL — `yumusak_kapilar_acik` korumasi yok
+    ve 18:05'te tam da bes denemeye kadar dayanip orada dustu.
+    """
+    kusurlar: list[tuple[str, str]] = []
+    if kusur := acilis_kadraji_kusuru(plan):
+        kusurlar.append(
+            (f"acilis kadraji: {kusur}", f"The last plan opened badly: {kusur}")
+        )
+    if kusur := anlatim_dengesi_kusuru(plan):
+        kusurlar.append(
+            (f"anlatim dengesi: {kusur}", f"The last plan was unevenly paced: {kusur}")
+        )
+    if _kapanis_tekrari(plan.script, onceki_kapanislar):
+        kusurlar.append(
+            (
+                "kapanis kalibi onceki videoyla ayni",
+                "The closing line repeats the sentence pattern of an earlier video. "
+                "End on a different kind of note: a different part of the archive, a "
+                "different unanswered question, a different consequence.",
+            )
+        )
+    if _baslik_bicimi_tekrari(plan.title, onceki_basliklar):
+        kusurlar.append(
+            (
+                f"baslik bicimi tekrari: {plan.title!r}",
+                "The title repeats the shape of a recent one. Keep it a search query, "
+                "but change the shape: a different question word, or a statement that "
+                "names the surprising fact instead of asking about it.",
+            )
+        )
+    if _kanca_tekrari(plan.script, onceki_kancalar):
+        kusurlar.append(
+            (
+                "kanca kalibi onceki videoyla ayni",
+                "The opening line repeats the sentence pattern of an earlier video. "
+                "Open on a different kind of detail: an object, a number, a place, or "
+                "an unfinished action.",
+            )
+        )
+    return kusurlar
+
+
 def parse_cli_result(stdout: str) -> dict[str, Any]:
     decoder = json.JSONDecoder()
     best: dict[str, Any] | None = None
@@ -4296,10 +4357,21 @@ def generate_content_plan(
         # ("modele kurali soylemek yetmiyor, KOD kontrol etmeli") burada da
         # gecerli — istemde 1. sahne icin yakin kadraj isteniyor ama olculdu
         # ki model yine uzak plan alintiliyor.
-        if yumusak_kapilar_acik and (kusur := acilis_kadraji_kusuru(plan)):
-            son_kusur = f"acilis kadraji: {kusur}"
-            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
-            user += f"\nThe last plan opened badly: {kusur}"
+        # ⚠️ SAF YUMUSAK KAPILAR TEK GECISTE. Gerekce
+        # `yumusak_kapi_kusurlari` docstring'inde: her deneme tek kapi
+        # gosterince model birini duzeltip baskasini boziyordu.
+        if yumusak_kapilar_acik and (
+            yumusak := yumusak_kapi_kusurlari(
+                plan,
+                onceki_kapanislar=onceki_kapanislar,
+                onceki_basliklar=onceki_basliklar,
+                onceki_kancalar=onceki_kancalar,
+            )
+        ):
+            son_kusur = yumusak[0][0]
+            for etiket, _ in yumusak:
+                print(f"⚠️ deneme {deneme}/5 reddedildi — {etiket}", flush=True)
+            user += "\n" + "\n".join(metin for _, metin in yumusak)
             continue
         # ⚠️ ANLATIM DENGESI — gerekce `ANLATIM_DENGESI`de. Kapinin KOD
         # tarafinda olmasi sart: istemde "anlatimlar birbirine yakin uzunlukta
@@ -4309,11 +4381,6 @@ def generate_content_plan(
         #
         # ⚠️ YUMUSAK, cunku esik henuz kalibre DEGIL (tek olcum). Sert kapi
         # bes denemeyi de yakabilirdi.
-        if yumusak_kapilar_acik and (kusur := anlatim_dengesi_kusuru(plan)):
-            son_kusur = f"anlatim dengesi: {kusur}"
-            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
-            user += f"\nThe last plan was unevenly paced: {kusur}"
-            continue
         # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
         # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
         # tekrarlayan ikinci alintilar siliniyor; plan yasiyor.
@@ -4339,37 +4406,10 @@ def generate_content_plan(
         # oluyor. Konu benzerligi atlanmaya devam ediyor — gerekcesi
         # docstring'de: konuyu model degil, olculmus talep verisi ve onu
         # onaylayan insan sectI.
-        if yumusak_kapilar_acik and _kapanis_tekrari(plan.script, onceki_kapanislar):
-            son_kusur = "kapanis kalibi onceki videoyla ayni"
-            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
-            user += (
-                "\nThe closing line repeats the sentence pattern of an earlier video. "
-                "End on a different kind of note: a different part of the archive, a "
-                "different unanswered question, a different consequence."
-            )
-            continue
         # ⚠️ Baslik bicimi kapisi da HER IKI KIPTE calisiyor. Baslik, kanal
         # sayfasinda ve arama sonucunda gorunen tek sey; ust uste ayni kalip
         # orada "hepsi ayni video" izlenimi veriyor — ve bu izlenim tam da
         # "toplu uretilmis, tekrar eden icerik" olcutunun baktigi sey.
-        if yumusak_kapilar_acik and _baslik_bicimi_tekrari(plan.title, onceki_basliklar):
-            son_kusur = f"baslik bicimi tekrari: {plan.title!r}"
-            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
-            user += (
-                "\nThe title repeats the shape of a recent one. Keep it a search query, "
-                "but change the shape: a different question word, or a statement that "
-                "names the surprising fact instead of asking about it."
-            )
-            continue
-        if yumusak_kapilar_acik and _kanca_tekrari(plan.script, onceki_kancalar):
-            son_kusur = "kanca kalibi onceki videoyla ayni"
-            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
-            user += (
-                "\nThe opening line repeats the sentence pattern of an earlier video. "
-                "Open on a different kind of detail: an object, a number, a place, or "
-                "an unfinished action."
-            )
-            continue
         if konu:
             # ⚠️ CAPA tekrari huni kipine OZEL kaliyor: yedek kipte capayi
             # zaten model seciyor ve asagidaki dal onu `is_duplicate_visual_anchor`

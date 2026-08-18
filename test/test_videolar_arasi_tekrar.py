@@ -87,7 +87,13 @@ def test_yumusak_kapilar_son_denemelerde_gevsiyor():
     assert bosluksuz("yumusak_kapilar_acik and (kusur := alinti_kusuru(plan, konu") in (
         bosluksuz(govde)
     )
-    assert bosluksuz("yumusak_kapilar_acik and _kanca_tekrari") in bosluksuz(govde)
+    # ⚠️ KAPILAR TASINDI (2026-08-18): kanca/baslik/kapanis/acilis/dengesi
+    # artik `yumusak_kapi_kusurlari` icinde TEK GECISTE degerlendiriliyor.
+    # KORUNAN OZELLIK AYNI ve asil onemli olan o: toplu cagri da
+    # `yumusak_kapilar_acik` korumasi altinda, yani son denemelerde gevsiyor.
+    assert bosluksuz("yumusak_kapilar_acik and (yumusak := yumusak_kapi_kusurlari(") in (
+        bosluksuz(govde)
+    )
 
 
 def test_dogrulama_HER_denemede_zorunlu():
@@ -117,4 +123,15 @@ def test_huni_kipinde_capa_tekrari_kontrol_ediliyor():
     huni_dali = govde[govde.index("if konu:") :]
 
     assert "is_duplicate_visual_anchor" in huni_dali
-    assert "_kanca_tekrari" in huni_dali
+    # ⚠️ IDDIA GUCLENDI, ZAYIFLAMADI (2026-08-18). Eski hali `_kanca_tekrari`
+    # dizesini "ilk `if konu:`den sonra" ariyordu — ama o ilk eslesme
+    # govdenin en basinda, yani test pratikte "govdede bir yerde geciyor mu"
+    # diyordu. Kanca kapisi zaten `if konu:` dalinin DISINDA ve KOSULSUZ
+    # calisiyordu (huni kipinde de, yedek kipte de).
+    #
+    # Artik dogru sey olculuyor: kapi toplu yumusak gecise tasindi ve o gecis
+    # huni dalindan ONCE, kosulsuz calisiyor.
+    dongu = govde[govde.index("for deneme in range(1, 6):") :]
+    assert dongu.index("yumusak_kapi_kusurlari(") < dongu.index("\n        if konu:")
+    toplayici = kaynak[kaynak.index("def yumusak_kapi_kusurlari(") :]
+    assert "_kanca_tekrari(" in toplayici[: toplayici.index("\ndef ", 10)]

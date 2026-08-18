@@ -59,7 +59,13 @@ def test_HER_yumusak_kapi_son_kusuru_yaziyor():
 def test_yumusak_kapi_redleri_de_YAZDIRILIYOR():
     govde = _dongu_govdesi()
 
-    assert govde.count("deneme {deneme}/5 reddedildi") >= 6
+    # ⚠️ OLCUT DEGISTI, OZELLIK DEGISMEDI (2026-08-18). Eskiden yumusak
+    # kapilarin her biri kendi `print`ini tasiyordu ve sayim bunun vekiliydi.
+    # Kapilar tek geciste toplaninca (kostebek oyunu) bes `print` bire
+    # dustu — ama o bir `print` kusur BASINA bir satir yaziyor. Ozellik
+    # ayni: reddeden her kapi `plan-redleri.log`a dusmeli.
+    assert govde.count("deneme {deneme}/5 reddedildi") >= 2
+    assert "for etiket, _ in yumusak:" in govde, "kusur basina satir yazilmiyor"
 
 
 def test_son_kusur_NIHAI_mesaja_giriyor():

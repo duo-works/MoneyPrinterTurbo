@@ -270,3 +270,189 @@ def test_butce_OLCULEN_degerle_uyumlu():
 def test_sahne_sayisi_YOKSA_butce_de_YOK(monkeypatch):
     """Serbest sahne sayisinda bolecek bir sey yok; satir hic cikmamali."""
     assert "words per scene" not in _istem(monkeypatch, None)
+
+
+# --- YUMUSAK kapilar da tek geciste (2026-08-18) ----------------------------
+#
+# ⚠️ NEDEN VAR — 18:05 koşumu: bes deneme, bes AYRI kapi, sifir video.
+#
+#     1 alinti -> 2 alinti -> 3 anlatim dengesi -> 4 resmedilemez -> 5 capa arzi
+#
+# Sert kapilari toplamak bunun yalnizca yarisini cozuyordu: model hepsini
+# duzeltince ikinci denemede yumusak kapilardan birine takiliyordu.
+
+
+def _gecerli_json() -> dict:
+    """Butun SERT kapilari gecen bir plan sozlugu."""
+    return {
+        "topic": "Sigiriya rock fortress",
+        "visual_anchor": "Sigiriya",
+        "title": "Why Was Sigiriya Abandoned?",
+        "script": " ".join(["word"] * ((KELIME_EN_AZ + KELIME_EN_COK) // 2)),
+        "scenes": [
+            {"narration": f"The builders cut stairs into the rock in year {i}.",
+             "search_term": f"Sigiriya frescoes level {i}"}
+            for i in range(1, 7)
+        ],
+        "description": "aciklama",
+        "tags": ["a", "b", "c"],
+    }
+
+
+def test_IKI_yumusak_kusur_AYNI_ANDA_bildiriliyor(monkeypatch, capsys):
+    """⚠️ Dizeye degil DAVRANISA bakiyor: donguyu gercekten suruyor."""
+    istemler: list[str] = []
+
+    def sahte(system: str, user: str, **_):
+        istemler.append(user)
+        if len(istemler) > 1:
+            raise RuntimeError("dur")
+        return _gecerli_json()
+
+    monkeypatch.setattr(ya, "_json_completion", sahte)
+    monkeypatch.setattr(ya, "load_state", lambda: {})
+    monkeypatch.setattr(ya, "_recent_titles", lambda: [])
+    monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
+    monkeypatch.setattr(ya, "_son_kapanislar", lambda: [])
+    monkeypatch.setattr(ya, "_son_basliklar", lambda: [])
+    monkeypatch.setattr(ya, "_yedek_capa_sec", lambda *_a, **_k: None)
+    # ⚠️ `alinti_kusuru` TOPLU BLOGUN ONUNDE ve orada kalmasi BILEREK
+    # (menuye bagli, bkz. `yumusak_kapi_kusurlari` docstring'i). Bu test onu
+    # olcmuyor, o yuzden susturuluyor — yoksa akis toplu bloga hic varmiyor.
+    monkeypatch.setattr(ya, "alinti_kusuru", lambda *_a, **_k: "")
+    monkeypatch.setattr(ya, "arsiv_envanteri", lambda *_a, **_k: [])
+    # IKI ayri yumusak kapi birden tetikleniyor.
+    monkeypatch.setattr(ya, "_kapanis_tekrari", lambda *_a, **_k: True)
+    monkeypatch.setattr(ya, "_baslik_bicimi_tekrari", lambda *_a, **_k: True)
+
+    try:
+        ya.generate_content_plan(sahne_sayisi=6)
+    except RuntimeError:
+        pass
+
+    assert len(istemler) >= 2, "dongu ikinci denemeye hic gecmedi"
+    geri = istemler[1]
+    assert "closing line repeats" in geri, geri[-500:]
+    assert "title repeats the shape" in geri, geri[-500:]
+
+    # ⚠️ VE IKISI DE GUNLUGE dusmeli: `plan-redleri.log` bu satirlari
+    # okuyor ve bir sonraki teshis onlara bakiyor.
+    ciktilar = capsys.readouterr().out
+    assert "kapanis kalibi onceki videoyla ayni" in ciktilar
+    assert "baslik bicimi tekrari" in ciktilar
+
+
+def test_yumusak_kapi_SON_denemelerde_gecirilyor(monkeypatch):
+    """⚠️ Uretimi kaybetmemek sarti: yumusak kapi 4. denemede susmali.
+
+    Aksi halde toplulastirma, bes denemeyi birden yakan bir kapiya donerdi.
+    """
+    cagrildi: list[int] = []
+
+    def sahte_kapi(plan, **_):
+        cagrildi.append(1)
+        return [("x", "y")]
+
+    monkeypatch.setattr(ya, "yumusak_kapi_kusurlari", sahte_kapi)
+    monkeypatch.setattr(ya, "_json_completion", lambda *a, **k: _gecerli_json())
+    monkeypatch.setattr(ya, "load_state", lambda: {})
+    monkeypatch.setattr(ya, "_recent_titles", lambda: [])
+    monkeypatch.setattr(ya, "_son_kancalar", lambda: [])
+    monkeypatch.setattr(ya, "_son_kapanislar", lambda: [])
+    monkeypatch.setattr(ya, "_son_basliklar", lambda: [])
+    monkeypatch.setattr(ya, "_yedek_capa_sec", lambda *_a, **_k: None)
+    monkeypatch.setattr(ya, "alinti_kusuru", lambda *_a, **_k: "")
+    monkeypatch.setattr(ya, "ikincil_alintilari_temizle", lambda *_a, **_k: 0)
+
+    plan = ya.generate_content_plan(sahne_sayisi=6)
+
+    assert plan is not None, "yumusak kapi bes denemeyi de yakti"
+    # ⚠️ `YUMUSAK_KAPI_DENEMESI` fonksiyon ICINDE tanimli (modul duzeyinde
+    # degil), o yuzden sayi kaynaktan okunuyor — testte ciplak 3 yazmak,
+    # sabit degisince testin sessizce yanlis seyi olcmesi demekti.
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    beklenen = int(
+        re.search(r"YUMUSAK_KAPI_DENEMESI = (\d+)", kaynak).group(1)
+    )
+    assert len(cagrildi) == beklenen, cagrildi
+
+
+# --- Toplayicidaki BES kapinin her biri ayri ayri (2026-08-18) ---------------
+#
+# ⚠️ NEDEN VAR — mutasyon testi bir bosluk buldu: toplayicidan bir kapiyi
+# `if False and ...` ile dusurunce TUM suite yesil kaldi. Mevcut testler
+# kaynakta `_kanca_tekrari(` dizesini ariyordu ve mutasyon o dizeyi
+# BIRAKIYORDU. Yani kapilarin gercekten CALISTIGI hic olculmuyordu.
+
+
+def _yumusak(plan, **ek):
+    varsayilan = {"onceki_kapanislar": [], "onceki_basliklar": [], "onceki_kancalar": []}
+    varsayilan.update(ek)
+    return ya.yumusak_kapi_kusurlari(plan, **varsayilan)
+
+
+def test_toplayici_SAGLAM_planda_susuyor():
+    """⚠️ Once bu: toplayici her plani reddediyorsa asagidakiler bos gecer."""
+    assert _yumusak(_plan()) == []
+
+
+def test_kapi_KANCA_kalibi():
+    onceki = ["Mehmed II did not rule once.", "The Colosseum swallowed 50,000 people."]
+    plan = _plan(script="Murad III did not take the throne quietly. Devam.")
+
+    kusurlar = _yumusak(plan, onceki_kancalar=onceki)
+
+    assert any("opening line repeats" in metin for _, metin in kusurlar), kusurlar
+
+
+def test_kapi_KAPANIS_kalibi(monkeypatch):
+    monkeypatch.setattr(ya, "_kapanis_tekrari", lambda *_a, **_k: True)
+
+    kusurlar = _yumusak(_plan())
+
+    assert any("closing line repeats" in metin for _, metin in kusurlar), kusurlar
+
+
+def test_kapi_BASLIK_bicimi(monkeypatch):
+    monkeypatch.setattr(ya, "_baslik_bicimi_tekrari", lambda *_a, **_k: True)
+
+    kusurlar = _yumusak(_plan())
+
+    assert any("title repeats the shape" in metin for _, metin in kusurlar), kusurlar
+
+
+def test_kapi_ACILIS_kadraji():
+    """1. sahne uzak plan alintiliyorsa toplayici susmamali."""
+    plan = _plan()
+    plan.scenes[0]["kaynak_dosya"] = "File:Sigiriya rock from a distance.jpg"
+
+    kusurlar = _yumusak(plan)
+
+    assert any("opened badly" in metin for _, metin in kusurlar), kusurlar
+
+
+def test_kapi_ANLATIM_dengesi():
+    """En uzun/en kisa orani esigi asarsa toplayici susmamali."""
+    plan = _plan()
+    plan.scenes[0]["narration"] = " ".join(["word"] * 30)
+    plan.scenes[1]["narration"] = "iki kelime"
+
+    kusurlar = _yumusak(plan)
+
+    assert any("unevenly paced" in metin for _, metin in kusurlar), kusurlar
+
+
+def test_BIRDEN_COK_kapi_ayni_listede(monkeypatch):
+    """Toplayicinin var olus sebebi."""
+    monkeypatch.setattr(ya, "_kapanis_tekrari", lambda *_a, **_k: True)
+    monkeypatch.setattr(ya, "_baslik_bicimi_tekrari", lambda *_a, **_k: True)
+
+    assert len(_yumusak(_plan())) == 2
+
+
+def test_her_kusur_ETIKET_ve_GERI_BILDIRIM_tasiyor(monkeypatch):
+    """Etiket gunluge, geri bildirim modele gidiyor; ikisi de bos olmamali."""
+    monkeypatch.setattr(ya, "_baslik_bicimi_tekrari", lambda *_a, **_k: True)
+
+    for etiket, metin in _yumusak(_plan()):
+        assert etiket.strip() and metin.strip()

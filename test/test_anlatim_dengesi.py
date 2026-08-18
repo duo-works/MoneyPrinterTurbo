@@ -124,7 +124,12 @@ def test_kusur_metni_NE_YAPILACAGINI_soyluyor():
 def test_kapi_YUMUSAK():
     """⚠️ SART: esik tek olcume dayaniyor, kalibre DEGIL. Sert kapi olsaydi
     kalibresiz bir sayi bes denemeyi de yakabilirdi."""
-    assert "if yumusak_kapilar_acik and (kusur := anlatim_dengesi_kusuru(plan)):" in KAYNAK
+    # ⚠️ KAPI TASINDI (2026-08-18) — gerekce `yumusak_kapi_kusurlari`de.
+    # KORUNAN OZELLIK AYNI: esik kalibre degil, o yuzden kapi YUMUSAK kalmali.
+    i = KAYNAK.index("def yumusak_kapi_kusurlari(")
+    j = KAYNAK.index("\ndef ", i + 10)
+    assert "anlatim_dengesi_kusuru(plan)" in KAYNAK[i:j], "kapi toplayicida yok"
+    assert "if yumusak_kapilar_acik and (\n            yumusak := yumusak_kapi_kusurlari(" in KAYNAK
 
 
 def test_SHORTS_istemi_de_esit_uzunluk_istiyor():
