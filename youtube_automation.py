@@ -3194,6 +3194,39 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     return len(menu) >= sahne_sayisi * KARE_YUVASI
 
 
+def arsiv_videoyu_tasir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
+    """Bu arsiv videoyu TASIYABILIR mi — her sahneye AYRI birincil dusuyor mu.
+
+    ⚠️ `ikinci_gorsel_istenebilir` ILE AYNI SEY DEGIL ve ayrilmasi 2026-08-18'de
+    olculdu. O fonksiyon "her sahne IKI ayri dosya alabilir mi" diye soruyor
+    (sahne x 2 = 12) ve dogru sorusu budur: ikinci ALINTI istenmeli mi.
+    Ama ayni sayi iki KAPIDA daha kullaniliyordu — kuyruk tarafinda adayi
+    atlayan kapi ve `_capa_arzi_kusuru`. Oralarda sorulan sey farkli:
+    "bu arsiv bir video cikarabilir mi".
+
+    Ikinci gorsel bir IYILESTIRME (bkz. `ikincil_gorseller`), on kosul degil;
+    ve `_menu_talimati` artik kucuk menude KISMI ikinci gorsel istiyor, yani
+    8 dosyalik bir arsiv 6 birincil + 2 ikincil verip gayet iyi bir video
+    cikariyor. Videoyu tasimanin yapisal kosulu tek: HER SAHNEYE AYRI BIR
+    BIRINCIL.
+
+    ⚠️ Eski 12 esigi YANLIS RED veriyordu ve kanit deponun kendi olcum
+    tablosunda (`_capa_arzi_kusuru` docstring'i):
+
+        modelin capasi   menu | eski kapi | yeni kapi
+        Metacom             1 |    RED    |   RED     <- dogru
+        Göktürks           10 |    RED    |  gecer    <- YANLIS reddediliyordu
+        Operation Storm    15 |  gecer    |  gecer
+        Djemal Pasha       29 |  gecer    |  gecer
+
+    ⚠️ BILINEN BEDELI: 6-11 dosyalik KISI capalari da geciyor ve olculdu ki
+    kisi konulari 9-11 kusur aliyor (anit/yer 0-3). Bu sayiyla korunmuyordu
+    zaten — sayi arzi olcer, konu sinifini olcmez. Yanlis kisi/donem
+    gosteren video hakemin AGIR KUSUR kapisinda duruyor ve o kapi degismedi.
+    """
+    return len(menu) >= max(int(sahne_sayisi or 0), 1)
+
+
 def _capa_arzi_kusuru(
     plan: ContentPlan,
     *,
@@ -3244,11 +3277,18 @@ def _capa_arzi_kusuru(
     )
     if not menu:
         return ""
-    if ikinci_gorsel_istenebilir(menu, hedef):
+    # ⚠️ OLCUT DEGISTI (2026-08-18): `ikinci_gorsel_istenebilir` degil
+    # `arsiv_videoyu_tasir`. Gerekce ve olcum tablosu o fonksiyonda —
+    # kisaca: buradaki soru "ikinci alinti istenmeli mi" degil "bu arsiv bir
+    # video cikarabilir mi", ve #44'ten sonra 8-11 dosyalik arsiv cikariyor.
+    if arsiv_videoyu_tasir(menu, hedef):
         return ""
     return (
+        # ⚠️ MESAJ KAPININ OLCTUGU SAYIYI SOYLUYOR. Bu oturumda (#41) tam
+        # ters kusur olculdu: modele 80-120 deniyor, kapi 80-150 olcuyordu ve
+        # model iki gun tutturamayacagi bir hedef kovaladi.
         f"capa arzi yetersiz: {plan.visual_anchor!r} icin {len(menu)} gorsel, "
-        f"{hedef} sahne icin gereken {hedef * KARE_YUVASI} kareyi vermiyor"
+        f"{hedef} sahnenin her birine AYRI bir gorsel dusmuyor"
     )
 
 
@@ -6522,12 +6562,23 @@ def run_cycle(
             # sozlesmesi) ve aday atlaniyor. Bu bilincli: yedek capa havuzu
             # saglikli (50 uygun capa), yani atlamanin bedeli bir yedek kip
             # videosu; kapmanin bedeli ise yanmis bir slot.
-            asgari_menu = 6 * bicim.kare_yuvasi
+            # ⚠️ OLCUT `arsiv_videoyu_tasir` (2026-08-18), eskiden
+            # `6 * bicim.kare_yuvasi` = 12 idi. Gerekce ve olcum tablosu o
+            # fonksiyonda; kisaca: 12 "her sahneye IKI gorsel" demekti ve
+            # #44'ten sonra ikinci gorsel bir iyilestirme, on kosul degil.
+            # Canli olculdu — kuyruktaki 6 adaydan biri (Ernst Hanfstaengl,
+            # menu 8) yalnizca bu yuzden atlaniyordu.
+            #
+            # ⚠️ Sayi TEK YERDEN geliyor ki bu kapi ile `_capa_arzi_kusuru`
+            # ayrismasin: ikisi ayrilirsa aday kuyruktan cekilir ve plan
+            # asamasinda reddedilir — slot yine yanar, ama bu kez sessizce.
+            asgari_menu = 6
             envanter = arsiv_envanteri(sirasiyla.baslik, bicim=bicim)
-            if len(envanter) < asgari_menu:
+            if not arsiv_videoyu_tasir(envanter, asgari_menu):
                 print(
                     f"ℹ️ aday atlandı ({sirasiyla.baslik}): arşiv menüsü "
-                    f"{len(envanter)} < {asgari_menu} — üretim slotu yakardı",
+                    f"{len(envanter)} < {asgari_menu} — her sahneye ayrı "
+                    "görsel düşmüyor",
                     flush=True,
                 )
                 continue

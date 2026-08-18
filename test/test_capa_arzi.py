@@ -49,27 +49,65 @@ def _menu(monkeypatch, adet: int):
     )
 
 
+# ⚠️ OLCUT DEGISTI (2026-08-18) ve bu bir TEST DUZELTMESI DEGIL, kararin
+# kendisi degisti. Kapi eskiden `ikinci_gorsel_istenebilir`i (sahne x 2 = 12)
+# cagiriyordu; artik `arsiv_videoyu_tasir`i (sahne x 1 = 6) cagiriyor.
+#
+# Sebep: 12 "her sahne IKI ayri dosya alabilir mi" demek ve o, ikinci ALINTI
+# istenip istenmeyecegini belirleyen dogru sorudur. Ama bu kapida sorulan sey
+# farkli — "bu arsiv bir video cikarabilir mi". Ikinci gorsel bir IYILESTIRME
+# (bkz. `ikincil_gorseller`) ve `_menu_talimati` artik kucuk menude KISMI
+# ikinci gorsel istiyor, yani 8 dosyalik bir arsiv 6 birincil + 2 ikincil
+# verip gayet iyi bir video cikariyor.
+#
+# Eski esigin YANLIS RED verdigi yukaridaki tablodan okunuyor: `Göktürks` 10
+# dosyayla reddediliyordu. Canlida da olculdu — kuyruktaki 6 adaydan biri
+# (Ernst Hanfstaengl, menu 8) yalnizca bu yuzden atlaniyordu.
+#
+# ⚠️ BILINEN BEDELI: 6-11 dosyalik KISI capalari da geciyor ve olculdu ki
+# kisi konulari 9-11 kusur aliyor (anit/yer 0-3). Bu sayiyla korunmuyordu
+# zaten — sayi ARZI olcer, konu sinifini olcmez. Yanlis kisi/donem gosteren
+# video hakemin AGIR KUSUR kapisinda duruyor ve o kapi DEGISMEDI.
+
+
 def test_ZAYIF_capa_kusur_bildiriyor(monkeypatch):
-    """Canli hal: `Metacom` 1 dosya, 6 sahne icin 12 kare gerek."""
+    """Canli hal: `Metacom` 1 dosya — hangi esikle olcursen olc gecmemeli."""
     _menu(monkeypatch, 1)
 
     kusur = ya._capa_arzi_kusuru(_plan("Metacom"), bicim=ya.SHORTS_BICIMI)
 
     assert kusur, "1 dosyalik capa gecmemeli"
     assert "Metacom" in kusur
-    assert "12" in kusur, "gereken kare sayisi mesajda olmali"
+    # ⚠️ Mesaj KAPININ OLCTUGU sayiyi soylemeli. Bu oturumda (#41) tam ters
+    # kusur olculdu: modele 80-120 deniyor, kapi 80-150 olcuyordu.
+    assert "6" in kusur, "gereken sahne sayisi mesajda olmali"
+    assert "12" not in kusur, "eski olcut mesajda kalmis"
 
 
 def test_SINIRDAKI_capa_geciyor(monkeypatch):
-    """Tam 12 = 6 sahne x 2 yuva — kapi kapali degil, sinirda ACIK."""
-    _menu(monkeypatch, 12)
+    """Tam 6 = her sahneye bir birincil — kapi sinirda ACIK."""
+    _menu(monkeypatch, 6)
 
     assert ya._capa_arzi_kusuru(_plan("Tikal"), bicim=ya.SHORTS_BICIMI) == ""
 
 
+def test_ESKIDEN_REDDEDILEN_bant_artik_geciyor(monkeypatch):
+    """⚠️ Gerilemenin yonu: 6-11 arasi ARTIK GECMELI.
+
+    `Göktürks` 10 dosyayla reddediliyordu (yukaridaki tablo) ve `Ernst
+    Hanfstaengl` 8 ile kuyrukta atlaniyordu. Ikisi de 6 sahneye ayri
+    birincil verebiliyor.
+    """
+    for adet in (8, 10, 11):
+        _menu(monkeypatch, adet)
+        assert (
+            ya._capa_arzi_kusuru(_plan("Göktürks"), bicim=ya.SHORTS_BICIMI) == ""
+        ), f"{adet} dosya 6 sahneye yetmeliydi"
+
+
 def test_sinirin_ALTI_dusuyor(monkeypatch):
-    """11 dosya — slot 14'te `Metacomet` kategorisinin gercek buyuklugu."""
-    _menu(monkeypatch, 11)
+    """5 dosya, 6 sahne — bir sahne kacinilmaz olarak tekrar gosterirdi."""
+    _menu(monkeypatch, 5)
 
     assert ya._capa_arzi_kusuru(_plan("Metacomet"), bicim=ya.SHORTS_BICIMI) != ""
 
@@ -87,34 +125,47 @@ def test_MENU_CEKILEMEZSE_kusur_YOK(monkeypatch):
 
 def test_sahne_sayisi_VERILIRSE_ona_bakiyor(monkeypatch):
     """Sahne sayisi kod tarafindan sabitlenebiliyor; olcut ona uymali."""
-    _menu(monkeypatch, 8)
+    _menu(monkeypatch, 5)
 
-    # 4 sahne x 2 = 8 -> yeter
+    # 4 sahne -> 5 dosya yeter
     assert ya._capa_arzi_kusuru(
         _plan("X", sahne=6), bicim=ya.SHORTS_BICIMI, sahne_sayisi=4
     ) == ""
-    # 6 sahne x 2 = 12 -> yetmez
+    # 6 sahne -> 5 dosya yetmez
     assert ya._capa_arzi_kusuru(
         _plan("X", sahne=6), bicim=ya.SHORTS_BICIMI, sahne_sayisi=6
     ) != ""
 
 
-def test_olcut_ikinci_gorsel_istenebilir_ILE_AYNI(monkeypatch):
-    """⚠️ Iki ayri sayi tutmak, istemin istedigi ile kapinin kabul ettigini
-    ayirirdi. Kapi o fonksiyonun KENDISINI cagirmali."""
+def test_olcut_arsiv_videoyu_tasir_ILE_AYNI(monkeypatch):
+    """⚠️ Kapi olcutu KENDI yazmamali, ortak fonksiyonu cagirmali.
+
+    Iki yerde iki ayri hesap tutmak, kuyruk kapisinin gecirdigi adayi plan
+    kapisinin reddetmesi demek olurdu: slot yine yanar, ama bu kez sessizce.
+    """
     cagrildi: list[tuple] = []
-    gercek = ya.ikinci_gorsel_istenebilir
+    gercek = ya.arsiv_videoyu_tasir
 
     def izle(menu, sahne_sayisi):
         cagrildi.append((len(menu), sahne_sayisi))
         return gercek(menu, sahne_sayisi)
 
-    monkeypatch.setattr(ya, "ikinci_gorsel_istenebilir", izle)
+    monkeypatch.setattr(ya, "arsiv_videoyu_tasir", izle)
     _menu(monkeypatch, 20)
 
     ya._capa_arzi_kusuru(_plan("Tikal"), bicim=ya.SHORTS_BICIMI)
 
     assert cagrildi == [(20, 6)]
+
+
+def test_IKINCI_GORSEL_olcutu_AYRI_kaldi():
+    """⚠️ `ikinci_gorsel_istenebilir` DEGISMEDI ve degismemeli: onun sorusu
+    hala "her sahne iki ayri dosya alabilir mi" ve istem o cevaba gore
+    tam/kismi ikinci gorsel istiyor."""
+    menu = [{"dosya": f"{i}.jpg", "gosterdigi": "x", "tarih": ""} for i in range(8)]
+
+    assert ya.arsiv_videoyu_tasir(menu, 6), "8 dosya videoyu tasir"
+    assert not ya.ikinci_gorsel_istenebilir(menu, 6), "ama 12 kare vermez"
 
 
 def test_kapi_PLAN_dongusunde_calisiyor(monkeypatch):
@@ -127,17 +178,21 @@ def test_kapi_PLAN_dongusunde_calisiyor(monkeypatch):
     assert "_capa_arzi_kusuru(plan" in kaynak, "kapi donguye baglanmamis"
 
 
-def test_UZUN_bicimde_tek_yuva(monkeypatch):
-    """⚠️ Uzun bicimde `bicim.kare_yuvasi` 1 ama olcut global KARE_YUVASI (2).
+def test_KUYRUK_kapisi_ayni_olcutu_kullaniyor():
+    """⚠️ Iki kapinin ayrisması sessiz slot yakar; ortak fonksiyon sart."""
+    kaynak = Path(ya.__file__).read_text()
 
-    Bu test o farki DONDURUYOR: kapi `ikinci_gorsel_istenebilir`i cagirdigi
-    icin uzun bicimde de 2 yuva sayiyor. Davranis bilincli — olcutu tek
-    yerde tutmak, bicime gore ikinci bir hesap yazmaktan onemli. Degisirse
-    burasi kirilir ve karar yeniden verilir.
+    assert "arsiv_videoyu_tasir(envanter, asgari_menu)" in kaynak
+
+
+def test_UZUN_bicimde_de_sahne_basina_BIR_gorsel(monkeypatch):
+    """⚠️ Eskiden burasi bir farki donduruyordu: olcut global `KARE_YUVASI`
+    (2) idi, yani uzun bicimde `kare_yuvasi` 1 olmasina ragmen kapi 2 yuva
+    sayiyordu. Yeni olcut yuvadan BAGIMSIZ (sahne basina bir birincil), yani
+    o tuhaflik kendiliginden kalkti.
     """
-    _menu(monkeypatch, 12)
+    _menu(monkeypatch, 6)
 
-    # 6 sahne: 6*2=12 -> tam yeter (kare_yuvasi=1 olsaydi 6 yeterdi)
     assert ya._capa_arzi_kusuru(
         _plan("X", sahne=6), bicim=ya.UZUN_BICIMI, sahne_sayisi=6
     ) == ""

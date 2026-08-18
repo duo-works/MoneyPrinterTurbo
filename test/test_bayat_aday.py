@@ -135,7 +135,7 @@ def test_ARSIVI_YETMEYEN_aday_KAPILMIYOR(monkeypatch, capsys):
     `Secildi`de duruyordu ve uretim onu her slotta kuyrugun basinda buldu;
     18:00 ve 18:57 koşumlarinin ALTI denemesi de yandi (ikisi tam render).
 
-        Ernst Hanfstaengl  menu  8   <- konu, kapi 12: GECEMEZ
+        Ernst Hanfstaengl  menu  8   <- konu
         Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy fotografcisi
 
     Uretim arsivi zengin olan dedeyi capa secti; bir fotografcinin Commons
@@ -145,12 +145,22 @@ def test_ARSIVI_YETMEYEN_aday_KAPILMIYOR(monkeypatch, capsys):
     ⚠️ Huni terfide olcuyordu ama kuyruga BASKA yollardan da aday giriyor
     (insan elle `Secildi` yapabiliyor, takilan aday kurtarilabiliyor), yani
     tuketen uc de olcmek zorunda.
+
+    ⚠️ ESIK 2026-08-18'DE 12'DEN 6'YA INDI, yani ustteki 8 dosyalik Ernst
+    ARTIK GECIYOR (bkz. `test_ESKI_ESIKTE_engellenen_aday_artik_geciyor`).
+    Bu testin korudugu sey bir SAYI degil, kapinin VARLIGI: gercekten
+    yetersiz bir arsiv hala atlanmali. Gerekce `arsiv_videoyu_tasir`da.
+
+    ⚠️ HIPOTEZ, dogrulanmadi: capa ikamesini eski esigin KENDISI tetiklemis
+    olabilir — model 12 dosyalik bir capa bulmak zorundaydi, Ernst 8
+    veriyordu, dede 40. Esik 6'ya indigine gore o baski kalkti. Dogrulanacagi
+    yer canli koşum: Ernst kapildiginda capa yine dedeye kayiyor mu.
     """
     kapilan = _hat(
         monkeypatch,
         [_aday("Ernst Hanfstaengl"), _aday("Tipasa")],
         kapilamayanlar=set(),
-        menuler={"Ernst Hanfstaengl": 8},
+        menuler={"Ernst Hanfstaengl": 3},
     )
 
     def dur(*_a, **_k):
@@ -166,7 +176,34 @@ def test_ARSIVI_YETMEYEN_aday_KAPILMIYOR(monkeypatch, capsys):
         raise AssertionError("plan asamasina gecilmeliydi")
 
     assert kapilan == ["Tipasa"], "arzi yetmeyen aday atlanip sonraki kapilmali"
-    assert "arşiv menüsü 8" in capsys.readouterr().out, "atlama SESSIZ olmamali"
+    assert "arşiv menüsü 3" in capsys.readouterr().out, "atlama SESSIZ olmamali"
+
+
+def test_ESKI_ESIKTE_engellenen_aday_artik_geciyor(monkeypatch):
+    """⚠️ Gerilemenin YONU: 6-11 arasi menu ARTIK KAPILMALI.
+
+    Canli olculdu (2026-08-18): kuyruktaki 6 adaydan biri (Ernst
+    Hanfstaengl, menu 8) yalnizca eski 12 esigi yuzunden atlaniyordu.
+    8 dosya 6 sahneye ayri birincil verir.
+    """
+    kapilan = _hat(
+        monkeypatch,
+        [_aday("Ernst Hanfstaengl")],
+        kapilamayanlar=set(),
+        menuler={"Ernst Hanfstaengl": 8},
+    )
+
+    def dur(*_a, **_k):
+        raise RuntimeError("PLAN ASAMASINA ULASILDI")
+
+    monkeypatch.setattr(ya, "generate_content_plan", dur)
+
+    try:
+        ya.run_cycle(kuyruktan=True)
+    except RuntimeError:
+        pass
+
+    assert kapilan == ["Ernst Hanfstaengl"], "8 dosyalik aday artik kapilmali"
 
 
 def test_arsivi_YETEN_aday_engellenMIYOR(monkeypatch):
@@ -175,7 +212,8 @@ def test_arsivi_YETEN_aday_engellenMIYOR(monkeypatch):
         monkeypatch,
         [_aday("Tipasa")],
         kapilamayanlar=set(),
-        menuler={"Tipasa": 6 * ya.SHORTS_BICIMI.kare_yuvasi},
+        # ⚠️ Sinir artik SAHNE BASINA BIR gorsel (6), yuva sayisi degil.
+        menuler={"Tipasa": 6},
     )
 
     def dur(*_a, **_k):
@@ -197,7 +235,7 @@ def test_arzi_yetmeyen_TEK_aday_yedek_kipe_dusuruyor(monkeypatch, capsys):
         monkeypatch,
         [_aday("Ernst Hanfstaengl")],
         kapilamayanlar=set(),
-        menuler={"Ernst Hanfstaengl": 8},
+        menuler={"Ernst Hanfstaengl": 3},
     )
 
     def dur(*_a, **_k):
