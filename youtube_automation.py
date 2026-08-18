@@ -1398,20 +1398,43 @@ UZUN_BICIMI = VideoBicimi(
 )
 
 
-def validate_content_plan(
+def plan_kusurlari(
     plan: ContentPlan,
     sahne_sayisi: int | None = None,
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
     konu: str = "",
     sahne_tavani: int | None = None,
-) -> None:
+) -> list[str]:
+    """Planin BUTUN dogrulama kusurlarini, istemdeki sirayla dondurur.
+
+    ⚠️ NEDEN VAR — KOSTEBEK OYUNU. Bu fonksiyon eskiden ilk kusurda
+    `raise` ediyordu ve dongu (`generate_content_plan`) her denemede modele
+    TEK kusur soyluyordu. Bir plani gecirmek icin ~23 kapi var (13'u burada,
+    ~10'u dongudeki yumusak kapilar) ve model her deneme birini duzeltip
+    baskasini bozuyordu.
+
+    Olculdu (2026-08-18, `logs/plan-redleri.log`, 13 red):
+
+        13:15 koşumu: sahne sayisi -> kelime -> baslik bicimi -> kelime
+        15:12 koşumu: capa -> kelime -> resmedilemez -> acilis -> kelime
+
+    Iki koşum da bes denemeyi tuketti ve o saatlerde HIC video uretilmedi;
+    zamanlayici kaydinda yalnizca "skor 0" gorunuyor.
+
+    ⚠️ `validate_content_plan` KALDIRILMADI ve davranisi da degismedi: yine
+    ILK kusuru birebir ayni metinle firlatiyor. Sebep, mesajlarin bir
+    sozlesme olmasi — depoda onlarca test tam metne bakiyor ve dahasi
+    mesajlar MODELE geri besleniyor (bkz. `visual anchor` kusurunun
+    gerekcesi: "ne yapilacagini soylemeyen mesaj donguyu kirmiyor").
+    """
+    kusurlar: list[str] = []
     word_count = len(re.findall(r"\b[\w'-]+\b", plan.script))
     if kusur := kanca_kusuru(plan.script):
-        raise ValueError(kusur)
+        kusurlar.append(kusur)
     en_az, en_cok = bicim.kelime_araligi
     if not en_az <= word_count <= en_cok:
-        raise ValueError(f"script must contain {en_az}-{en_cok} words, got {word_count}")
+        kusurlar.append(f"script must contain {en_az}-{en_cok} words, got {word_count}")
     # ⚠️ `sahne_sayisi` verilirse aralik degil TAM SAYI zorunlu. Sebep bir
     # deney: klip suresi `ses ÷ sahne` oldugu icin sahne sayisi, ilk kesmenin
     # NE ZAMAN geldigini belirliyor. Olculdu (2026-08-14, `audienceWatchRatio`):
@@ -1421,7 +1444,7 @@ def validate_content_plan(
     # birbirine karistirirdi.
     if sahne_sayisi is not None:
         if len(plan.scenes) != sahne_sayisi:
-            raise ValueError(
+            kusurlar.append(
                 f"content plan must contain exactly {sahne_sayisi} scenes, "
                 f"got {len(plan.scenes)}"
             )
@@ -1439,19 +1462,20 @@ def validate_content_plan(
         if sahne_tavani is not None:
             sahne_en_cok = min(sahne_en_cok, sahne_tavani)
         if not sahne_en_az <= len(plan.scenes) <= sahne_en_cok:
-            raise ValueError(
+            kusurlar.append(
                 f"content plan must contain {sahne_en_az}-{sahne_en_cok} scenes, "
                 f"got {len(plan.scenes)}"
             )
     if not plan.topic.strip() or not plan.title.strip():
-        raise ValueError("topic and title are required")
+        kusurlar.append("topic and title are required")
     anchor_words = _normalize_topic(plan.visual_anchor)
-    if not 1 <= len(anchor_words) <= 4:
+    capa_gecerli = 1 <= len(anchor_words) <= 4
+    if not capa_gecerli:
         # ⚠️ Mesaj eskiden yalnizca kurali soyluyordu ve model uc denemede de
         # AYNI adi geri yaziyordu; dorduncude cikarim zaman asimina ugrayip
         # kosum cokuyordu. Dogrulama hatasi modele geri besleniyor, yani
         # mesaj NE YAPILACAGINI soylemezse dongu kirilmiyor.
-        raise ValueError(
+        kusurlar.append(
             f"visual anchor {plan.visual_anchor!r} resolves to {len(anchor_words)} "
             "words; use at most 4. Drop honorifics and middle names and keep the "
             "shortest form a viewer would recognise"
@@ -1471,8 +1495,8 @@ def validate_content_plan(
     # Yalnizca `konu` disaridan verildiginde uygulanir: yedek kipte capayi
     # model sectigi icin karsilastirilacak bir konu YOK. Shorts'ta dar capa
     # kasitli ve dokunulmuyor (bkz. "Vassar College" gerekcesi, `:403`).
-    if konu and not bicim.dikey and not (anchor_words & _normalize_topic(konu)):
-        raise ValueError(
+    if capa_gecerli and konu and not bicim.dikey and not (anchor_words & _normalize_topic(konu)):
+        kusurlar.append(
             f"visual anchor {plan.visual_anchor!r} shares no word with the topic "
             f"{konu!r}. In a long form video every scene search term must carry the "
             "anchor, so a narrower anchor points all of them at a subset of the "
@@ -1480,34 +1504,37 @@ def validate_content_plan(
             "put the narrower subject in the individual scene search terms instead"
         )
     if len(plan.title) > 100:
-        raise ValueError("YouTube title must be at most 100 characters")
+        kusurlar.append("YouTube title must be at most 100 characters")
     # ⚠️ KOD KAPISI, yalnizca istem degil. Uzun formatin butun amaci izlenme
     # saati ve YouTube `#Shorts` etiketli videoyu Shorts sayip saat YAZMIYOR.
     # Isteme ayrica son 40 baslik veriliyor ve hepsi `#Shorts` ile bitiyor,
     # yani modelin onunde yasagi delen 40 ornek var; DW-87 dersi geregi
     # dogrulanabilir olguyu kod denetliyor.
     if not bicim.dikey and "#shorts" in plan.title.casefold():
-        raise ValueError(
+        kusurlar.append(
             f"title {plan.title!r} contains #Shorts, but this is a long form video. "
             "YouTube would file it as a Short and it would earn no watch time. "
             "Write the same search phrase without any Shorts tag"
         )
     if len(plan.tags) < 3:
-        raise ValueError("at least three tags are required")
+        kusurlar.append("at least three tags are required")
     for index, scene in enumerate(plan.scenes, 1):
         term = scene.get("search_term", "").strip()
         narration = scene.get("narration", "").strip()
+        # ⚠️ `elif` ZINCIRI BILEREK: sahne basina TEK kusur bildiriliyor,
+        # cunku eski davranis da ilk kusurda duruyordu ve dort kusuru birden
+        # yazmak 8 sahnede 32 satir uretirdi.
         if not narration or len(term.split()) < 2:
-            raise ValueError(f"scene {index} must contain narration and a concrete search term")
-        if not (_normalize_topic(term) & anchor_words):
-            raise ValueError(f"scene {index} search term must include the visual anchor")
-        if kusur := resmedilemez_kusuru(narration):
-            raise ValueError(f"scene {index} {kusur}")
+            kusurlar.append(f"scene {index} must contain narration and a concrete search term")
+        elif capa_gecerli and not (_normalize_topic(term) & anchor_words):
+            kusurlar.append(f"scene {index} search term must include the visual anchor")
+        elif kusur := resmedilemez_kusuru(narration):
+            kusurlar.append(f"scene {index} {kusur}")
         # ⚠️ Capayi TEKRARLAMAK yetmiyor, capaya bir sey EKLEMEK gerekiyor.
         # "Murad III" tek basina 2 kelime ve capayi iceriyor, yani eski
         # dogrulamayi geciyordu.
-        if not (_normalize_topic(term) - anchor_words):
-            raise ValueError(
+        elif capa_gecerli and not (_normalize_topic(term) - anchor_words):
+            kusurlar.append(
                 f"scene {index} search term {term!r} is only the visual anchor; add "
                 "the concrete thing this scene is about (an object, a document, a "
                 "building, a place, an event) so the archive returns something other "
@@ -1529,7 +1556,7 @@ def validate_content_plan(
     ]
     tekrarlayan = {terim for terim in terimler if terimler.count(terim) > 1}
     if tekrarlayan:
-        raise ValueError(
+        kusurlar.append(
             f"{len(tekrarlayan)} search term(s) repeat across scenes "
             f"({', '.join(sorted(tekrarlayan))}); every scene needs its OWN concrete "
             "search term, because an identical query returns the same ranked archive "
@@ -1537,6 +1564,28 @@ def validate_content_plan(
             "what the camera is on: the person, a document they signed, their seal, "
             "the room, the city, the battle, the tomb"
         )
+    return kusurlar
+
+
+def validate_content_plan(
+    plan: ContentPlan,
+    sahne_sayisi: int | None = None,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+    konu: str = "",
+    sahne_tavani: int | None = None,
+) -> None:
+    """ILK kusurda duser — davranis 2026-08-18'den ONCEKIYLE birebir ayni.
+
+    ⚠️ Ince sarmalayici BILEREK: kural artik tek yerde (`plan_kusurlari`).
+    Iki ayri kopya tutmak, kapilardan birinin yalnizca bir yolda degismesi
+    demekti ve bu depo o kusuru daha once yasadi (istem 80-120 derken kapi
+    80-150 olcuyordu, iki gun uretim yedi).
+    """
+    if kusurlar := plan_kusurlari(
+        plan, sahne_sayisi, bicim=bicim, konu=konu, sahne_tavani=sahne_tavani
+    ):
+        raise ValueError(kusurlar[0])
 
 
 def parse_cli_result(stdout: str) -> dict[str, Any]:
@@ -4046,10 +4095,19 @@ def generate_content_plan(
     # dogrulamaya birakmak, modelin 8 yazip her seferinde reddedilmesi ve
     # bes denemenin bosa gitmesi demek olurdu.
     if sahne_sayisi is not None:
+        kelime_en_az, kelime_en_cok = bicim.kelime_araligi
+        # Orta nokta hedef; tavan degil (tavana dayanan taslak reddediliyor).
+        butce = ((kelime_en_az + kelime_en_cok) // 2) // sahne_sayisi
         user += (
             f"\nThis video must have EXACTLY {sahne_sayisi} scenes, not more and not "
             "fewer. Fit the story to that number: fewer scenes means each one is on "
             "screen longer, so give each a distinct thing to show."
+            # ⚠️ ARITMETIGI BIZ YAPIYORUZ. Model iki kisitin carpimini kendisi
+            # cozmuyor: 8 sahnede dogal cumle uzunluguyla yaziyor ve toplam
+            # tavani asiyor (olculdu: 183, 212, 185, 153 kelime).
+            f" Across {sahne_sayisi} scenes that budget is about {butce} words per "
+            f"scene, so keep each narration to roughly one sentence of {butce} words. "
+            "Write the scenes, add up the words, and cut before you answer."
         )
     elif sahne_tavani is not None:
         # ⚠️ TAVAN kapi, HEDEF tavsiye. Tavana dayanan bir plan menudeki her
@@ -4176,15 +4234,18 @@ def generate_content_plan(
                 "ayırt edildi",
                 flush=True,
             )
-        try:
-            validate_content_plan(
-                plan,
-                sahne_sayisi,
-                bicim=bicim,
-                konu=konu or "",
-                sahne_tavani=sahne_tavani,
-            )
-        except ValueError as exc:
+        # ⚠️ TEK KUSUR DEGIL HEPSI (2026-08-18). Gerekce `plan_kusurlari`
+        # docstring'inde: dongu her denemede modele BIR kapi soyluyordu,
+        # model onu duzeltip baskasini boziyordu ve bes deneme bu sekilde
+        # yaniyordu (13:15 ve 15:12 koşumlari, o saatlerde HIC video yok).
+        if dogrulama_kusurlari := plan_kusurlari(
+            plan,
+            sahne_sayisi,
+            bicim=bicim,
+            konu=konu or "",
+            sahne_tavani=sahne_tavani,
+        ):
+            exc = dogrulama_kusurlari[0]
             son_kusur = str(exc)
             # ⚠️ HER DENEME yaziliyor, yalnizca sonuncusu degil. Olculdu
             # (2026-08-15, sekizinci Herculaneum koşumu): koşum 8,6 dakika
@@ -4198,9 +4259,20 @@ def generate_content_plan(
                 f"capa {plan.visual_anchor!r})",
                 flush=True,
             )
+            # ⚠️ HEPSI birden yaziliyor. Tek kusur yazmak, modelin bir
+            # sonraki denemede onu duzeltip listenin geri kalanina yeniden
+            # takilmasi demekti.
+            if len(dogrulama_kusurlari) > 1:
+                print(
+                    f"   ↳ ayni planda {len(dogrulama_kusurlari)} kusur birden: "
+                    + " · ".join(dogrulama_kusurlari[1:]),
+                    flush=True,
+                )
+            madde = "\n".join(f"- {k}" for k in dogrulama_kusurlari)
             user += (
-                "\nThe last JSON plan was invalid: "
-                f"{exc}. Return a completely corrected plan that follows every constraint."
+                f"\nThe last JSON plan broke {len(dogrulama_kusurlari)} rule(s). "
+                f"Fix ALL of them at once:\n{madde}\n"
+                "Return a completely corrected plan that follows every constraint."
             )
             continue
         # ⚠️ HER IKI KIPTE de calisiyor — ama sebebi 2026-08-17'de degisti.

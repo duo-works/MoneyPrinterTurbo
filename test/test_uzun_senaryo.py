@@ -404,7 +404,9 @@ def test_bicim_DOGRULAMAYA_gecirilyor():
     # (2026-08-15, capa genisligi kapisi) ve birebir eslesme bunu kusur
     # sanmisti. Aranan sey telin kendisi — `sahne_sayisi` ve `bicim` ayni
     # cagrida gidiyor mu.
-    assert bosluksuz("validate_content_plan(plan,sahne_sayisi,bicim=bicim") in bosluksuz(
-        kaynak
-    )
+    # ⚠️ CAGRILAN ADI DEGISTI (2026-08-18): dongu artik `plan_kusurlari`
+    # cagiriyor, cunku modele tek kusur degil HEPSI geri besleniyor (gerekce
+    # o fonksiyonun docstring'inde). KORUNAN OZELLIK AYNI — bu test bicimin
+    # dogrulamaya gecirildigini olcuyor, cagrilanin adini degil.
+    assert bosluksuz("plan_kusurlari(plan,sahne_sayisi,bicim=bicim") in bosluksuz(kaynak)
     assert bosluksuz("editoryal_sistem_yonergesi(bicim)") in bosluksuz(kaynak)

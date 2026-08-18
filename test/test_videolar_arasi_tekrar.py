@@ -99,7 +99,11 @@ def test_dogrulama_HER_denemede_zorunlu():
     # oncesinde de geciyor (sabit tanimi ve gerekce yorumu) ve ilk gecisi
     # aramak testi yanlis yerden olcuyor.
     dongu = govde[govde.index("for deneme in range(1, 6):") :]
-    dogrulama = dongu.index("validate_content_plan(")
+    # ⚠️ CAGRILAN ADI DEGISTI (2026-08-18): `validate_content_plan` yerine
+    # `plan_kusurlari` — dongu artik TUM kusurlari birden geri besliyor.
+    # Bu testin korudugu ozellik degismedi: dogrulama yumusak kapilardan
+    # ONCE ve KOSULSUZ calismali.
+    dogrulama = dongu.index("plan_kusurlari(")
     ilk_yumusak_kapi = dongu.index("if yumusak_kapilar_acik")
 
     assert dogrulama < ilk_yumusak_kapi, "dogrulama yumusak kapilardan ONCE ve kosulsuz olmali"
