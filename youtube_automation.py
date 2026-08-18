@@ -3470,49 +3470,59 @@ def _capa_arzi_kusuru(
     *,
     bicim: VideoBicimi,
     sahne_sayisi: int | None = None,
+    konu: str = "",
 ) -> str:
-    """Modelin sectigi CAPA'nin arsivi videoyu tasiyabilir mi. Tasiyorsa "".
+    """Bu videonun arsivi sahne basina AYRI bir birincil verebiliyor mu.
 
-    ⚠️ NEDEN BURADA — olculdu (2026-08-17, slot 14, canli). Huni kipinde
-    terfi kapisi KUYRUK BASLIGINI olcuyor, uretim ise modelin sectigi
-    CAPA'yi kullaniyor ve bu ikisi ayni sey degil:
+    ⚠️ HANGI MENU OLCULUYOR — 2026-08-18'de DEGISTI ve bu bir esik gevsetmesi
+    DEGIL, `alinti_kusuru`nun 2026-08-14'te zaten kapattigi kusurun ayni
+    fonksiyondaki ikizi.
 
-        kuyruk basligi          menu | modelin capasi    menu
-        King Philip's War         16 | Metacom              1
-        Köktürk                   18 | Göktürks           10
-        Operation Storm           15 | Operation Storm    15   <- uyumlu
-        Cemal Bajá                13 | Djemal Pasha       29   <- uyumlu
+    Kapi `plan.visual_anchor`in arsivini sorguluyordu. Ama sahne birincilleri
+    o sorgudan GELMIYOR: model istemde KONU menusunu goruyor, sahneler o
+    menuden `source_file` alintiliyor ve `alinti_kusuru` alintilarin o
+    menuden ve BIRBIRINDEN FARKLI olmasini zorunlu tutuyor. Yani kapi,
+    modele hic gosterilmemis bir listeyi olcup planı reddediyordu —
+    `alinti_kusuru` docstring'indeki "Jock Willis" dersinin birebir aynisi:
+    "kapinin modele gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu
+    kusurun kaynagina cevirir".
 
-    King Philip's War kuyruktan cekildi, terfi kapisini 16 ile gecti ve
-    REDDEDILDI: model olayi birakip KISIYI (`Metacom`) capa secti, o kisinin
-    arsivi 1 dosya. Sahne 9-12 modern fotograflarla doldu ve hakem sekiz
-    agir kusur yazdi ("donem uyusmuyor", "konuyla ilgisiz modern goruntu").
+    Olculdu (2026-08-18 aksami, canli, kapinin KENDI olcutuyle, 6 sahne):
 
-    ⚠️ TERFI KAPISINA EKLENEMEZ, ve bu #37'nin acilis tasariminin cürüdügü
-    yer: capayi MODEL seciyor, yani terfi aninda o menu heNUZ YOKTUR.
-    Kapinin dogru yeri plan kurulduktan SONRA — capa artik bilinir ve
-    dongu geri bildirimle yeniden deneyebilir.
+        KONU  'Köktürk'                18 dosya  GECER
+          capa 'Kül Tigin'              2 dosya  RED
+          capa 'Orkhon inscriptions'    4 dosya  RED
+          capa 'Bilge Qaghan'           1 dosya  RED
+        KONU  "King Philip's War"      16 dosya  GECER
+          capa 'Metacom'                1 dosya  RED
 
-    ⚠️ OLCUT `ikinci_gorsel_istenebilir`in KENDISI, kopyasi degil. O
-    fonksiyon global `KARE_YUVASI`ye (2) bakiyor; uzun bicimde
-    `bicim.kare_yuvasi` 1. Burada `bicim.kare_yuvasi` ile ayri bir hesap
-    yazmak, kapinin reddettigi sayi ile mesajin soyledigi sayiyi
-    ayirirdi — `ASGARI_MENU` docstring'inin uyardigi kusurun aynisi, tek
-    fark bu kez ayni fonksiyonun icinde olurdu.
+    O aksam olen iki koşumun IKISI de bu kapida oldu (18:05 King Philip's
+    War, 19:27 Köktürk) ve ikisinin de KONU menusu fazlasiyla yetiyordu.
+    19:27'de model uc ayri capa denedi, ucu de reddedildi ve 18 dosya
+    kullanilmadan durdu.
 
-    ⚠️ UZUN BICIMDE ZATEN BIR ON KONTROL VAR (`UzunFormatUygunDegilError`)
-    ve o `konu`yu olcuyor; burasi CAPAYI olcuyor, yani ikisi ayni sey degil
-    ve ust uste binmiyorlar.
+    ⚠️ ESKI GEREKCE COPE ATILMADI. Docstring'in kaydettigi 17 Agustos vakasi
+    gercekti: `Metacom` capasiyla uretilen video sahne 9-12'de modern
+    fotograflarla doldu. Ama o koşum, birincillerin menu ALINTISINDAN geldigi
+    duzenden ONCEYDI. Bugun ayni kusuru iki kapi daha tutuyor:
+    `alinti_kusuru` menuyu ve alintilarin farkliligini zorunlu kiliyor,
+    hakemin AGIR KUSUR kapisi ise yanlis kisi/donem gosteren videoyu
+    durduruyor — ikisi de degismedi.
 
-    Bos donmek (menu cekilemedi) kusur SAYILMIYOR: menu bir iyilestirme, on
-    kosul degil. Ag hatasi butun koşumu reddettirmemeli — `arsiv_envanteri`
-    zaten istisnayi yutup `[]` donduruyor ve o durumda uretim eski yoluna
-    (arama terimleri) dusuyor.
+    ⚠️ KALAN RISK, acikca: 4. ve 5. denemelerde yumusak kapilar kapaniyor,
+    yani alintisiz bir plan gecebilir ve o plan sahne gorselini CAPA
+    aramasindan alir. Ince capali boyle bir plan artik burada degil KAYNAK
+    kapisinda durur — yani bir render bedeli. Olculebilir: `stage:
+    source_materials` redlerinde ince capa aranmali.
+
+    Capa SECIMI editoryal kalir ve DOKUNULMADI (bkz. "Vassar College"
+    gerekcesi): kisi anlatiliyorsa capa o kisinin adi olmali.
     """
     hedef = sahne_sayisi or len(plan.scenes) or bicim.sahne_araligi[1]
-    menu = arsiv_envanteri(
-        plan.visual_anchor, sinir=envanter_siniri(bicim), bicim=bicim
-    )
+    # ⚠️ `alinti_kusuru` ile AYNI anahtar: istemdeki menu neyse o. Gerekce
+    # ve olcum yukarida.
+    olculen = konu.strip() or plan.visual_anchor
+    menu = arsiv_envanteri(olculen, sinir=envanter_siniri(bicim), bicim=bicim)
     if not menu:
         return ""
     # ⚠️ OLCUT DEGISTI (2026-08-18): `ikinci_gorsel_istenebilir` degil
@@ -3525,7 +3535,7 @@ def _capa_arzi_kusuru(
         # ⚠️ MESAJ KAPININ OLCTUGU SAYIYI SOYLUYOR. Bu oturumda (#41) tam
         # ters kusur olculdu: modele 80-120 deniyor, kapi 80-150 olcuyordu ve
         # model iki gun tutturamayacagi bir hedef kovaladi.
-        f"capa arzi yetersiz: {plan.visual_anchor!r} icin {len(menu)} gorsel, "
+        f"capa arzi yetersiz: {olculen!r} icin {len(menu)} gorsel, "
         f"{hedef} sahnenin her birine AYRI bir gorsel dusmuyor"
     )
 
@@ -4435,7 +4445,9 @@ def generate_content_plan(
                     "concrete thing belonging to it."
                 )
                 continue
-            if kusur := _capa_arzi_kusuru(plan, bicim=bicim, sahne_sayisi=sahne_sayisi):
+            if kusur := _capa_arzi_kusuru(
+                plan, bicim=bicim, sahne_sayisi=sahne_sayisi, konu=konu
+            ):
                 son_kusur = kusur
                 print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
                 user += (

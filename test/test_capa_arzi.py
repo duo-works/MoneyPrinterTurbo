@@ -18,6 +18,7 @@ heNUZ YOKTUR. Dogru yer plan kurulduktan sonra: capa artik bilinir ve
 dongu geri bildirimle yeniden deneyebilir.
 """
 
+import re
 import sys
 from pathlib import Path
 
@@ -175,7 +176,17 @@ def test_kapi_PLAN_dongusunde_calisiyor(monkeypatch):
     gerekcesi isteme yazilmali ki model ayni capayi tekrar secmesin.
     """
     kaynak = Path(ya.__file__).read_text()
-    assert "_capa_arzi_kusuru(plan" in kaynak, "kapi donguye baglanmamis"
+    # ⚠️ BOSLUKTAN BAGIMSIZ: cagri 2026-08-18'de `konu=` alinca satir sardi ve
+    # bitisik dize arayan eski hali bunu "kapi baglanmamis" sandi. Kusur kodda
+    # degil, testin kodu okuma bicimindeydi (ayni ders `test_uzun_senaryo`de).
+    bosluksuz = re.sub(r"\s+", "", kaynak)
+
+    assert "_capa_arzi_kusuru(plan" in bosluksuz, "kapi donguye baglanmamis"
+    # ⚠️ VE KONUYU GECIRMELI: kapi capanin degil, MODELE GOSTERILEN menunun
+    # arzini olcuyor. `konu=` dusarse kapi sessizce eski (yanlis) listeye
+    # doner — olculdu: Köktürk konusu 18 dosya GECER, modelin capasi
+    # 'Bilge Qaghan' 1 dosya RED.
+    assert "sahne_sayisi=sahne_sayisi,konu=konu" in bosluksuz, "konu gecirilmiyor"
 
 
 def test_KUYRUK_kapisi_ayni_olcutu_kullaniyor():
@@ -199,3 +210,98 @@ def test_UZUN_bicimde_de_sahne_basina_BIR_gorsel(monkeypatch):
     assert ya._capa_arzi_kusuru(
         _plan("X", sahne=7), bicim=ya.UZUN_BICIMI, sahne_sayisi=7
     ) != ""
+
+
+# --- KAPI HANGI MENUYE BAKIYOR (2026-08-18) ---------------------------------
+#
+# ⚠️ NEDEN VAR — kapi `plan.visual_anchor`in arsivini sorguluyordu, ama sahne
+# birincilleri o sorgudan GELMIYOR: model istemde KONU menusunu goruyor ve
+# sahneler o menuden alinti yapiyor (`alinti_kusuru` bunu zorunlu tutuyor).
+# Yani kapi modele hic gosterilmemis bir listeyi olcup plani reddediyordu.
+#
+# Olculdu (18 Agu aksami, canli, kapinin KENDI olcutuyle, 6 sahne):
+#
+#     KONU  'Köktürk'              18 dosya  GECER
+#       capa 'Kül Tigin'            2 dosya  RED
+#       capa 'Orkhon inscriptions'  4 dosya  RED
+#       capa 'Bilge Qaghan'         1 dosya  RED
+#     KONU  "King Philip's War"    16 dosya  GECER
+#       capa 'Metacom'              1 dosya  RED
+#
+# O aksam olen iki koşumun ikisi de bu kapida oldu ve ikisinin de KONU
+# menusu fazlasiyla yetiyordu.
+#
+# ⚠️ `alinti_kusuru`nun "Jock Willis" dersinin birebir aynisi (2026-08-14):
+# "kapinin modele gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu
+# kusurun kaynagina cevirir."
+
+
+def _menu_haritasi(monkeypatch, harita: dict[str, int]):
+    """Anahtara GORE farkli buyuklukte menu — hangi anahtarin sorguldugunu olcer."""
+    sorulan: list[str] = []
+
+    def sahte(konu, **_k):
+        sorulan.append(konu)
+        return [
+            {"dosya": f"{konu}-{i}.jpg", "gosterdigi": "x", "tarih": ""}
+            for i in range(harita.get(konu, 0))
+        ]
+
+    monkeypatch.setattr(ya, "arsiv_envanteri", sahte)
+    return sorulan
+
+
+def test_KONU_verilirse_ONUN_menusu_olculuyor(monkeypatch):
+    """Canli vakanin birebir kopyasi: Köktürk 18, Bilge Qaghan 1."""
+    sorulan = _menu_haritasi(monkeypatch, {"Köktürk": 18, "Bilge Qaghan": 1})
+
+    kusur = ya._capa_arzi_kusuru(
+        _plan("Bilge Qaghan"), bicim=ya.SHORTS_BICIMI, sahne_sayisi=6, konu="Köktürk"
+    )
+
+    assert kusur == "", f"konu menusu 18 dosya, kapi susmaliydi: {kusur}"
+    assert sorulan == ["Köktürk"], sorulan
+
+
+def test_KONU_YOKSA_capaya_dusuyor(monkeypatch):
+    """Yedek kipte konu yok; o zaman capa TEK olculebilir sey."""
+    sorulan = _menu_haritasi(monkeypatch, {"Bilge Qaghan": 1})
+
+    kusur = ya._capa_arzi_kusuru(
+        _plan("Bilge Qaghan"), bicim=ya.SHORTS_BICIMI, sahne_sayisi=6
+    )
+
+    assert kusur != "", "arzsiz capa yedek kipte de gecmemeli"
+    assert sorulan == ["Bilge Qaghan"], sorulan
+
+
+def test_KONU_menusu_de_YETMEZSE_kapi_calisiyor(monkeypatch):
+    """⚠️ Kapi KALDIRILMADI — yalnizca paydasi duzeldi."""
+    _menu_haritasi(monkeypatch, {"Ufak Konu": 3})
+
+    kusur = ya._capa_arzi_kusuru(
+        _plan("Herhangi"), bicim=ya.SHORTS_BICIMI, sahne_sayisi=6, konu="Ufak Konu"
+    )
+
+    assert "3 gorsel" in kusur, kusur
+
+
+def test_mesaj_OLCULEN_anahtari_soyluyor(monkeypatch):
+    """Kusur metni gunluge giriyor; yanlis adi yazmak teshisi saptirirdi."""
+    _menu_haritasi(monkeypatch, {"Ufak Konu": 2})
+
+    kusur = ya._capa_arzi_kusuru(
+        _plan("Baska Capa"), bicim=ya.SHORTS_BICIMI, sahne_sayisi=6, konu="Ufak Konu"
+    )
+
+    assert "Ufak Konu" in kusur and "Baska Capa" not in kusur, kusur
+
+
+def test_alinti_kapisiyla_AYNI_anahtar():
+    """⚠️ Iki kapi ayni menuye bakmali; ayrisirlarsa biri digerinin cozdugu
+    kusuru geri getirir. `alinti_kusuru` anahtari `menu_konusu or capa`."""
+    kaynak = Path(ya.__file__).read_text()
+    bosluksuz = re.sub(r"\s+", "", kaynak)
+
+    assert "menu_konusu.strip()orplan.visual_anchor" in bosluksuz
+    assert "konu.strip()orplan.visual_anchor" in bosluksuz
