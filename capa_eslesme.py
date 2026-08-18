@@ -55,6 +55,67 @@ def kelime_terimleri(deger: str, *, durak_kelimeler: frozenset[str] | set[str] =
     }
 
 
+def sirali_terimler(
+    deger: str, *, durak_kelimeler: frozenset[str] | set[str] = frozenset()
+) -> list[str]:
+    """`kelime_terimleri`nin SIRALI hali — kume degil LISTE.
+
+    Bitisiklik sira ister; kume onu yapisal olarak veremez. Ayni esik ve ayni
+    durak listesi kullaniliyor ki iki kapi ayni seyi olcsun.
+    """
+    return [
+        kelime
+        for kelime in re.findall(r"[a-z0-9]+", (deger or "").lower())
+        if len(kelime) >= 4 and kelime not in durak_kelimeler
+    ]
+
+
+def bitisik_geciyor(
+    kanit: str,
+    terimler: list[str],
+    *,
+    durak_kelimeler: frozenset[str] | set[str] = frozenset(),
+) -> bool:
+    """Capanin anlamli kelimeleri kanitta BITISIK bir obek olarak geciyor mu.
+
+    ⚠️ COZDUGU KUSUR — olculdu (2026-08-18, "Operation Storm" kosumu). Capa
+    kapisi kelimeleri SIRASIZ ve BITISIKSIZ ariyordu, yani capanin kelimeleri
+    araya baska kelimeler girse de bulunuyordu:
+
+        capa "Operation Storm"  ->  {"operation", "storm"}
+        dosya "Operation DESERT Storm"  ->  ikisini de iceriyor, GECIYOR
+
+    Hakem sonucu yakaladi: videonun 3., 4. ve 5. sahnesine Kuveyt'te yanan
+    petrol kuyulari, USAF ucaklari ve bir cikartma plaji girdi — 1991 Korfez
+    Savasi, oysa konu 1995 Hirvatistan'i. Kaynak skoru 50 / 0 / 53 (kapi 70)
+    ve bir uretim slotu yandi.
+
+    Bu, deponun daha once uc kez olctugu sinifin aynisi (`Nadia Murad` /
+    `Murad III`, adas kasaba `Herculaneum, Missouri`, `Getty Villa`): kapi
+    ADI olcuyor, GORUNTUYU degil. Bitisiklik ADI daha dogru olcer — ayri bir
+    ozel ad, capanin kelimelerini tasisa bile onlari bitisik tasimaz.
+
+    ⚠️ ARADAKI KISA KELIMELER MASUM: "Republic of Serbian Krajina" gecerli
+    bir capa ve "of" iki harf. Kanit da capa da AYNI suzgecten geciriliyor
+    (`sirali_terimler`), yani "of" iki tarafta da dusuyor ve obek bitisik
+    kaliyor. Kural, capa metninin kendisini elemek zorunda kalirsa yanlis
+    kuraldir.
+
+    ⚠️ ON EK ESLESMESI, TAM ESITLIK DEGIL: eski kapi alt dize ariyordu ve bu
+    bilincliydi — cogul/tamlama eklerini tasiyordu ("pyramid" -> "pyramids").
+    On ek o kazanci korur, ama "storm" ile "brainstorm"u ayirir; alt dize
+    ayirmiyordu.
+    """
+    if not terimler:
+        return True
+    akis = sirali_terimler(kanit, durak_kelimeler=durak_kelimeler)
+    n = len(terimler)
+    return any(
+        all(akis[i + j].startswith(terimler[j]) for j in range(n))
+        for i in range(len(akis) - n + 1)
+    )
+
+
 def sira_sayilari(deger: str) -> set[str]:
     """Capadaki roma rakamlari — "Murad III" -> {"iii"}.
 

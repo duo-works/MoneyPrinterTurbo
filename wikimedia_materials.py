@@ -726,12 +726,30 @@ def _puanli_adaylar(
     query_terms = _relevance_terms(query)
     anchor_terms = _relevance_terms(required_anchor)
     distinctive_anchor_terms = anchor_terms - ANCHOR_GENERIC_WORDS
-    required_anchor_terms = distinctive_anchor_terms or anchor_terms
     # ⚠️ Sira sayilari AYRI: `_relevance_terms` 4 harften kisa kelimeleri
     # atiyor, yani "Murad III" yalnizca {"murad"} veriyordu ve
     # `File:Nadia Murad Nobel Peace Prize 2018.jpg` kapiyi GECIYORDU
     # (olculdu 2026-08-13). Tam sozcuk eslesmesinin sebebi `capa_eslesme`de.
     gerekli_sira_sayilari = capa_eslesme.sira_sayilari(required_anchor)
+    # ⚠️ CAPA TERIMLERI ARTIK SIRALI, cunku kapi BITISIKLIK oluyor. Gerekce ve
+    # olcum `capa_eslesme.bitisik_geciyor`de: "Operation Storm" capasi
+    # "Operation DESERT Storm" dosyalarini geciriyordu ve videoya 1991 Korfez
+    # Savasi goruntuleri girdi (kaynak skoru 50/0/53, bir slot yandi).
+    #
+    # ⚠️ CAPA VE KANIT AYNI SUZGECTEN geciyor. Ayri suzgecler kullanilsaydi
+    # capanin kendi kelimesi kanit akisinda kalir, obek bolunur ve kapi DOGRU
+    # dosyalari elerdi — bu depoda iki kez olculmus kusur sinifi ("kapi modele
+    # gosterilenden baska bir listeyi olcuyor").
+    #
+    # Genel kelimeler yalnizca AYIRT EDICI terim varken dusuruluyor: capanin
+    # tamami genel kelimelerden olusuyorsa (`distinctive_anchor_terms` bos)
+    # geriye hicbir sey kalmaz ve kapi butun arsivi gecirirdi.
+    capa_durak_kelimeleri = RELEVANCE_STOPWORDS | (
+        ANCHOR_GENERIC_WORDS if distinctive_anchor_terms else set()
+    )
+    sirali_capa_terimleri = capa_eslesme.sirali_terimler(
+        required_anchor, durak_kelimeler=capa_durak_kelimeleri
+    )
     for order, page in enumerate(pages):
         title = str(page.get("title", ""))
         if not title or title in used_titles:
@@ -765,8 +783,8 @@ def _puanli_adaylar(
         # (kisi videosunda capa kurum olursa video yanlis insani gosterir) ve
         # dar capa cogu zaman baslikta gecmez. Shorts yolu 96 puan aliyor.
         capa_kaniti = title.lower() if capa_baslikta else evidence
-        if required_anchor_terms and not all(
-            term in capa_kaniti for term in required_anchor_terms
+        if not capa_eslesme.bitisik_geciyor(
+            capa_kaniti, sirali_capa_terimleri, durak_kelimeler=capa_durak_kelimeleri
         ):
             continue
         if not capa_eslesme.sira_sayisi_uyuyor(
