@@ -188,3 +188,62 @@ def test_istem_TUR_soruyor_KARAR_sormuyor():
     # Esik ve karar ANILMIYOR: hakem olcer, kod karar verir.
     assert "acceptable to use a map" not in istem
     assert "MIN_SOURCE_VISUAL_SCORE" not in istem
+
+
+# --- SLAYT / INFOGRAFIK (2026-08-18) ----------------------------------------
+#
+# ⚠️ NEDEN VAR — olculdu (Gobekli Tepe, YAYINLANMIS video, gorsel 78).
+# Kapanistaki iki yuva (~7,6 sn, videonun %15'i) `Göbekli Tepe Birthing Woman
+# in Leopard Pillar Building.jpg` idi: UC panelli, Ingilizce baslikli, muze
+# kunyeli MODERN bir aciklama slaydi; panellerden biri yorum cizimi. Shorts
+# boyutunda gomulu yazi okunmuyor ve altyaziyla cakisiyor.
+#
+# ⚠️ Mekanizma VARDI VE CALISMADI. Kaynak kapisi zaten kare basina `kind`
+# soruyor ve Shorts'ta orneklem yok, yani kapi bu kareyi GORDU ve "photo" dedi
+# — cunku slayt fotograf ICERIYOR. Eksik olan kapi degil TAKSONOMIYDI: modelin
+# "bu bir sayfa duzeni" diyebilecegi bir secenek yoktu.
+#
+# ⚠️ `ikincil_gorselleri_denetle` ayni kusuru ZATEN yakaliyordu (Gobekli
+# koşumunda `scene-06b` bir PowerPoint slaydiydi ve dusuruldu). Iki kapi artik
+# ayni dili konusuyor.
+
+
+def test_SLAYT_sorunlu():
+    assert ya.belge_kareleri(_kareler("photo", "composite"), _plan(), 2) == [2]
+
+
+def test_slayt_FOTOGRAF_OLMAYANLAR_listesinde():
+    assert "composite" in ya.FOTOGRAF_OLMAYAN_TURLER
+
+
+def test_ARTWORK_hala_gecerli():
+    """⚠️ Sinir bekcisi: slayt eklenirken gravur/tablo yanlislikla elenmemeli —
+    onlar kanalin gorsel dilinin merkezinde."""
+    assert ya.belge_kareleri(_kareler("artwork", "photo"), _plan(), 2) == []
+
+
+def test_IKI_KAPI_ayni_tur_listesini_kullaniyor():
+    """⚠️ Tur listesi kaynak kapisi ile render SONRASI hakemde AYNI olmali.
+    Ayrisirsa iki kapi ayni goruntuye baska ad verir ve teshis imkansizlasir."""
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+
+    for baslangic in ("def review_source_materials(", "def review_video("):
+        assert baslangic in kaynak, f"{baslangic} YOK"
+        i = kaynak.index(baslangic)
+        govde = kaynak[i : kaynak.index("data = _vision_json", i)]
+        assert '"composite"' in govde, f"{baslangic} slayt turunu sormuyor"
+
+
+def test_istem_slaytin_NE_OLDUGUNU_tarif_ediyor():
+    """Tek kelime yetmez: model `composite`i kendi basina dogru yorumlamaz.
+    Tarif, slaytin fotograf ICERDIGINI acikca soylemeli — kafa karisikligi tam
+    oradaydi ("photo" denmesinin sebebi buydu)."""
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    i = kaynak.index("def review_source_materials(")
+    istem = kaynak[i : kaynak.index("data = _vision_json", i)]
+
+    # ⚠️ Aranan parcalar KAYNAKTA BITISIK olmali: istem metni birden cok
+    # dize sabitine bolunmus, yani calisma zamaninda birlesen bir cumle
+    # kaynakta bitisik gorunmuyor. Ilk surumum tam bu yuzden kirmizi verdi.
+    assert "SEVERAL pictures" in istem
+    assert "is a composite even when the pictures" in istem

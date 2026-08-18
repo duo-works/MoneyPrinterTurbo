@@ -4737,7 +4737,7 @@ def create_source_montage(
     return montage
 
 
-FOTOGRAF_OLMAYAN_TURLER = frozenset({"map", "diagram", "document"})
+FOTOGRAF_OLMAYAN_TURLER = frozenset({"map", "diagram", "document", "composite"})
 """Sahneyi degistirmeyi gerektiren kare turleri.
 
 ⚠️ `artwork` BILEREK DISARIDA. Gravur, tablo ve cizim bu kanalin
@@ -4749,6 +4749,22 @@ kapatirdi.
 (3 harita, 2 pul/kapak, 2 diyagram), Persepolis'in %29'u harita.
 Uretilen Tunguska videosunda 18 karenin 3'u harita, 2'si pul, biri
 kitap kapagi cikti — kanal sahibinin sikayeti birebir buydu.
+
+⚠️ `composite` 2026-08-18'de eklendi — SLAYT/INFOGRAFIK. Olculdu (Gobekli
+Tepe, YAYINLANMIS video, gorsel 78): kapanistaki iki yuva (~7,6 sn, videonun
+%15'i) `Göbekli Tepe Birthing Woman in Leopard Pillar Building.jpg` idi — uc
+panelli, Ingilizce baslikli, muze kunyeli MODERN bir aciklama slaydi;
+panellerden biri yorum cizimi. Shorts boyutunda gomulu yazi okunmuyor ve
+altyaziyla cakisiyor.
+
+⚠️ Mekanizma VARDI VE CALISMADI: kaynak kapisi zaten kare basina `kind`
+soruyor, Shorts'ta orneklem de yok, yani kapi bu kareyi GORDU ve "photo" dedi
+— cunku slayt fotograf ICERIYOR. Eksik olan kapi degil, TAKSONOMIYDI: modelin
+"bu bir sayfa duzeni" diyebilecegi bir secenek yoktu.
+
+⚠️ `ikincil_gorselleri_denetle` ayni kusuru zaten yakaliyordu (Gobekli
+koşumunda `scene-06b` bir PowerPoint slaydiydi ve dusuruldu). Iki kapi artik
+ayni dili konusuyor.
 """
 
 KONU_TURU_ISTISNASI = re.compile(
@@ -4866,10 +4882,17 @@ def review_source_materials(
             # diye sorulsaydi konuya gore keyfi cevap verirdi.
             " Additionally return a `frames` array with one object per scene: "
             '{"n": <scene number>, "kind": one of "photo", "map", "diagram", '
-            '"artwork", "document" — what the image actually IS, not what it '
-            "depicts. A photograph of a museum display case is a photo; a "
-            "scanned page, book cover, postage stamp or printed label is a "
-            'document; a drawn plan or cross-section is a diagram}.'
+            '"artwork", "document", "composite" — what the image actually IS, '
+            "not what it depicts. A photograph of a museum display case is a "
+            "photo; a scanned page, book cover, postage stamp or printed label "
+            "is a document; a drawn plan or cross-section is a diagram; "
+            # ⚠️ SLAYT TURU — gerekce `FOTOGRAF_OLMAYAN_TURLER`de. Model
+            # boyle bir sayfayi "photo" diye isaretliyordu cunku slayt
+            # fotograf ICERIYOR ve baska secenek yoktu.
+            "a page that arranges SEVERAL pictures together with added titles, "
+            "captions or museum credits, the way a lecture slide or an "
+            "explanatory panel does, is a composite even when the pictures "
+            'inside it are photographs}.'
         ),
     }
     data = _vision_json(prompt, montage, bicim=bicim)
@@ -5553,7 +5576,9 @@ def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[
     return bulunanlar
 
 
-def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
+def _benzerligi_kaydet(
+    dosyalar: list[Path], hedef_dizin: Path, *, asama: str = "birincil"
+) -> None:
     """Gorsel olcumleri kosumun yanina yazar.
 
     Olcum bir YAN IS: basarisiz olursa video uretimi durmamali. Bu yuzden
@@ -5562,20 +5587,60 @@ def _benzerligi_kaydet(dosyalar: list[Path], hedef_dizin: Path) -> None:
     ⚠️ Iki AYRI eksen olculuyor ve biri iyilesirken digeri kotulesebilir:
     Mohenjo-Daro kosumunda yapisal tekrar sifirdi ama ton yayilimi 0,007'ydi.
     Tek sayiya bakmak "duzeldi" yanilgisi verirdi.
+
+    ⚠️ IKI KEZ CAGRILIYOR (2026-08-18): `kare_yerlesimi`den ONCE (birincil
+    dosyalar) ve SONRA (videoya giden NIHAI kare dizisi). Sebep olculdu —
+    Cemal Pasha koşumunda `benzer_kareler: []` yaziyordu, oysa BES sahne ayni
+    kareyi iki yuvada gosteriyordu. Olcum, var olus sebebi olan tekrari
+    YAPISAL OLARAK goremiyordu: `[A, A]` ikizlemesi ondan SONRA olusuyor.
+
+    ⚠️ `[A, A]` ciftleri nihai olcumde AYRI raporlaniyor. Beklenen bir durum
+    olduklari icin `benzer_kareler`e karistirilsalardi liste her koşumda
+    dolar ve gercek tekrari (iki AYRI dosyanin ayni fotograf olmasi)
+    gizlerdi.
+
+    ⚠️ ESIK YOK, KAPI YOK — bilincli. Once dagilim gorulecek; esigi veriye
+    bakmadan koymak #46'da duzeltilen hatanin (olcut ile kullanim yerinin
+    karismasi) aynisi olurdu.
     """
     try:
         gecerli = [d for d in dosyalar if d is not None]
+        # Ayni dosyanin ardisik yuvalarda tekrari — `kare_yerlesimi` sonrasinda
+        # anlamli, oncesinde her zaman bos.
+        ikizler = [
+            [i, i + 1]
+            for i in range(1, len(gecerli))
+            if gecerli[i - 1] == gecerli[i]
+        ]
+        # ⚠️ Ikizler `benzer_kareler`den CIKARILIYOR. Ayni dosya algisal olarak
+        # da ayni, yani cikarilmasalardi liste her koşumda `[A, A]` ciftleriyle
+        # dolar ve GERCEK tekrari — iki AYRI dosyanin ayni fotograf olmasi —
+        # gizlerdi. Ayrim ancak boyle anlamli.
+        ikiz_kume = {tuple(cift) for cift in ikizler}
+        gercek_tekrar = [
+            bulgu
+            for bulgu in benzer_kareler(gecerli)
+            if tuple(bulgu.get("sahneler", ())) not in ikiz_kume
+        ]
         kayit = {
-            "benzer_kareler": benzer_kareler(gecerli),
+            "asama": asama,
+            "kare_sayisi": len(gecerli),
+            "benzer_kareler": gercek_tekrar,
+            "ikiz_yuvalar": ikizler,
             "ton_yayilimi": ton_yayilimi(gecerli),
         }
         hedef_dizin.mkdir(parents=True, exist_ok=True)
-        (hedef_dizin / "benzerlik.json").write_text(
+        ad = "benzerlik.json" if asama == "birincil" else f"benzerlik-{asama}.json"
+        (hedef_dizin / ad).write_text(
             json.dumps(kayit, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        print(f"ton yayilimi: {kayit['ton_yayilimi']}", flush=True)
+        print(
+            f"gorsel olcum [{asama}]: {len(gecerli)} kare · ton yayilimi "
+            f"{kayit['ton_yayilimi']} · ikiz yuva {len(ikizler)}",
+            flush=True,
+        )
         if kayit["benzer_kareler"]:
-            print(f"benzer kareler: {kayit['benzer_kareler']}", flush=True)
+            print(f"benzer kareler [{asama}]: {kayit['benzer_kareler']}", flush=True)
     except Exception as hata:  # noqa: BLE001 — olcum uretimi durduramaz
         print(f"gorsel olcum yapilamadi: {hata}", flush=True)
 
@@ -6146,6 +6211,10 @@ def run_generator(
         f"yuva = {len(material_files)} kare · {tam_dolan_sahne} sahnede iki AYRI gorsel",
         flush=True,
     )
+    # ⚠️ NIHAI olcum — videoya giden kare dizisi uzerinde. Yukaridaki olcum
+    # `kare_yerlesimi`den ONCE kosuyor ve `[A, A]` ikizlemesini yapisal olarak
+    # goremiyor; gerekce `_benzerligi_kaydet` docstring'inde.
+    _benzerligi_kaydet(material_files, material_dir, asama="nihai")
 
     # ⚠️ Klip suresi ARTIK SABIT DEGIL. Sabit 5 sn, sahne sayisi × 5 < ses
     # oldugunda MPT'ye bastan bir klibi tekrar ettiriyordu — gerekce
@@ -6620,8 +6689,14 @@ def review_video(
             '"lettering": <true when readable words appear INSIDE the picture — a sign, '
             "plaque, caption, book cover, stamp, map label or nameplate — not counting the "
             'subtitle burned along the bottom, which is intended>, '
-            '"kind": one of "photo", "map", "diagram", "artwork", "document" — what the '
-            "frame actually is}. "
+            # ⚠️ Tur listesi kaynak kapisiyla AYNI olmali; ayrisirsa iki kapi
+            # ayni goruntuye baska ad verir ve teshis imkansizlasir. `composite`
+            # gerekcesi `FOTOGRAF_OLMAYAN_TURLER`de.
+            '"kind": one of "photo", "map", "diagram", "artwork", "document", '
+            '"composite" — what the frame actually is; a page that arranges '
+            "SEVERAL pictures together with added titles, captions or museum "
+            "credits (a lecture slide, an explanatory panel) is a composite even "
+            'when the pictures inside it are photographs}. '
             "Answer what you can actually see. A recent photograph of the genuine "
             "surviving object is authentic_subject true and period correct; a recent "
             "photograph of something else entirely is not."

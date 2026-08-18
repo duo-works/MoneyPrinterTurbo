@@ -308,6 +308,127 @@ def test_iki_eksen_de_kaydediliyor(tmp_path):
     assert "ton_yayilimi" in kayit
 
 
+# --- NIHAI kare dizisi da olculuyor (2026-08-18) -----------------------------
+#
+# ⚠️ NEDEN VAR — olculdu (Cemal Pasha, YAYINLANMIS video). `benzerlik.json`
+# `benzer_kareler: []` yaziyordu, oysa BES sahne ayni kareyi iki yuvada
+# gosteriyordu. Olcum `kare_yerlesimi`den ONCE ve yalnizca BIRINCIL dosyalar
+# uzerinde kosuyordu, yani var olus sebebi olan tekrari — `[A, A]`
+# ikizlemesini — YAPISAL OLARAK goremiyordu.
+#
+# ⚠️ ESIK YOK, KAPI YOK: once dagilim gorulecek. Esigi veriye bakmadan koymak
+# #46'da duzeltilen hatanin (olcut ile kullanim yerinin karismasi) aynisi
+# olurdu.
+
+
+def test_NIHAI_olcum_AYRI_dosyaya_yaziliyor(tmp_path):
+    import json
+
+    kareler = [_renkli_kare(tmp_path / f"{i}.png", 20 + i * 40) for i in range(3)]
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet(kareler, hedef, asama="nihai")
+
+    kayit = json.loads((hedef / "benzerlik-nihai.json").read_text(encoding="utf-8"))
+    assert kayit["asama"] == "nihai"
+    assert kayit["kare_sayisi"] == 3
+
+
+def test_IKIZ_yuvalar_sayiliyor(tmp_path):
+    """`[A, A]` duzeni: ayni dosya iki ardisik yuvada."""
+    import json
+
+    a = _renkli_kare(tmp_path / "a.png", 20)
+    b = _renkli_kare(tmp_path / "b.png", 200)
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet([a, a, b, b], hedef, asama="nihai")
+
+    kayit = json.loads((hedef / "benzerlik-nihai.json").read_text(encoding="utf-8"))
+    assert kayit["ikiz_yuvalar"] == [[1, 2], [3, 4]]
+
+
+def test_IKI_AYRI_gorselli_sahnede_ikiz_YOK(tmp_path):
+    """`[A, B]` duzeni — hedeflenen durum."""
+    import json
+
+    a = _renkli_kare(tmp_path / "a.png", 20)
+    b = _renkli_kare(tmp_path / "b.png", 200)
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet([a, b], hedef, asama="nihai")
+
+    kayit = json.loads((hedef / "benzerlik-nihai.json").read_text(encoding="utf-8"))
+    assert kayit["ikiz_yuvalar"] == []
+
+
+def test_ikizler_BENZER_KARELERE_karistirilmiyor(tmp_path):
+    """⚠️ `[A, A]` BEKLENEN bir durum. `benzer_kareler`e karistirilsaydi liste
+    her koşumda dolar ve GERCEK tekrari (iki AYRI dosyanin ayni fotograf
+    olmasi) gizlerdi."""
+    import json
+
+    a = _renkli_kare(tmp_path / "a.png", 20)
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet([a, a], hedef, asama="nihai")
+
+    kayit = json.loads((hedef / "benzerlik-nihai.json").read_text(encoding="utf-8"))
+    assert kayit["ikiz_yuvalar"] == [[1, 2]]
+    assert kayit["benzer_kareler"] == []
+
+
+def test_FARKLI_AD_AYNI_fotograf_HALA_yakalaniyor(tmp_path):
+    """⚠️ Ayrimin OTEKI yonu — sinir bekcisi. Ikizleri `benzer_kareler`den
+    cikarmak, GERCEK tekrari da gizlerse olcum bir sey soylemez olurdu:
+    "farkli ad, ayni fotograf" bu depoda olculmus bir kusur (`_tekrar_mi`
+    ikincil yola tam bu yuzden baglandi).
+    """
+    import json
+    import shutil
+
+    a = _renkli_kare(tmp_path / "a.png", 20)
+    kopya = tmp_path / "baska-ad.png"
+    shutil.copy2(a, kopya)
+    b = _renkli_kare(tmp_path / "b.png", 200)
+    hedef = tmp_path / "kosum"
+
+    # [a, b, kopya] — bitisik DEGIL, yani ikiz sayilmiyor ama ayni fotograf.
+    ya._benzerligi_kaydet([a, b, kopya], hedef, asama="nihai")
+
+    kayit = json.loads((hedef / "benzerlik-nihai.json").read_text(encoding="utf-8"))
+    assert kayit["ikiz_yuvalar"] == []
+    assert kayit["benzer_kareler"], "farkli adla duran ayni fotograf kaciriliyor"
+
+
+def test_BIRINCIL_olcum_dosya_adi_DEGISMEDI(tmp_path):
+    """⚠️ `benzerlik.json` adi korunuyor: eski koşumlarin kayitlari ve onlari
+    okuyan testler bozulmamali."""
+    import json
+
+    kareler = [_renkli_kare(tmp_path / "a.png", 20)]
+    hedef = tmp_path / "kosum"
+
+    ya._benzerligi_kaydet(kareler, hedef)
+
+    assert (hedef / "benzerlik.json").exists()
+    assert not (hedef / "benzerlik-birincil.json").exists()
+    kayit = json.loads((hedef / "benzerlik.json").read_text(encoding="utf-8"))
+    assert kayit["asama"] == "birincil"
+
+
+def test_NIHAI_olcum_kare_duzeninden_SONRA_cagriliyor():
+    """⚠️ Zincirin kopabilecegi yer: cagri `kare_yerlesimi`den once kalirsa
+    olcum yine ikizleri goremez ve degisiklik SESSIZCE etkisiz olur."""
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+
+    capa = '_benzerligi_kaydet(material_files, material_dir, asama="nihai")'
+    assert capa in kaynak, "nihai olcum cagrisi YOK"
+
+    duzen = kaynak.index("material_files, tam_dolan_sahne = kare_yerlesimi(")
+    assert duzen < kaynak.index(capa), "nihai olcum kare duzeninden ONCE kosuyor"
+
+
 def test_klip_suresi_ondalik_gecebiliyor():
     """Tamsayi kisiti ikisinden birini kacinilmaz kiliyordu (35,88 / 7 = 5,13)."""
     from app.models.schema import VideoParams
