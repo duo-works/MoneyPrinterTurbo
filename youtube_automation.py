@@ -607,9 +607,35 @@ def _ret_denemeleri(state: dict[str, Any]) -> dict[str, int]:
 
     Anahtar `visual_anchor`; bos ise `topic`'e dusulur — eski kayitlarin bir
     kisminda capa alani yok.
+
+    ⚠️ SOGUMA DAMGASI BURADA DA GECERLI (2026-08-18) ve sebebi ayni: butce
+    "bu capa uc kez denendi, olmuyor" diyor, ama denemeler ESKI KODLA
+    yapildiysa o cikarim gecersiz. Olculdu — soguma sifirlandiktan sonra
+    `King Philip's War` kuyruktan cekildi ve BES DENEMESININ IKISI capa
+    engeline carpti:
+
+        deneme 1  capa daha once kullanilmis: 'Metacom'
+        deneme 3  capa daha once kullanilmis: 'Mount Hope'
+
+    Adayin sekiz eski reddi tam bu iki capada birikmisti, yani soguma
+    sifirlansa bile aday kendi dogal capalarini kullanamiyordu. Damga
+    olmadan "yanan adayi yeniden dene" fiilen imkansiz.
+
+    ⚠️ YAYINLANAN capalar ETKILENMIYOR — `engellenen_capalar` onlari ayri
+    topluyor ve tekrar politikasi (ayni konuyu iki kez yayinlamama) bir kod
+    degisikligiyle gecersizlesmiyor.
     """
+    gecerlilik = soguma_gecerliligi(state)
     sayac: dict[str, int] = {}
     for kayit in state.get("rejected", []):
+        if gecerlilik is not None:
+            ham = str(kayit.get("rejected_at", "")).strip()
+            try:
+                if ham and datetime.fromisoformat(ham) < gecerlilik:
+                    continue
+            except ValueError:
+                # Bozuk damga kaydi ATLATMAZ; butce eskisi gibi sayar.
+                pass
         anahtar = str(kayit.get("visual_anchor") or kayit.get("topic") or "").strip()
         if anahtar:
             anahtar = anahtar.casefold()

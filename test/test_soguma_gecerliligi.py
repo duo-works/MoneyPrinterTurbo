@@ -118,6 +118,65 @@ def test_ESKI_KAYITLAR_silinmiyor():
     assert len(durum["rejected"]) == 1, "kayit silinmis"
 
 
+# --- Capa butcesi de damgayi okuyor -----------------------------------------
+#
+# ⚠️ NEDEN — olculdu 2026-08-18, sogumayi sifirladiktan HEMEN SONRA.
+# `King Philip's War` kuyruktan cekildi (yani soguma sifirlamasi calisti) ama
+# BES DENEMESININ IKISI capa engeline carpti:
+#
+#     deneme 1  capa daha once kullanilmis: 'Metacom'
+#     deneme 3  capa daha once kullanilmis: 'Mount Hope'
+#
+# Adayin sekiz eski reddi tam bu iki capada birikmisti (`RET_DENEME_BUTCESI`
+# = 3). Yani soguma sifirlansa bile aday kendi dogal capalarini kullanamiyor
+# ve "yanan adayi yeniden dene" fiilen imkansiz kaliyordu.
+
+
+def _capa_durumu(*, red_saat_once: float, damga_saat_once: float | None = None) -> dict:
+    durum = {
+        "published": [],
+        "rejected": [
+            {"visual_anchor": "Metacom", "rejected_at": _an(red_saat_once)}
+            for _ in range(ya.RET_DENEME_BUTCESI)
+        ],
+    }
+    if damga_saat_once is not None:
+        durum["soguma_gecerlilik"] = _an(damga_saat_once)
+    return durum
+
+
+def test_damga_YOKKEN_capa_butcesi_ESKISI_GIBI():
+    durum = _capa_durumu(red_saat_once=5)
+
+    assert "Metacom" in ya.engellenen_capalar(durum)
+
+
+def test_damgadan_ESKI_redler_capayi_YAKMIYOR():
+    """⚠️ Asil is: eski kodla yanmis capa yeniden denenebilmeli."""
+    durum = _capa_durumu(red_saat_once=5, damga_saat_once=1)
+
+    assert "Metacom" not in ya.engellenen_capalar(durum)
+
+
+def test_damgadan_YENI_redler_capayi_HALA_yakiyor():
+    """⚠️ Sinir bekcisi: sifirlama gecmisi siliyor, GELECEGI degil."""
+    durum = _capa_durumu(red_saat_once=1, damga_saat_once=2)
+
+    assert "Metacom" in ya.engellenen_capalar(durum)
+
+
+def test_YAYINLANAN_capa_damgadan_ETKILENMIYOR():
+    """⚠️ Tekrar politikasi bir kod degisikligiyle gecersizlesmez: ayni konu
+    iki kez yayinlanmamali."""
+    durum = {
+        "soguma_gecerlilik": _an(1),
+        "published": [{"visual_anchor": "Colosseum", "published_at": _an(50)}],
+        "rejected": [],
+    }
+
+    assert "Colosseum" in ya.engellenen_capalar(durum)
+
+
 # --- CLI --------------------------------------------------------------------
 
 
