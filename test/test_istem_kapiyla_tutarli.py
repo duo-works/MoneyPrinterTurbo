@@ -175,3 +175,93 @@ def test_dogrulama_mesaji_ISTEMLE_ayni_sayiyi_soyluyor(bicim):
     with pytest.raises(ValueError) as hata:
         ya.validate_content_plan(plan, bicim=bicim)
     assert f"{en_az}-{en_cok} words" in str(hata.value)
+
+
+# --- Ikinci vaka: istem, KAPININ YASAKLADIGI bicimi emrediyordu ------------
+#
+# ⚠️ OLCULDU (2026-08-19). Uc engel kapandiktan sonraki iki koşumun 6 reddinin
+# 4'u `resmedilemez_kusuru`ydu ve butun logdaki 6 yakalamanin 5'i TEK aile:
+#
+#     portrait shows · engraving by Paul Revere shows · painting shows
+#     Paintings of the 1800s show · drawings made before he arrived show
+#
+# Sebep kapinin hatasi degildi. Istem modele ayni seyi IKI YERDE emrediyordu
+# ("the narration must describe what that file shows" — sahne sozlesmesinde ve
+# alinti kapisinin geri bildiriminde), ucuncu bir yerde de yasakliyordu
+# ("NEVER MAKE THE PICTURE ITSELF THE SUBJECT OF A SENTENCE"). Model emre
+# uyuyor, SERT kapidan dusuyordu (`plan_kusurlari` icinde, yumusak kaci yok).
+#
+# Bu dosyanin ilk vakasiyla ayni hastalik: modele SOYLENEN ile kapinin
+# OLCTUGU ayrilmis.
+
+# Ozne DEPICTION olan bir EMIR: "... what that file shows" ailesi.
+TASVIRI_ANLAT_EMRI = re.compile(
+    r"\bwhat (?:that|the|this) "
+    r"(?:file|entry|image|picture|photo|photograph|source)\b[^.]{0,25}?"
+    r"\b(?:show|shows|showing|depicts?|depicting)\b",
+    re.IGNORECASE,
+)
+
+
+def test_YASAKLI_bicim_gercekten_yasakli():
+    """⚠️ Capa test: asagidaki iki testin bir sey ifade etmesi buna bagli.
+
+    Kapi bu bicimi bir gun serbest birakirsa tutarlilik testleri sessizce
+    anlamsizlasir; o zaman bu test duser ve neden dustugu bellidir.
+    """
+    assert ya.resmedilemez_kusuru("An 1889 photograph shows the tower half built") != ""
+
+
+@pytest.mark.parametrize("bicim", BICIMLER)
+def test_istem_TASVIRI_anlatmayi_EMRETMIYOR(bicim):
+    """Sahne sozlesmesi satiri, kapinin reddedecegi cumleyi istememeli."""
+    yonerge = ya.editoryal_sistem_yonergesi(bicim)
+    # ⚠️ Yalnizca EMIR cumlesi taraniyor, istemin tamami DEGIL: istem yasagi
+    # anlatirken yasakli bicimi bilerek ORNEK olarak aliyor ("An 1871 image
+    # shows the vessel"). Tamamini tarayan bir test yasagin KENDISINI kusur
+    # sayardi — ve muafiyet listesi gerektiren bir tutarlilik testi yanlis
+    # seyi olcuyor demektir.
+    sozlesme = next(
+        (satir for satir in yonerge.splitlines() if "source_file" in satir), ""
+    )
+    assert sozlesme, f"{bicim.ad}: sahne sozlesmesi satiri bulunamadi"
+    assert not TASVIRI_ANLAT_EMRI.search(sozlesme), (
+        f"{bicim.ad}: istem tasviri anlatmayi emrediyor ama kapi onu reddediyor: "
+        f"{sozlesme!r}"
+    )
+
+
+def test_ALINTI_KAPISININ_geri_bildirimi_de_emretmiyor(monkeypatch):
+    """⚠️ Geri bildirim de sozlesmenin parcasi — modele aynen geri besleniyor.
+
+    Bu dosyanin ilk vakasinda ayni ders ogrenilmisti
+    (`test_dogrulama_mesaji_ISTEMLE_ayni_sayiyi_soyluyor`): kapi mesaji
+    istemden ayrilinca model uc ayri sey duyuyor.
+    """
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k, **_: [
+            {"dosya": f"{ad}.jpg", "gosterdigi": "bir sey", "tarih": "1900"}
+            for ad in "ABCD"
+        ],
+    )
+    plan = ya.ContentPlan(
+        topic="konu",
+        visual_anchor="capa",
+        title="baslik #Shorts",
+        script="metin",
+        scenes=[
+            {"narration": "x", "search_term": "y", "kaynak_dosya": ad}
+            for ad in ("yok.jpg", "B.jpg", "C.jpg")
+        ],
+        description="aciklama",
+        tags=["a", "b", "c"],
+    )
+
+    kusur = ya.alinti_kusuru(plan)
+
+    assert kusur, "eksik dosya reddedilmeliydi"
+    assert not TASVIRI_ANLAT_EMRI.search(kusur), (
+        f"alinti kapisi tasviri anlatmayi emrediyor: {kusur[:200]!r}"
+    )

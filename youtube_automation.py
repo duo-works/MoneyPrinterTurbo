@@ -818,7 +818,7 @@ Return valid JSON only. Create a factual, emotionally compelling, evergreen true
 The script must be 80-120 spoken English words and end with a memorable line. AIM FOR THE MIDDLE OF THAT RANGE, NOT ITS CEILING: a draft that lands near the upper bound is rejected outright, and rewriting it costs you an attempt. Count the words before you answer; if the last scene pushes you past the middle, cut a clause rather than adding a scene. The first 2-3 seconds must deliver a short, immediately understandable hook that creates a curiosity gap through a surprising factual claim, an unresolved question, or a strong contrast; do not begin with greetings, channel introductions, dates, or slow setup. Scene 1 narration and its visual must directly support that hook.
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject (a number, an object, a contradiction, or an unfinished action) so the first six words could belong to no other video.
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME, never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
-Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone. When the user request carries an ARCHIVE MENU, each scene also needs source_file: one entry's 'dosya' value copied exactly, never invented, never reused by two scenes, and the narration must describe what that file shows.
+Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone. When the user request carries an ARCHIVE MENU, each scene also needs source_file: one entry's 'dosya' value copied exactly, never invented, never reused by two scenes, and the narration must be about the THING that file depicts: what it was, what happened to it, who made or used it. Never write a sentence whose subject is the file, the picture or the depiction itself.
 GIVE EVERY SCENE ABOUT THE SAME NUMBER OF WORDS. Each image is on screen for exactly the same number of seconds, so a scene carrying three times the words of its neighbour leaves the wrong picture on screen while a different sentence is being spoken, and the mismatch accumulates across the rest of the video. Split a long scene in two and merge a very short one into its neighbour rather than letting the lengths drift apart.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. Repeating one query ("Murad III", "Murad III", ...) returns the same ranked archive results every time, and the video becomes a row of near-identical portraits, which is the single most common reason a video is rejected. Write instead: "Murad III tughra", "Murad III imperial berat", "Murad III Topkapi palace", "Murad III Ottoman map", which is the anchor plus the concrete thing THIS scene is about.
@@ -1113,7 +1113,11 @@ def resmedilemez_kusuru(anlatim: str) -> str:
                 f"narration says {eslesme.group(0)!r}, which talks about the record "
                 "instead of the world and no archive image can show it; replace the "
                 "sentence with a concrete thing that happened, a named person, a "
-                "place, an object, or a date"
+                "place, an object, or a date. Rewrite the same scene by moving the "
+                "subject from the depiction to the thing depicted, like this: "
+                '"An 1889 photograph shows the tower half built" becomes '
+                '"In 1889 the tower stood half built, its top platform still open '
+                'to the sky."'
             )
     return ""
 
@@ -4020,7 +4024,8 @@ def alinti_kusuru(
         kusurlar.append(
             f"scenes {eksik} cite a source_file that does not exist in this subject's "
             "archive. Every scene's source_file must be copied EXACTLY from this menu, "
-            "and its narration must describe what that file actually shows:\n"
+            "and its narration must tell the story of the THING that entry depicts, "
+            "never of the entry itself:\n"
             f"{json.dumps(menu, ensure_ascii=False)}"
         )
     if tekrar:
