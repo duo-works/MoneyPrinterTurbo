@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import io
 import json
 import math
@@ -6519,11 +6520,120 @@ def load_state() -> dict[str, Any]:
     return state
 
 
+EKLEMELI_ALANLAR = ("published", "rejected", "completed_slots")
+"""Yalnizca BUYUYEN listeler — birlestirme bunlara uygulanir.
+
+Butun cagri yerleri (`run_cycle` icinde bes tane) bu listelere `append`
+yapiyor; hicbiri kayit silmiyor ya da guncellemiyor. Birlestirmenin gecerli
+olmasi tam olarak bu ozellige dayaniyor.
+"""
+
+
+def _durumu_birlestir(bellek: dict[str, Any], disk: dict[str, Any]) -> dict[str, Any]:
+    """Diskteki kayitlardan BELLEKTE OLMAYANLARI geri ekler.
+
+    Kimlik olarak kaydin kanonik JSON'u kullaniliyor: `published` icin `url`,
+    `rejected` icin ise kararli bir kimlik alani YOK (`rejected_at` en yakini
+    ama tek basina benzersizligi garanti etmiyor). Tam kayit karsilastirmasi
+    ikisini de dogru ele aliyor ve yeni alan eklendiginde sessizce bozulmuyor.
+    """
+    sonuc = dict(bellek)
+    for alan in EKLEMELI_ALANLAR:
+        bizim = list(bellek.get(alan) or [])
+        onlarin = list(disk.get(alan) or [])
+        gorulen = {json.dumps(k, sort_keys=True, ensure_ascii=False) for k in bizim}
+        eksik = [
+            k
+            for k in onlarin
+            if json.dumps(k, sort_keys=True, ensure_ascii=False) not in gorulen
+        ]
+        if eksik:
+            sonuc[alan] = bizim + eksik
+    # ⚠️ Skaler alanlar (ornegin `soguma_gecerlilik`) LISTE DEGIL; onlarda
+    # birlestirme yapilamaz, yalnizca "diskte var bizde yok" durumu telafi
+    # ediliyor. Ikisi de varsa BELLEKTEKI kazaniyor: onu bu koşum bilerek
+    # yazdi. Damganin kaybolmasi 18 Agu'da olculdu.
+    for anahtar, deger in disk.items():
+        if anahtar not in EKLEMELI_ALANLAR and anahtar not in sonuc:
+            sonuc[anahtar] = deger
+    return sonuc
+
+
 def save_state(state: dict[str, Any]) -> None:
+    """Durumu diske yazar — YAZMADAN ONCE diski yeniden okuyup BIRLESTIREREK.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-18, CANLI VERI KAYBI). Eski surum bellekteki
+    sozlugu toptan yaziyordu. `load_state` koşum BASINDA okuyor ve bir koşum
+    saatlerce surebiliyor, yani arada baska bir sürecin yazdigi her sey
+    sessizce siliniyordu:
+
+        11:17  Gobekli Tepe yayinlandi   (skor 78)
+        11:48  soguma damgasi yazildi
+        12:23  Cemal Pasha yayinlandi    (skor 75)
+        15:12  eski anlik goruntuyu tutan bir koşum kaydetti
+               -> yayin 21'den 19'a dustu, damga yok oldu
+
+    Kaybin bedeli defter hatasindan buyuk: `engellenen_capalar` yayinlanmis
+    capalari okuyor, yani iki konu yeniden serbest kaldi ve hat ayni videoyu
+    ikinci kez yayinlayabilirdi (tekrar politikasi ihlali). Kayitlar elle geri
+    yuklendi; bu fonksiyon tekrarini engelliyor.
+
+    ⚠️ Kilit `automation.lock`u DEGISTIRMIYOR. O kilit koşumlari seri hale
+    getiriyor ama `state.json` uzerinde degil, ve elle baslatilan bir koşum ya
+    da ayri bir arac onu hic almadan yazabiliyor. Burada dosyanin kendisi
+    korunuyor.
+
+    ⚠️ Birlestirme yalnizca EKLEMELI alanlar icin dogru (`EKLEMELI_ALANLAR`).
+    Bir gun bir kayit GUNCELLENIR ya da SILINIRSE bu fonksiyon o degisikligi
+    geri alir; o zaman kimlik bazli bir birlestirme gerekir.
+    """
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary = STATE_FILE.with_suffix(".tmp")
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    temporary.replace(STATE_FILE)
+    # ⚠️ Kilit AYRI bir dosyada: `state.json`in kendisini kilitleyip sonra
+    # `replace` ile degistirmek, kilidi tutulan inode'u dosya adindan
+    # koparirdi — sonraki yazici yeni inode'u kilitler ve ikisi ayni anda
+    # ilerler.
+    kilit_yolu = STATE_FILE.with_name(f"{STATE_FILE.name}.lock")
+    kilit = None
+    try:
+        kilit = kilit_yolu.open("a+")
+        fcntl.flock(kilit.fileno(), fcntl.LOCK_EX)
+    except OSError as hata:
+        # ⚠️ ACIK KALIYOR: kilit alinamadi diye uretilmis ve YAYINLANMIS bir
+        # videonun kaydi yazilamamasi, yarisin kendisinden daha kotu.
+        print(f"⚠️ durum kilidi alinamadi ({hata}); birlestirme yine de denenecek", flush=True)
+        if kilit is not None:
+            kilit.close()
+            kilit = None
+    try:
+        if STATE_FILE.exists():
+            try:
+                diskteki = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as hata:
+                # Okunamayan bir disk kopyasi yazmayi ENGELLEMEZ; elimizdeki
+                # sozluk bozuk dosyadan iyidir.
+                print(f"⚠️ durum dosyasi okunamadi ({hata}); birlestirme atlandi", flush=True)
+            else:
+                if isinstance(diskteki, dict):
+                    birlesik = _durumu_birlestir(state, diskteki)
+                    for alan in EKLEMELI_ALANLAR:
+                        kazanc = len(birlesik.get(alan) or []) - len(state.get(alan) or [])
+                        if kazanc:
+                            print(
+                                f"ℹ️ durum birlestirildi: {alan} +{kazanc} kayit "
+                                "(baska bir koşum arada yazmis)",
+                                flush=True,
+                            )
+                    state = birlesik
+        # ⚠️ Gecici dosya ADI SURECE OZEL. Tek bir `.tmp` paylasilsaydi iki
+        # surec ayni yola yazip birbirinin yarim ciktisini `replace`
+        # edebilirdi — kilit alinamadigi durumda tek savunma bu.
+        temporary = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(STATE_FILE)
+    finally:
+        if kilit is not None:
+            fcntl.flock(kilit.fileno(), fcntl.LOCK_UN)
+            kilit.close()
 
 
 def _seconds_until_not_before(not_before: str, now: datetime) -> float:
