@@ -2761,6 +2761,35 @@ def _windows() -> bool:
     return os.name == "nt"
 
 
+def _hermes_hata_ozeti(
+    result: "subprocess.CompletedProcess[str]", *, sinir: int = 600
+) -> str:
+    """`hermes` cagrisinin GERCEK hata metni — cikis koduyla birlikte gitsin.
+
+    ⚠️ OLCULDU (2026-08-19, 02:32 kosumu): kosum plan asamasini hic red
+    almadan gecti, videoyu render etti ve son incelemede dustu. Geriye kalan
+    tek bilgi suydu:
+
+        RuntimeError: Hermes CLI vision inference failed with exit code 1
+
+    Sebebi SONRADAN OGRENILEMEDI: kontak sayfasi gecici dizinde uretiliyor ve
+    kosumla birlikte siliniyor, yani cagri birebir uretilemiyor. Bir video
+    render edildikten sonra okunamayan bir hatayla olmek, bu oturumda
+    kapatilan korluk sinifinin ta kendisi (`hermes -z` birincil hatayi
+    yutuyordu; `CikarimZamanAsimi` de saglayici hatasini kalite reddinden
+    ayirmak icin eklendi).
+
+    Depo bu dersi baska bir cagride zaten ogrenmisti: render komutu
+    `stdout + STDERR`i dosyaya yaziyor. Iki cikarim yolu almamiisti.
+
+    stderr bos olabiliyor (bazi hatalar stdout'a yaziliyor), o yuzden ikisine
+    de bakiliyor. Sinir var cunku bu metin log dosyasina ve hata mesajina
+    giriyor; tam cikti kilobaytlarca olabilir.
+    """
+    ham = (result.stderr or "").strip() or (result.stdout or "").strip()
+    return ham[-sinir:] if ham else "(cikti bos)"
+
+
 class CikarimZamanAsimi(RuntimeError):
     """`hermes` cagrisi zaman asimina ugradi — SAGLAYICI HATASI DEGIL.
 
@@ -2934,7 +2963,8 @@ def _json_completion(
         )
         if result.returncode:
             raise RuntimeError(
-                f"Hermes CLI text inference failed with exit code {result.returncode}"
+                "Hermes CLI text inference failed with exit code "
+                f"{result.returncode}: {_hermes_hata_ozeti(result)}"
             )
         return parse_cli_result(result.stdout)
     if INFERENCE_BACKEND != "openai":
@@ -3046,7 +3076,8 @@ def _vision_json(
         )
         if result.returncode:
             raise RuntimeError(
-                f"Hermes CLI vision inference failed with exit code {result.returncode}"
+                "Hermes CLI vision inference failed with exit code "
+                f"{result.returncode}: {_hermes_hata_ozeti(result)}"
             )
         return parse_cli_result(result.stdout)
     if INFERENCE_BACKEND != "openai":
