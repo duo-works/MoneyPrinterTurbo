@@ -156,3 +156,85 @@ def test_menu_onbellekleniyor(monkeypatch):
     ya.arsiv_envanteri("Tekrar Eden Konu")
 
     assert sayac["n"] == 1
+
+
+def _aciklamali_menu(*ciftler: tuple[str, str]) -> list[dict[str, str]]:
+    """Her girdinin AYRI aciklamasi — hangi girdinin tasindigi ayirt edilebilsin."""
+    return [
+        {"dosya": ad, "gosterdigi": aciklama, "tarih": "1900"} for ad, aciklama in ciftler
+    ]
+
+
+def test_tekrar_mesaji_BOSTAKI_girdileri_tasiyor(monkeypatch):
+    """⚠️ 'Sunu tekrar etme' tek basina cozum degil — yerine NE konacagi da lazim.
+
+    Olculdu (2026-08-18, 21:07 kosumu): tekrar dali yalnizca tekrarlanan dosya
+    adini soyluyordu ve model ayni plani ucuncu kez gonderdi; uc red kelimesi
+    kelimesine ayniydi. Eksik-dosya dali ayni kusuru yasayip menuyu basarak
+    cozmustu (`test_kusur_mesaji_menuyu_tasiyor`).
+    """
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k, **_: _aciklamali_menu(
+            ("A.jpg", "gemi limanda"),
+            ("B.jpg", "kaptanin portresi"),
+            ("C.jpg", "yelkenler aciik seyir"),
+            ("D.jpg", "kuru havuzda onarim"),
+        ),
+    )
+
+    kusur = ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "A.jpg"))
+
+    # Bostakiler ADIYLA ve ACIKLAMASIYLA veriliyor: sahnenin anlatimi dosyanin
+    # gosterdigi seyi anlatmak zorunda, ciplak ad modeli tahmine birakirdi.
+    assert "C.jpg" in kusur and "D.jpg" in kusur
+    assert "yelkenler aciik seyir" in kusur and "kuru havuzda onarim" in kusur
+    # ⚠️ ASIL KILIT: menunun TAMAMI degil BOSTAKILER veriliyor. B.jpg zaten
+    # 2. sahnenin gecerli alintisi; onu yedek olarak onermek modelin yeni bir
+    # tekrar uretmesini davet ederdi.
+    assert "B.jpg" not in kusur
+
+
+def test_bostaki_liste_menu_tam_dolduginda_da_bos_kalmiyor(monkeypatch):
+    """Pigeonhole: menu sahne sayisina ESITken bile en az bir girdi bosta kalir.
+
+    Tekrar varken ayrik alinti sayisi sahne sayisindan kucuktur ve
+    `len(menu) >= len(sahne)` yukarida garanti edildi — yani mesaj hicbir zaman
+    'sunu tekrar etme, ama alternatif yok' demiyor.
+    """
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k, **_: _aciklamali_menu(
+            ("A.jpg", "gemi limanda"),
+            ("B.jpg", "kaptanin portresi"),
+            ("C.jpg", "yelkenler aciik seyir"),
+        ),
+    )
+
+    kusur = ya.alinti_kusuru(_plan("A.jpg", "B.jpg", "A.jpg"))
+
+    assert "C.jpg" in kusur and "yelkenler aciik seyir" in kusur
+
+
+def test_eksik_ve_tekrar_AYNI_mesajda_bildiriliyor(monkeypatch):
+    """Kostebek oyunu dersi (`12f2034`): bagimsiz iki olgu tek geciste sayilmali.
+
+    Ayri ayri bildirilirse iki kusur iki DENEME yakar; hat basina bes deneme var.
+    """
+    monkeypatch.setattr(
+        ya,
+        "arsiv_envanteri",
+        lambda _k, **_: _aciklamali_menu(
+            ("A.jpg", "gemi limanda"),
+            ("B.jpg", "kaptanin portresi"),
+            ("C.jpg", "yelkenler aciik seyir"),
+            ("D.jpg", "kuru havuzda onarim"),
+        ),
+    )
+
+    kusur = ya.alinti_kusuru(_plan("yok.jpg", "B.jpg", "B.jpg"))
+
+    assert "[1]" in kusur, "eksik dosya bildirilmedi"
+    assert "more than one scene" in kusur, "tekrar bildirilmedi"

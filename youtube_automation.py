@@ -3954,19 +3954,52 @@ def alinti_kusuru(
     gecerli = {girdi["dosya"] for girdi in menu}
     alintilar = [str(sahne.get("kaynak_dosya", "")).strip() for sahne in plan.scenes]
     eksik = [sira for sira, ad in enumerate(alintilar, 1) if ad not in gecerli]
+    tekrar = sorted({ad for ad in alintilar if alintilar.count(ad) > 1})
+    # ⚠️ BOSTAKI GIRDILER, cunku "sunu tekrar etme" tek basina COZUM DEGIL.
+    #
+    # Olculdu (2026-08-18, 21:07 kosumu): tekrar dali modele yalnizca hangi
+    # dosyayi iki kez andigini soyluyordu, yerine ne koyacagini SOYLEMIYORDU.
+    # Model ayni plani ucuncu kez gonderdi; logdaki uc red kelimesi kelimesine
+    # ayniydi, ayni iki dosya adiyla:
+    #
+    #   deneme 1/5 — 'Map 49 - Croatia - Operation Oluja...', 'Martic-order1995.jpg'
+    #   deneme 2/5 — ayni iki dosya
+    #   deneme 3/5 — ayni iki dosya
+    #
+    # Eksik-dosya dali bu kusuru zaten yasamis ve menuyu basarak cozmustu
+    # (`test_kusur_mesaji_menuyu_tasiyor`); tekrar dali o dersten payini
+    # almamisti.
+    #
+    # ⚠️ AD YETMIYOR, ACIKLAMA DA GEREKIYOR: sahnenin anlatimi dosyanin
+    # GOSTERDIGI seyi anlatmak zorunda (bu kapinin kendi kurali), yani ciplak
+    # bir dosya adi listesi modeli yine tahmine birakirdi.
+    #
+    # Pigeonhole: bu noktada butun alintilar menude (eksik dali yukarida
+    # donuyor) ve `len(menu) >= len(plan.scenes)`, yani tekrar varken bosta
+    # EN AZ bir girdi kalir — liste hicbir zaman bos donmez.
+    bosta = [girdi for girdi in menu if girdi["dosya"] not in set(alintilar)]
+    kusurlar: list[str] = []
     if eksik:
-        return (
+        kusurlar.append(
             f"scenes {eksik} cite a source_file that does not exist in this subject's "
             "archive. Every scene's source_file must be copied EXACTLY from this menu, "
             "and its narration must describe what that file actually shows:\n"
             f"{json.dumps(menu, ensure_ascii=False)}"
         )
-    tekrar = sorted({ad for ad in alintilar if alintilar.count(ad) > 1})
     if tekrar:
-        return (
+        kusurlar.append(
             f"the same archive file is cited by more than one scene ({tekrar}). Each "
-            "scene must cite a different file so the video does not repeat an image."
+            "scene must cite a different file so the video does not repeat an image. "
+            "These menu entries are not cited by any scene yet — replace the repeated "
+            "citation with one of them and rewrite that scene's narration to describe "
+            "what the file actually shows:\n"
+            f"{json.dumps(bosta, ensure_ascii=False)}"
         )
+    if kusurlar:
+        # ⚠️ IKISI BIRDEN bildiriliyor — `12f2034`in kostebek oyunu dersi.
+        # Eksik ve tekrar BAGIMSIZ olgular; tek tek bildirmek bir denemeyi
+        # bosa yakar.
+        return " ".join(kusurlar)
     # ⚠️ IKINCI ALINTI BURADA DENETLENMIYOR ve bu bilincli bir karar.
     #
     # Ilk surum ikinci alintiyi da ayni sertlikte denetliyordu: uydurma ya
