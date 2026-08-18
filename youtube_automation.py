@@ -98,6 +98,34 @@ TIMEZONE_NAME = "Europe/Istanbul"
 MIN_VISUAL_SCORE = 75
 MIN_SOURCE_VISUAL_SCORE = 70
 MIN_SUBTITLE_SCORE = 80
+
+# Esigin bu kadar altindaki bir render KONUYU YAKMAZ, ONARILIR.
+#
+# ⚠️ NEDEN VAR — olculdu 2026-08-18; hat 17 Agu 15:01'den beri hic yayin
+# yapmiyordu. Esik 75'e indikten sonraki YEDI render: 72, 72, 72, 72, 65, 55,
+# 72. Yedisi de konuyu cope atti, cunku `should_abandon_topic` yalnizca
+# "skor < MIN_VISUAL_SCORE" diye bakiyordu — yani ucuz onarim yolu
+# (`kareyi_onar`, `else` dalinda) tam da surekli aldigimiz skorda YAPISAL
+# OLARAK ERISILEMEZDI.
+#
+# Atmanin bedeli olculdu (n=26, ayni slottaki ardisik denemeler):
+#
+#     yeniden planlama -> iyilesti 8 · kotulesti 8 · ayni 10
+#
+# Yani konuyu atmak bir YAZI-TURA ve her atisin bedeli tam bir render.
+# `kareyi_onar` docstring'i ayni kaybi baska bir ornekte zaten olcmustu
+# (Roman Dodecahedron: 89/88, sekiz karenin yedisi temiz, tek kusurlu kare;
+# hat videoyu atti, yeniden deneme DAHA KOTUSUNU uretti — 88, uc kusur).
+#
+# ⚠️ 10 keyfi degil: hakem ciktisi kuantalanmis (31 render'in 12'si tam 72,
+# 11'i tam 78) ve 75-10=65 bandi 72 ile 65'i icine alip 55'i disarida
+# birakiyor — "birkac karesi bozuk" ile "video gercekten yanlis" arasindaki
+# gozlenen ayrimi tutuyor.
+#
+# ⚠️ YAYIN KARARI DEGISMIYOR: `should_publish` ellenmedi, 72 hala
+# yayinlanmiyor. Degisen tek sey REDDEN SONRA NE OLDUGU.
+# ⚠️ Bu sayi HICBIR ISTEME girmeyecek (DW-87).
+ONARILABILIR_BANT = 10
 AI_VISUAL_FALLBACK_ENABLED = str(
     config.app.get("enable_ai_visual_fallback", "false")
 ).strip().lower() in {"1", "true", "yes", "on"}
@@ -1766,6 +1794,62 @@ def hakem_karesinden_sahne(
     return kareden_sahneye(gercek_kare, yuva)
 
 
+# Hakemin SIRADAN sikayetlerinde ("issues") gecen sahne numaralari.
+#
+# ⚠️ NEDEN VAR — olculdu 2026-08-18. `agir_kusurlu_kareler` yalnizca
+# `agir_kusurlar` listesini ve KATI turkce kalibi (`kare 7: ...`) okuyor. Ama
+# esigin altinda kalan yedi reddin DORDUNDE agir kusur SIFIRDI; skoru dusuren
+# sey siradan `issues` maddeleriydi. Onlar ingilizce ve baska bicimde geliyor,
+# uc bicim de canli ciktidan olculdu:
+#
+#     "Frame 11 (scene 6, first frame) is heavily blurred"
+#     "Frames 3-4 (scene 2): ..."
+#     "Scene 4 (frames 7-8): ..."
+#
+# ⚠️ SAHNE yaziliysa O KULLANILIYOR, kare->sahne cevrimi YAPILMIYOR. Cevrim
+# (`hakem_karesinden_sahne`) uzun formatta orneklem yuzunden yanlis sahneyi
+# isaret edebiliyor; hakem sahneyi zaten acikca yaziyorsa tahmine gerek yok.
+# Bu yuzden sahne kalibi kare kalibindan ONCE deneniyor.
+_ISSUE_SAHNE = re.compile(r"scenes?\s+(\d+)", re.IGNORECASE)
+_ISSUE_KARE = re.compile(r"frames?\s+(\d+)", re.IGNORECASE)
+
+
+def sikayet_sahneleri(
+    review: QualityReview,
+    yuva: int = KARE_YUVASI,
+    ornekler: list[int] | None = None,
+) -> dict[int, list[str]]:
+    """Siradan `issues` maddelerini SAHNE -> sikayet metinleri sozlugune cevirir.
+
+    Sahne ya da kare numarasi tasimayan maddeler (orn. "the curiosity hook in
+    the first 2-3 seconds is weak") DISARIDA kaliyor ve bu bilincli: onarim
+    bir GORSELI degistiriyor, sahnesi belli olmayan bir sikayet icin
+    degistirilecek gorsel de belli degil.
+    """
+    sonuc: dict[int, list[str]] = {}
+    for ham in review.issues:
+        metin = str(ham).strip()
+        if not metin:
+            continue
+        if eslesme := _ISSUE_SAHNE.search(metin):
+            sahne = int(eslesme.group(1))
+        elif eslesme := _ISSUE_KARE.search(metin):
+            sahne = hakem_karesinden_sahne(int(eslesme.group(1)), yuva, ornekler)
+        else:
+            continue
+        sonuc.setdefault(sahne, []).append(metin)
+    return sonuc
+
+
+# Bir onarim turunda en fazla kac sahnenin gorseli degistirilir.
+#
+# ⚠️ Sinir SART: siradan `issues` cogu render'da sahnelerin YARISINDAN
+# fazlasini aniyor. Hepsini birden degistirmek "onarim" degil planin tamamini
+# yeniden secmek olurdu — ve olculdu ki yeniden secim yazi-tura (8/8/10).
+# Ustelik `aday_menu` cogu konuda zaten kucuk (Sigiriya 8, Notre Dame 5).
+AZAMI_ONARIM = 3
+
+
 def agir_kusurlu_kareler(
     review: QualityReview,
     yuva: int = KARE_YUVASI,
@@ -1829,8 +1913,14 @@ def kareyi_onar(
         16:48  75/85  "kare 11: konuyla ilgisiz modern goruntu"
         18:28  78/85  "kare 10: anlatilan kisi degil"      <- IKINCIL
     """
-    bozuk = agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler)
-    bozuk = [n for n in bozuk if 1 <= n <= len(plan.scenes)]
+    gecerli_sahne = range(1, len(plan.scenes) + 1)
+    agir = [n for n in agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler) if n in gecerli_sahne]
+    # ⚠️ AGIR KUSURLAR ONCE. Tavan dolarsa elenecek olan siradan sikayet
+    # olmali: agir kusur tek basina videoyu reddettiriyor, siradan sikayet
+    # yalnizca skoru dusuruyor.
+    sikayetler = sikayet_sahneleri(review, bicim.kare_yuvasi, ornekler)
+    siradan = [n for n in sorted(sikayetler) if n in gecerli_sahne and n not in agir]
+    bozuk = (agir + siradan)[:AZAMI_ONARIM]
     if not bozuk:
         return []
     menu = arsiv_envanteri(
@@ -1881,6 +1971,18 @@ def kareyi_onar(
                 # uzun formatta ikincil yuva YOK, o yuzden kosul sart.
                 if bicim.kare_yuvasi > 1 and gercek_kare % 2 == 0:
                     ikincil_bozuk.add(sahne_no)
+    # ⚠️ SIRADAN SIKAYETLER de modele veriliyor. Yalnizca sahneyi secip
+    # gerekcesini vermemek, modelden "bu cumleye ne uyar" yerine "rastgele
+    # baska bir dosya" almak demekti; kapatilan kusur (anlatim-gorsel
+    # uyusmazligi) o yoldan geri gelirdi.
+    # ⚠️ Yuva secimi burada YAPILMIYOR: siradan sikayetlerin cogu bir sahnenin
+    # IKI karesini birden aniyor ("Frames 3-4 (scene 2)") ve hangi yuvanin
+    # bozuk oldugu belirsiz. Belirsizken birincil degisiyor — `ikincil_bozuk`
+    # yalnizca agir kusurun ACIKCA cift numarali kare gosterdigi durumda
+    # doluyor.
+    for sahne_no, metinler in sikayetler.items():
+        if sahne_no in kusur_metni:
+            kusur_metni[sahne_no].extend(metinler)
     try:
         data = _json_completion(
             "Return JSON only: {\"picks\": [{\"n\": <scene number>, \"source_file\": "
@@ -1932,11 +2034,44 @@ def kareyi_onar(
     return sorted(degisen)
 
 
+def onarilabilir_mi(review: QualityReview) -> bool:
+    """Skor esigin HEMEN altinda ve video yapisal olarak saglam mi.
+
+    Boyle bir render'in konusu atilmaz; hakemin isaretledigi karelerin
+    gorseli degistirilip AYNI konu yeniden render edilir. Gerekce ve olcum
+    `ONARILABILIR_BANT` sabitinde.
+
+    Uc kosul da SART:
+
+      · agir kusur YOK — agir kusur "yanlis kisi/yanlis donem" demek ve o
+        bir kare degisikligiyle kapanan bir sey degil, planin kendisi yanlis;
+      · "modern footage" GECMIYOR — ayni gerekce, mevcut davranis korunuyor;
+      · skor bandin icinde — cok dusuk skor "birkac karesi bozuk" degil
+        "video gercekten yanlis" demek (olculdu: 55 boyle, 65 ve 72 degil).
+    """
+    if review.agir_kusurlar:
+        return False
+    if "modern footage" in " ".join(review.issues).lower():
+        return False
+    return (
+        MIN_VISUAL_SCORE - ONARILABILIR_BANT
+        <= review.visual_alignment_score
+        < MIN_VISUAL_SCORE
+    )
+
+
 def should_abandon_topic(review: QualityReview) -> bool:
     # Eskiden ucuncu bir kosul daha vardi: "publishable false ama iki skor da
     # esigi geciyor" — modelin gerekcesiz reddi. `publishable` artik skorlardan
     # turetildigi icin o durum olusamiyor; kosul kaldirildi (DW-87).
     # Esik de artik elle yazilmiyor, MIN_VISUAL_SCORE'dan geliyor.
+    #
+    # ⚠️ ONARILABILIR RENDER KONUYU YAKMAZ (2026-08-18). Bu kapi eskiden
+    # esigin ALTINDAKI her skorda True donuyordu ve `kareyi_onar` cagrisi
+    # `else` dalinda oldugu icin onarim, hattin surekli aldigi skorda
+    # yapisal olarak erisilemezdi. Olcum ve gerekce `ONARILABILIR_BANT`ta.
+    if onarilabilir_mi(review):
+        return False
     issue_text = " ".join(review.issues).lower()
     return (
         review.visual_alignment_score < MIN_VISUAL_SCORE
@@ -6428,6 +6563,52 @@ def run_cycle(
         selected: tuple[
             str, Path, Path, QualityReview, list[dict[str, Any]]
         ] | None = None
+
+        # ⚠️ YURURLUKTEKI PLANIN REDDI KAYDA GECTI MI (2026-08-18).
+        #
+        # Kayit `should_abandon_topic` dalinin ICINDE yaziliyordu. Onarim
+        # dali acilinca (bkz. `ONARILABILIR_BANT`) yeni bir cikis yolu olustu:
+        # son deneme onarima giderse dongu HIC KAYIT YAZMADAN bitiyor, aday
+        # sogumaya girmiyor ve ertesi koşumda yine kuyrugun basinda oluyor —
+        # bu oturumda planlama yolunda kapatilan deligin (`43d2a8b`) aynisi.
+        #
+        # Bayrak SART, "sonunda hep yaz" yetmez: karisik dizide cifte yakma
+        # olur ve capa butcesi (`RET_DENEME_BUTCESI`) iki kez yenir:
+        #
+        #     deneme 1  konu A onarildi              -> kayit YOK
+        #     deneme 2  konu A agir kusurla birakildi -> kayit VAR, B'ye gecildi
+        #     deneme 3  konu B onarildi, slot dustu   -> B yazilmali, A YAZILMAMALI
+        son_plan_kayitli = False
+        # Dongu sonrasi kaydin okuyacagi son VIDEO incelemesi. `review` tek
+        # basina yetmez: kaynak asamasi dali da ona yaziyor ve o baska bir
+        # asamanin incelemesi.
+        son_render: tuple[QualityReview, str, list[dict[str, Any]]] | None = None
+
+        def _video_reddini_kaydet(
+            gozden_gecirme: QualityReview,
+            gorev: str | None,
+            kunyeler: list[dict[str, Any]] | None,
+        ) -> None:
+            state.setdefault("rejected", []).append(
+                {
+                    "stage": "video",
+                    "slot": slot,
+                    "kaynak": kaynak,
+                    # Gerekce yukaridaki kaynak asamasi kaydinda.
+                    "aday_basligi": aday.baslik if aday else None,
+                    "topic": plan.topic,
+                    "visual_anchor": plan.visual_anchor,
+                    "task_id": gorev,
+                    "visual_alignment_score": gozden_gecirme.visual_alignment_score,
+                    "subtitle_readability_score": gozden_gecirme.subtitle_readability_score,
+                    "issues": gozden_gecirme.issues,
+                    "agir_kusurlar": gozden_gecirme.agir_kusurlar,
+                    "sahneler": sahne_kaydi(plan, kunyeler),
+                    "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                }
+            )
+            save_state(state)
+
         for attempt in range(1, 4):
             try:
                 (
@@ -6479,6 +6660,7 @@ def run_cycle(
                     }
                 )
                 save_state(state)
+                son_plan_kayitli = True
                 if attempt < 3:
                     try:
                         plan = generate_content_plan(
@@ -6488,6 +6670,8 @@ def run_cycle(
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
                         )
+                        # Yeni konu, yeni kayit borcu.
+                        son_plan_kayitli = False
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -6512,6 +6696,7 @@ def run_cycle(
                 video_path, task_id, len(plan.scenes) * bicim.kare_yuvasi, bicim=bicim
             )
             review = review_video(plan, montage, bicim=bicim)
+            son_render = (review, task_id, credits)
             reviews.append(
                 {
                     "topic": plan.topic,
@@ -6526,25 +6711,8 @@ def run_cycle(
             if should_abandon_topic(review):
                 rejected_topic = plan.topic
                 exclusions.extend([rejected_topic, plan.visual_anchor])
-                state.setdefault("rejected", []).append(
-                    {
-                        "stage": "video",
-                        "slot": slot,
-                        "kaynak": kaynak,
-                        # Gerekce yukaridaki kaynak asamasi kaydinda.
-                        "aday_basligi": aday.baslik if aday else None,
-                        "topic": rejected_topic,
-                        "visual_anchor": plan.visual_anchor,
-                        "task_id": task_id,
-                        "visual_alignment_score": review.visual_alignment_score,
-                        "subtitle_readability_score": review.subtitle_readability_score,
-                        "issues": review.issues,
-                        "agir_kusurlar": review.agir_kusurlar,
-                        "sahneler": sahne_kaydi(plan, credits),
-                        "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
-                    }
-                )
-                save_state(state)
+                _video_reddini_kaydet(review, task_id, credits)
+                son_plan_kayitli = True
                 if attempt < 3:
                     try:
                         plan = generate_content_plan(
@@ -6554,6 +6722,8 @@ def run_cycle(
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
                         )
+                        # Yeni konu, yeni kayit borcu.
+                        son_plan_kayitli = False
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -6597,6 +6767,14 @@ def run_cycle(
                     plan = refine_search_terms(plan, review, bicim=bicim)
 
         if not selected:
+            # ⚠️ SLOT DUSTU AMA YURURLUKTEKI PLAN KAYDA GECMEDI. Tek yolu
+            # onarim dali: son deneme kareyi onardi, dongu bitti ve hicbir
+            # `rejected` kaydi yazilmadi. Kayit olmazsa `aday_sogumada_mi`
+            # okuyacak bir sey bulamaz ve aday ertesi koşumda yine kuyrugun
+            # basinda olur (#38'in kapattigi dongunun aynisi).
+            if not son_plan_kayitli and son_render is not None:
+                _video_reddini_kaydet(*son_render)
+                son_plan_kayitli = True
             result = {"status": "rejected", "slot": slot, "topic": plan.topic, "reviews": reviews}
             LOG_DIR.mkdir(parents=True, exist_ok=True)
             (LOG_DIR / f"{slot}-rejected.json").write_text(
