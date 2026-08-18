@@ -109,6 +109,29 @@ cd "$KOK" || exit 1
   >>"$CIKTI_DOSYASI" 2>&1
 KOD=$?
 
+# ⚠️ PLAN DENEMELERI KALICI HALE GETIRILIYOR — olculdu (2026-08-18, #41).
+# Bu satirdan onceki tek kayit yolu suydu: `CIKTI_DOSYASI` bir `mktemp` ve
+# `:68`deki trap onu CIKISTA SILIYOR. Kopya yalnizca BEKLENMEDIK cikis
+# kodunda (`*)` dali) `hata-*.log`a aliniyor; 0 (yayin) ve 2 (red) — yani
+# koşumlarin neredeyse tamami — stdout'u cope atiyor.
+#
+# Kalici `<slot>-rejected.json` bu bosluğu KAPATMIYOR: oraya yalnizca bes
+# denemenin HEPSI tukenirse tek bir "son kusur" yaziliyor. Yani 1. deneme
+# 184 kelimede dusup 2. deneme gecerse geriye HIC iz kalmiyor — ve #41'in
+# olcmek istedigi sinyal tam olarak bu, cunku o deneme bir butce yakiyor.
+#
+# `youtube_automation.py:3841` ayni korlugu bir kez olcup ic dongude
+# kapatmisti ("her deneme yaziliyor, yalnizca sonuncusu degil"); duzeltme
+# elle koşumlara ulasti, zamanlayiciya ulasmadi. Burasi o eksik yarisi.
+#
+# ⚠️ `case`ten ONCE ve her cikis kodu icin calisiyor: yayinlanan bir koşum
+# da deneme yakmis olabilir ve o da sinyaldir.
+# ⚠️ `|| true` — betikte `set -e` yok (`set -uo pipefail`) ama eslesmeyen
+# grep 1 donduruyor; bagimliligi yok etmek icin acikca yutuluyor.
+grep "reddedildi" "$CIKTI_DOSYASI" 2>/dev/null \
+  | while IFS= read -r satir; do echo "$(zaman) | $satir"; done \
+  >>"$LOG_DIZINI/plan-redleri.log" || true
+
 case "$KOD" in
   0)
     URL="$(grep -o '"url": "[^"]*"' "$CIKTI_DOSYASI" | head -1 | cut -d'"' -f4)"
