@@ -4782,6 +4782,50 @@ Antikythera mekanizmasinin semasi icin de gecerli.
 """
 
 
+def uzak_acilis_kareleri(kareler: list[dict[str, Any]], bicim: VideoBicimi) -> list[int]:
+    """1. sahnenin GORUNTUSU uzak plansa [1], degilse bos liste.
+
+    ⚠️ NEDEN VAR — `acilis_kadraji_kusuru` (#45) ayni isi DOSYA ADINDAN
+    yapiyor ve ad her zaman goruntuyu anlatmiyor. Olculdu (2026-08-18, Cemal
+    Pasha — YAYINLANMIS video): acilis karesi
+    `Ahmet Cemal Paşa on the shore of the Dead Sea.jpg` idi. Ad "kiyida" diyor,
+    GORUNTU uzak plan: Cemal at ustunde kucucuk bir siluet, yuz ~15 piksel,
+    karenin ~%45'i ozelliksiz krem bulaniklik. Ve anlatimin iddiasi
+    ("shows him SMILING") kadrajda GORUNMUYOR.
+
+    ⚠️ Daha kotusu: o dosya `test_acilis_kadraji.py`de "YAKIN kadraj geciyor"
+    ornegi olarak WHITELIST'lenmisti — yani ad bazli kapinin kendi testinde
+    yanlis ornek duruyordu. `capa-kapisi-adi-oluyor-goruntuyu-degil` kalibinin
+    aynisi.
+
+    ⚠️ AD SUZGECI KALDIRILMADI: ucuz, ag istegi gerektirmiyor ve bazi vakalari
+    gercekten yakaliyor (plan asamasinda, render'dan ONCE). Bu kapi onun
+    yerine degil YANINA konuyor — kaynak kapisi goruntuyu ZATEN goruyor, yani
+    fazladan maliyet yok.
+
+    ⚠️ Yalnizca 1. SAHNE. Diger sahnelerde genis plan mesru: anlatimi tasiyan
+    genis bir kadraj olabilir ve hepsini kovalamak arsivi olmayan konularda
+    uretimi kilitlerdi (ayni gerekce `acilis_kadraji_kusuru`da da yazili).
+
+    ⚠️ Yalnizca DIKEY kipte. Kanca teshisi Shorts akisina ozgu (%73 kaydirma);
+    uzun formatta izleyici videoyu SECEREK aciyor.
+    """
+    if not bicim.dikey:
+        return []
+    for kare in kareler:
+        if not isinstance(kare, dict):
+            continue
+        try:
+            numara = int(kare.get("n", 0))
+        except (TypeError, ValueError):
+            continue
+        if numara != 1:
+            continue
+        if str(kare.get("subject_scale", "")).strip().lower() == "small":
+            return [1]
+    return []
+
+
 def belge_kareleri(kareler: list[dict[str, Any]], plan: ContentPlan, sahne_sayisi: int) -> list[int]:
     """Turu fotograf/artwork olmayan sahne numaralari — KOD karar verir.
 
@@ -4892,7 +4936,16 @@ def review_source_materials(
             "a page that arranges SEVERAL pictures together with added titles, "
             "captions or museum credits, the way a lecture slide or an "
             "explanatory panel does, is a composite even when the pictures "
-            'inside it are photographs}.'
+            'inside it are photographs, '
+            # ⚠️ OLGU SORULUYOR, KARAR SORULMUYOR (DW-87). "Bu acilis iyi mi"
+            # diye sorulsaydi model konudan konuya keyfi cevap verirdi; hangi
+            # sahnede hangi kadrajin kabul edilebilir oldugu KOD kararidir
+            # (`uzak_acilis_kareleri`).
+            '"subject_scale": one of "dominant", "moderate", "small" — how much '
+            "of the frame the thing being described actually fills. A face or "
+            "object that fills most of the frame is dominant; a building seen "
+            "across a square is moderate; a person or structure that is a small "
+            "shape inside a wide landscape or an aerial view is small}."
         ),
     }
     data = _vision_json(prompt, montage, bicim=bicim)
@@ -4907,6 +4960,12 @@ def review_source_materials(
     # Hakemin isaretlemedigi ama TURU foto olmayan sahneler de sorunlu
     # sayiliyor; sirasi korunuyor ki asagidaki terim eslemesi bozulmasin.
     for numara in belge_kareleri(kareler, plan, len(plan.scenes)):
+        if numara not in sorunlu:
+            sorunlu.append(numara)
+    # ⚠️ ACILIS KADRAJI — gerekce `uzak_acilis_kareleri`de. Ad bazli kapinin
+    # (`acilis_kadraji_kusuru`) GORUNTU tarafindaki karsiligi; ikisi birlikte
+    # calisiyor.
+    for numara in uzak_acilis_kareleri(kareler, bicim):
         if numara not in sorunlu:
             sorunlu.append(numara)
     return QualityReview(
@@ -7472,6 +7531,23 @@ def run_cycle(
             "bicim": bicim.ad,
             "kare_duzeni": bicim.kare_yuvasi,
             "iki_gorselli_sahne": tam_dolan_sahne,
+            # ⚠️ SAHNE -> DOSYA ESLEMESI. `sahne_kaydi` zaten vardi ama
+            # yalnizca RED kaydina yaziliyordu; yayinlanan videolarda sahne
+            # duzeyinde hicbir sey tutulmuyordu.
+            #
+            # Olculdu (2026-08-18): iki yayinlanmis videonun kusurlarini
+            # teshis etmek `commons_materials` klasorlerini ve koşum loglarini
+            # elle kazmayi gerektirdi — ve o klasorler koşum sonrasi
+            # temizleniyor, yani kayit KALICI OLARAK kayboluyordu.
+            #
+            # ⚠️ `kelime` alani #49'un esigini KALIBRE ETMEK icin: `ANLATIM_DENGESI`
+            # 2,5 su an TEK bir olcume dayaniyor (Cemal Pasha, oran 3,57) cunku
+            # depo sahne anlatimlarini hic saklamiyordu. Birkac video birikince
+            # esik OLCUYLE guncellenmeli.
+            "sahneler": [
+                {**kayit, "kelime": len(re.findall(r"\b[\w'-]+\b", kayit["anlatim"]))}
+                for kayit in sahne_kaydi(plan, credits)
+            ],
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,

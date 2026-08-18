@@ -81,3 +81,31 @@ def test_kaynak_kapisi_kunyeyi_tasiyor():
     )
 
     assert hata.credits == [{"scene": 1, "title": "File:x.jpg"}]
+
+
+# --- YAYIN kaydinda da tutuluyor (2026-08-18) --------------------------------
+#
+# ⚠️ NEDEN VAR — kayit yalnizca RED yollarina bagliydi; YAYINLANAN videolarda
+# sahne duzeyinde hicbir sey tutulmuyordu. Olculdu: iki yayinlanmis videonun
+# kusurlarini teshis etmek `commons_materials` klasorlerini ve koşum loglarini
+# elle kazmayi gerektirdi — ve o klasorler koşum sonrasi TEMIZLENIYOR, yani
+# kayit kalici olarak kayboluyordu.
+
+
+def test_YAYIN_kaydi_da_sahneleri_tutuyor():
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    i = kaynak.index("def run_cycle(")
+
+    assert '"sahneler": [' in kaynak[i:], "yayin kaydinda sahne eslemesi YOK"
+    assert "for kayit in sahne_kaydi(plan, credits)" in kaynak[i:]
+
+
+def test_yayin_kaydi_KELIME_sayisi_tasiyor():
+    """⚠️ #49'un esigini KALIBRE ETMEK icin. `ANLATIM_DENGESI` = 2,5 su an TEK
+    bir olcume dayaniyor (Cemal Pasha, oran 3,57) cunku depo sahne
+    anlatimlarini hic saklamiyordu. Birkac video birikince esik OLCUYLE
+    guncellenmeli; bu alan o veriyi biriktiriyor."""
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    i = kaynak.index("def run_cycle(")
+
+    assert '"kelime": len(re.findall' in kaynak[i:]
