@@ -120,6 +120,73 @@ def test_dunya_hakkindaki_belirsizlik_serbest(anlatim):
     assert ya.resmedilemez_kusuru(anlatim) == ""
 
 
+# --- `no one can name/list`: CIPLAK hali dunya hakkindadir ---
+
+
+@pytest.mark.parametrize(
+    "anlatim",
+    [
+        "No one can name the architect of the Sphinx.",
+        "No one can list the kings buried in the valley.",
+    ],
+)
+def test_ciplak_no_one_can_name_SERBEST(anlatim):
+    """⚠️ Modulun kendi yazili ilkesinin uygulanmasi.
+
+    Kardes kalibin notu: "'Why it ended is not known' TEK BASINA mesru...
+    kalip yalnizca o eki ariyor, belirsizligin kendisini degil." Ilk kalip
+    `no one can (reconstruct|recover|name|list)` diyerek CIPLAK belirsizligi
+    de yakaliyordu ve bu o ilkeye aykiriydi.
+
+    "No one can name the architect" tarihin gercek bir boslugu; istem bu tur
+    durustlugu acikca serbest birakiyor ("no one has found the tomb").
+
+    ⚠️ KANIT SINIRI: 00:16 kosumunda dusen cumlenin yanlis alarm olup
+    olmadigi bilinmiyor (log yalnizca eslesen parcayi yaziyordu). Bu test
+    uretim vakasina degil, yukaridaki ilkeye dayaniyor.
+    """
+    assert ya.resmedilemez_kusuru(anlatim) == ""
+
+
+@pytest.mark.parametrize(
+    "anlatim",
+    [
+        "No one can name each turning point from the record.",
+        "No one can list the transitions in this summary.",
+        "No one can reconstruct every transition.",
+    ],
+)
+def test_KAYDA_gonderen_hali_hala_eleniyor(anlatim):
+    """Daraltma kapiyi delmemeli: kayit oznesi olan cumleler yasakli kaliyor.
+
+    Ucuncu ornek `reconstruct` CIPLAK kaldigi icin eleniyor — o fiil zaten
+    bir kayittan calismayi ima ediyor.
+    """
+    assert ya.resmedilemez_kusuru(anlatim) != ""
+
+
+def test_mesaj_anlatimin_TAMAMINI_tasiyor():
+    """⚠️ Olcum borcu: kapi kendi yanlis alarmini olcebilmeli.
+
+    Eski mesaj yalnizca eslesen parcayi yaziyordu ("narration says 'No one
+    can name'") ve plan asamasinda reddedilen planlar saklanmadigi icin o
+    cumlenin yanlis alarm olup olmadigi SONRADAN CEVAPLANAMADI. Bir kapinin
+    kendi hatasini olcemiyor olmasi, kapinin kendisi kadar pahali.
+    """
+    anlatim = "An 1889 photograph shows the tower half built."
+
+    kusur = ya.resmedilemez_kusuru(anlatim)
+
+    assert anlatim in kusur, "log/geri bildirim anlatimin tamamini tasimali"
+
+
+def test_mesaj_DONUSTURME_ornegi_veriyor():
+    """`d6d62cb` dersi: "sunu yapma" diyen kapi yerine ne konacagini gostermeli."""
+    kusur = ya.resmedilemez_kusuru("An 1889 photograph shows the tower.")
+
+    assert "becomes" in kusur, "ornek dönüşüm yok"
+
+
 # --- dogrulayiciya bagli mi ---
 
 

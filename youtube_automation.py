@@ -1007,7 +1007,31 @@ TUM_TIRELER = "-" + UZUN_TIRELER
 # belirsizlik yasagi dogrulama-yeniden deneme dongusunu kilitler; her
 # yeniden deneme bir cikarim koşumu demek.
 RESMEDILEMEZ_KALIPLAR = (
-    re.compile(r"\bno one can (?:reconstruct|recover|name|list)\b", re.IGNORECASE),
+    # ⚠️ `reconstruct`/`recover` CIPLAK kaliyor: ikisi de zaten bir kayittan
+    # calismayi ima ediyor ("no one can reconstruct" bir arsiv cumlesidir).
+    re.compile(r"\bno one can (?:reconstruct|recover)\b", re.IGNORECASE),
+    # ⚠️ `name`/`list` ise KAYDA GONDEREN bir tumlec istiyor, cunku ciplak
+    # halleri DUNYA hakkinda mesru cumleler: "No one can name the architect"
+    # tarihin gercek bir bosluğu ve istem bu tur durustlugu ACIKCA serbest
+    # birakiyor ("no one has found the tomb", "the record stops here").
+    #
+    # Bu, modulun kendi yazili ilkesinin uygulanmasi — kardes kalibin notu:
+    # "'Why it ended is not known' TEK BASINA mesru... kalip yalnizca o eki
+    # ariyor, belirsizligin kendisini degil." Ilk kalip o ilkeye uymuyordu.
+    #
+    # ⚠️ KANIT SINIRI: 00:16 kosumunda dusen "No one can name" cumlesinin
+    # yanlis alarm olup olmadigi BILINMIYOR — log yalnizca eslesen parcayi
+    # yaziyordu ve plan asamasinda reddedilen planlar saklanmiyor. Bu
+    # degisiklik o vakaya degil, yukaridaki ilkeye dayaniyor. Olculmus iki
+    # vaka (2026-08-13, Ibn Saud) kayda gonderen ek TASIYORDU ve onlari
+    # kardes kaliplar zaten yakaliyor. Ayni sorunun bir daha cevapsiz
+    # kalmamasi icin mesaj artik anlatimin TAMAMINI yaziyor.
+    re.compile(
+        r"\bno one can (?:name|list)\b[^.]{0,60}?\b"
+        r"(?:summary|record|records|account|evidence|source|sources|text|"
+        r"document|documents|archive|archives)\b",
+        re.IGNORECASE,
+    ),
     re.compile(
         r"\b(?:this|the) (?:summary|record|account|video|list|text) (?:here )?"
         r"(?:does not|cannot|says nothing|is silent)\b",
@@ -1110,7 +1134,14 @@ def resmedilemez_kusuru(anlatim: str) -> str:
     for kalip in RESMEDILEMEZ_KALIPLAR:
         if eslesme := kalip.search(anlatim):
             return (
-                f"narration says {eslesme.group(0)!r}, which talks about the record "
+                # ⚠️ ANLATIMIN TAMAMI yaziliyor, yalnizca eslesen parca degil.
+                # Olculdu (2026-08-19): log "narration says 'No one can name'"
+                # diyordu ve o cumlenin yanlis alarm olup olmadigi sonradan
+                # CEVAPLANAMADI — plan asamasinda reddedilen planlar
+                # saklanmiyor. Bir kapinin kendi yanlis alarmini olcemiyor
+                # olmasi, kapinin kendisi kadar pahali.
+                f"narration {anlatim.strip()!r} says {eslesme.group(0)!r}, "
+                "which talks about the record "
                 "instead of the world and no archive image can show it; replace the "
                 "sentence with a concrete thing that happened, a named person, a "
                 "place, an object, or a date. Rewrite the same scene by moving the "
