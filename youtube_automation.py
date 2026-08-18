@@ -3528,6 +3528,38 @@ def _menu_talimati(
             else "Leave source_file_2 empty for every scene: each scene shows exactly "
             "one picture in this format. "
             if bicim.kare_yuvasi < 2
+            # ⚠️ KUCUK MENUDE HEP-YA-HIC DEGIL, KISMI (2026-08-18).
+            #
+            # Olculdu: son sekiz render'da kare duzeni [A,A] 24 sahne ·
+            # [AB,AB] 6 · [A,B] 5. Yani sahnelerin ~%69'u AYNI gorseli iki
+            # yuvada gosteriyor — ve o gorselin %68'i `GaussianBlur(radius=40)`
+            # dolgu, cunku her 16:9 arsiv fotografi bant yoluna dusuyor
+            # (`AZAMI_KIRPMA`). Hakem de bunu "identical images" ve "heavily
+            # blurred" diye yaziyor.
+            #
+            # Sebep bu daldi: menu 12 girdi veremiyorsa (Sigiriya 8, Hadrian's
+            # Wall 11, Newgrange 7, Notre Dame 5) istem HER sahne icin ikinci
+            # gorseli yasakliyordu. Oysa 8 girdili bir menude 6 birincil + 2
+            # IKINCIL pekala secilebilir; hep-ya-hic olmasinin bir sebebi yoktu.
+            #
+            # ⚠️ `ikinci_gorsel_istenebilir` KALDIRILMADI: kapattigi gerileme
+            # gercek (model imkansiz talebi karsilamak icin dosya tekrar
+            # ediyordu, `alinti_kusuru` plani reddediyordu, bes deneme
+            # yaniyordu). Bu dal o baskiyi ACIKCA kaldiriyor — "once
+            # birincillerin hepsi FARKLI olsun, ikincil yalnizca ARTAN
+            # girdiler kadar" diyor, yani model tekrara zorlanmiyor.
+            else (
+                f"This archive is small: {len(menu)} usable images for "
+                f"{sahne_sayisi} scenes. Every scene's source_file must still be a "
+                "DIFFERENT entry — that comes first and matters more. Then, only if "
+                "entries are still left over, copy an unused 'dosya' into "
+                "source_file_2 for as many scenes as the leftovers cover. A scene "
+                "that gets a second picture looks better; a scene without one simply "
+                "shows its single picture, which is fine. Never reuse an entry that "
+                "any scene already cites, in either field, and leave source_file_2 "
+                "empty when nothing distinct is left. "
+            )
+            if sahne_sayisi and len(menu) > sahne_sayisi
             else "Leave source_file_2 empty for every scene: this archive is too small "
             "to give each scene a second distinct picture. "
         )
@@ -5703,6 +5735,8 @@ def run_generator(
             # Yalnizca bant isteyen sahnelere esleme yedegi aciliyor; gerekcesi
             # `ikincil_gorseller`de. Eksik sahne (kismi kip) False sayiliyor.
             esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
+            # Algisal tekrar elemesi icin; gerekcesi `ikincil_gorseller`de.
+            birincil_dosyalar=list(material_files),
         )
         # ⚠️ IKINCIL DENETIMI — gerekcesi `ikincil_gorselleri_denetle`de.
         # Kaynak kapisi bu dosyalari HIC gormuyordu ve 01 slotunda iki

@@ -1303,6 +1303,7 @@ def ikincil_gorseller(
     kategori_havuzu: list[dict[str, Any]],
     used_titles: set[str] | None = None,
     esleme_gerekli: list[bool] | None = None,
+    birincil_dosyalar: list[Path | None] | None = None,
 ) -> tuple[list[Path | None], list[dict[str, Any]]]:
     """Sahnelerin IKINCI alintisini indirir; bulunamayan sahne icin None.
 
@@ -1316,11 +1317,25 @@ def ikincil_gorseller(
     ⚠️ `used_titles` birincil gecisin kullandigi basliklari tasimali —
     yoksa ayni gorsel bir sahnenin iki yuvasinda birden cikar ve tam da
     sikayet edilen tekrari uretiriz ("cok fazla benzer gorseller").
+
+    ⚠️ `birincil_dosyalar` verilirse ALGISAL tekrar de eleniyor (2026-08-18).
+    `used_titles` yalnizca BASLIK esitligini yakaliyor; ayni fotografin baska
+    adla duran kopyasini gormuyor. Birincil yolda bu koruma zaten var
+    (`_tekrar_mi`, `download_scene_materials` icinde) ama ikincil yol ondan
+    hic gecmiyordu. Menu kucukken ikinci gorsel artik daha sik isteniyor
+    (bkz. `_menu_talimati` kismi dali), yani "farkli ad ayni fotograf"
+    riski buyudu; koruma o yuzden buraya da baglandi.
     """
     target_dir.mkdir(parents=True, exist_ok=True)
     kullanilan = set(used_titles or set())
     dosyalar: list[Path | None] = []
     krediler: list[dict[str, Any]] = []
+    # Birincillerin parmak izleri; secilen her ikincil de uzerine ekleniyor ki
+    # iki ikincil birbirinin kopyasi olmasin.
+    izler: list[Any] = []
+    for birincil in birincil_dosyalar or []:
+        if birincil:
+            _izi_ekle(birincil, izler)
     for index, scene in enumerate(scenes, 1):
         aday = None
         if alinti := str(scene.get("kaynak_dosya_2", "")).strip():
@@ -1403,6 +1418,15 @@ def ikincil_gorseller(
         except requests.HTTPError:
             dosyalar.append(None)
             continue
+        # ⚠️ ALGISAL TEKRAR ELEMESI — indirmeden SONRA, cunku olcum piksele
+        # bakiyor. Kopya cikarsa sahne ikincilsiz kaliyor ([A, A]) ve bu
+        # dogru sonuc: ayni fotografi iki yuvada gostermek zaten kacinmak
+        # istedigimiz sey. Dosya siliniyor ki kunye/denetim onu gormesin.
+        if _tekrar_mi(hedef, izler):
+            hedef.unlink(missing_ok=True)
+            dosyalar.append(None)
+            continue
+        _izi_ekle(hedef, izler)
         kullanilan.add(aday["title"])
         dosyalar.append(hedef)
         # ⚠️ Kredi ZORUNLU: CC BY gorsellerinde atif hukuki yukumluluk.
