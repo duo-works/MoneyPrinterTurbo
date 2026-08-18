@@ -17,7 +17,24 @@ yuvaya koyuyor:
 
 Yani sicrama piksel birebir ayniyken oluyordu — en gorunur hali. Donusumlu
 kipte tek numarali kare iceri, cift numarali kare disari zoomluyor; olcek HER
-sinirda surekli kaliyor.
+sinirda surekli kalmali.
+
+**2026-08-18 — donusumlu kip `[A, A]`da CALISMIYORDU, olculdu ve duzeltildi.**
+Yukaridaki "olcek her sinirda surekli kalir" iddiasi tam da hedefledigi
+durumda gecersizdi. Kusur zoom mantiginda degil `preprocess_video`'nun cikti
+ADINDaydi: yol kaynak dosyadan turuyordu, `[A, A]` iki yuvaya AYNI dosyayi
+koyuyor, ikinci koşum birincinin ciktisini eziyor ve iki yuva ayni klibi
+oynatiyordu — ikisi de 1,00'dan basliyor, sinirda 1,00+Δ -> 1,00 sicramasi
+oluyordu. Yayinlanmis videodan olculdu (Cemal Pasha):
+
+    [A, A] sinirlari            0,896 · 0,942 · 0,937 · 0,719
+    ayni aralik KLIP ICINDE     0,999
+
+⚠️ Ve bu dosyadaki donusumlu testler o sirada YESILDI — cunku hepsi gorseli
+iki AYRI ada kopyaliyor (`_cift_mp4_uret`). Docstring'i ezilmeyi biliyor ve
+ondan KACINIYORDU ("ayni adi verirsek ikinci klip birinciyi ezer"), yani kusur
+bir kisit olarak yaziya dokulmustu. Uretimin gercek sekli asagida ayri bir
+bolumde sinaniyor.
 
 ⚠️ CEKIRDEK SERVIS DEGISTIRILMIYOR, PARAMETRELESIYOR. `app/services/video.py`
 webui tarafindan da kullaniliyor; davranisi topyekun degistirmek bu hattin
@@ -299,6 +316,99 @@ def test_donusumlu_kipte_kareler_HALA_HAREKETLI():
 
     assert _ilk_son_farki(ilk) > ESIK, "tek numarali kare hareketsiz kalmis"
     assert _ilk_son_farki(ikinci) > ESIK, "cift numarali kare hareketsiz kalmis"
+
+
+# --- AYNI dosya iki yuvada: uretimin GERCEK sekli (2026-08-18) --------------
+#
+# ⚠️ NEDEN AYRI BIR BOLUM — yukaridaki donusumlu testler gecerken uretimde
+# sicrama VARDI, cunku hepsi gorseli IKI AYRI ADA kopyaliyor
+# (`_cift_mp4_uret`). Uretimde ise `[A, A]` duzeni AYNI dosyayi iki yuvaya
+# koyuyor ve `preprocess_video` ciktiyi kaynak yolundan turetiyordu, yani
+# ikinci koşum birincinin ciktisini eziyor ve iki yuva ayni klibi oynatiyordu.
+#
+# ⚠️ `_cift_mp4_uret` docstring'i bu ezilmeyi BILIYORDU ve ondan KACINIYORDU:
+# "iki AYRI dosya adi sart... ayni adi verirsek ikinci klip birinciyi ezer".
+# Yani test, kusuru yakalamak yerine kusuru bir KISIT olarak yaziya dokmustu.
+# Bu deponun tekrar eden hata sinifi: testin dogruladigi yolu uretim hic
+# kosmuyor (bkz. `test_acilis_kadraji.py`, `ACILIS_KARELERI`).
+#
+# ⚠️ OLCULDU (2026-08-18, Cemal Pasha, yayinlanmis video). Sahne ici yuva
+# sinirinin ±0,10 sn'si, 64x64 gri iz:
+#
+#     [A, A] sinirlari            0,896 · 0,942 · 0,937 · 0,719
+#     ayni aralik KLIP ICINDE     0,999
+#
+# Dort sinirin dordunde de gorunur sicrama.
+
+
+def _ayni_dosyadan_cift(onek: str) -> tuple[str, str]:
+    """TEK bir kaynak dosyadan iki ardisik klip — `[A, A]` duzeninin birebiri.
+
+    ⚠️ Fark yukaridaki `_cift_mp4_uret`ten TEK bir seyde: dosya bir kez
+    kopyalaniyor ve iki materyal AYNI adi gosteriyor. Uretimin yaptigi tam
+    olarak bu; ayri adlar vermek kusuru gormezden gelmekti.
+    """
+    yerel = utils.storage_dir("local_videos", create=True)
+    hedef = os.path.join(yerel, f"{onek}.png")
+    shutil.copy2(KAYNAK_GORSEL, hedef)
+
+    malzemeler = []
+    for _ in range(2):
+        malzeme = MaterialInfo()
+        malzeme.url = os.path.basename(hedef)
+        malzeme.provider = "local"
+        malzemeler.append(malzeme)
+
+    sonuc = vd.preprocess_video(
+        malzemeler, clip_duration=1, zoom=True, donusumlu_zoom=True
+    )
+    assert len(sonuc) == 2, "iki klip beklenmisti"
+    return sonuc[0].url, sonuc[1].url
+
+
+@pytest.mark.skipif(not KAYNAK_GORSEL.exists(), reason="test gorseli yok")
+def test_AYNI_dosya_iki_yuvada_AYRI_klip_uretiyor():
+    """Ezilme olursa iki yuva ayni dosyayi gosterir ve donusumlu zoom oluyor."""
+    ilk, ikinci = _ayni_dosyadan_cift("ayni-kaynak-ad")
+
+    assert ilk != ikinci, (
+        "ayni kaynaktan uretilen iki klip AYNI dosyaya yazilmis; ikinci "
+        "on-isleme birincinin ciktisini eziyor"
+    )
+    assert Path(ilk).exists() and Path(ikinci).exists(), "klip dosyasi yok"
+
+
+@pytest.mark.skipif(not KAYNAK_GORSEL.exists(), reason="test gorseli yok")
+def test_AYNI_dosya_iki_yuvada_SINIRDA_SICRAMA_YOK():
+    """⚠️ Asil iddia — ve 2026-08-18'e kadar uretimde DUSUYORDU.
+
+    Yukaridaki `test_DONUSUMLU_zoomda_klip_sinirinda_SICRAMA_YOK` ile ayni
+    olcut, ama uretimin gercek girdisiyle: tek kaynak dosya, iki yuva.
+    """
+    sinir, hareket = _sinir_ve_hareket(*_ayni_dosyadan_cift("ayni-kaynak-sinir"))
+
+    assert hareket > ESIK, "olcum bozuk: klip icinde hic hareket yok"
+    assert sinir / hareket < SINIR_ORANI, (
+        f"ayni gorsel iki yuvadayken sinir surekli olmaliydi "
+        f"(sinir {sinir:.4f} / hareket {hareket:.4f})"
+    )
+
+
+def test_cikti_adi_KAYNAK_YOLUNDAN_TEK_BASINA_turemiyor():
+    """⚠️ Kaynak duzeyinde nobetci: render eden testler yavas ve atlanabilir
+    (`skipif`), bu ise her koşumda calisir. Ad yalnizca kaynak yolundan
+    turerse ezilme sessizce geri gelir.
+    """
+    kaynak = Path(vd.__file__).read_text(encoding="utf-8")
+
+    # ⚠️ ATAMA aranıyor, cıplak dize DEGIL: eski bicim yukaridaki aciklama
+    # yorumunda gerekcesiyle birlikte ANILIYOR ve dizeyi aramak o yorumu
+    # kusur sanardi. Ilk surumum tam bu yuzden kirmizi verdi.
+    assert 'video_file = f"{material_source_path}.mp4"' not in kaynak, (
+        "cikti adi yine yalnizca kaynak yolundan turuyor — ayni dosya iki "
+        "yuvadayken ikinci klip birinciyi ezer"
+    )
+    assert "len(valid_materials):02d" in kaynak, "cikti adi sira numarasi tasimali"
 
 
 def test_donusumlu_VARSAYILAN_OLARAK_KAPALI():

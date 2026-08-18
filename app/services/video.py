@@ -1310,9 +1310,22 @@ def preprocess_video(
 
     Donusumlu kipte tek numarali kare 1,00 -> 1,00+Δ, cift numarali kare
     1,00+Δ -> 1,00 gidiyor. Olcek HER sinirda surekli kaliyor (cift
-    sinirlarinda 1,00+Δ = 1,00+Δ, sahne sinirlarinda 1,00 = 1,00), yani
-    sicrama yapisal olarak imkansiz. Ayni gorselin iki yuvaya kondugu durum
-    da bir kesme gibi degil yavas bir nefes gibi gorunuyor.
+    sinirlarinda 1,00+Δ = 1,00+Δ, sahne sinirlarinda 1,00 = 1,00).
+
+    ⚠️ DUZELTME (2026-08-18): yukaridaki paragraf 17 Agustos'ta "sicrama
+    yapisal olarak imkansiz" diye bitiyordu ve bu YANLISTI — tam da anlattigi
+    durumda, `[A, A]`da, calismiyordu. Sebep zoom mantiginda degil ciktinin
+    ADINDAydi: iki yuva ayni kaynak dosyayi tasidiginda cikti yolu da ayni
+    oluyor, ikinci koşum birincisini eziyor ve iki yuva AYNI klibi oynatiyordu
+    — yani ikisi de 1,00'dan basliyordu. Olculdu (Cemal Pasha, yayinlanmis
+    video): dort `[A, A]` sinirinin dordunde de sicrama (0,72-0,94; klip
+    icinde ayni aralik 0,999). Adlandirma tekillestirildi; gerekce
+    `video_file` atamasinin uzerinde, nobetcisi
+    `test_AYNI_dosya_iki_yuvada_SINIRDA_SICRAMA_YOK`.
+
+    ⚠️ Ders, bu deponun tekrar eden hata sinifi: mantik dogruydu, CAGRI YOLU
+    kiriktI. `test_DONUSUMLU_zoomda_klip_sinirinda_SICRAMA_YOK` yesildi cunku
+    gorseli iki AYRI ada kopyaliyordu — uretimin hic kosmadigi bir sekil.
     """
     # WebUI 在某些二次生成场景下可能传入空素材列表，这里直接返回空结果，避免抛出 NoneType 异常。
     if not materials:
@@ -1433,7 +1446,43 @@ def preprocess_video(
                 final_clip = CompositeVideoClip([render_clip], size=clip.size)
 
                 # Output the video to a file.
-                video_file = f"{material_source_path}.mp4"
+                #
+                # ⚠️ AD CIKTI SIRASINI TASIYOR, yalnizca kaynak yolunu DEGIL.
+                # Eskiden `f"{material_source_path}.mp4"` idi ve ayni gorsel
+                # listede iki kez gectiginde ikinci koşum birincinin ciktisini
+                # EZIYORDU. Bu hatta sik bir durum: `youtube_automation.
+                # kare_yerlesimi` uc duzenden IKISINDE ayni dosyayi iki ardisik
+                # yuvaya koyuyor ([A, A] ve [AB, AB]).
+                #
+                # Uc sonucu vardi:
+                #   1. Donusumlu zoom o ciftte CALISMIYORDU. Iki yuva ayni
+                #      dosyayi oynatinca ikisi de 1,00'dan basliyor ve sinirda
+                #      1,00+Δ -> 1,00 ani kucultmesi oluyor — tam da donusumlu
+                #      kipin kapatmak icin var oldugu kusur.
+                #   2. Ayni gorsel iki kez ON-ISLENIYOR (7-19 sn), ciktilardan
+                #      biri hemen eziliyor.
+                #   3. Yuva basina AYRI sure vermek imkansizdi.
+                #
+                # ⚠️ OLCULDU (2026-08-18, Cemal Pasha, YAYINLANMIS video). 64x64
+                # gri iz, sahne ici yuva sinirinin ±0,10 sn'si:
+                #
+                #     [A, A] sinirlari            0,896 · 0,942 · 0,937 · 0,719
+                #     ayni aralik KLIP ICINDE     0,999
+                #
+                # Yani dort sinirin dordunde de gorunur bir sicrama vardi.
+                # Buyume `clip_duration * 0.03`, 3,2 sn'lik klipte ~%9,6 —
+                # olculen dusuşle buyuklugu ortusuyor.
+                #
+                # Sira numarasi `valid_materials` uzunlugundan geliyor: zoom
+                # paritesi de ayni sayiyi kullaniyor, yani iki karar tek
+                # kaynaktan besleniyor ve birbirinden kayamaz.
+                #
+                # ⚠️ Disk maliyeti yok: `local_videos` her koşum sonrasi TOPTAN
+                # temizleniyor (`temizlik.YEREL_VIDEOLAR`, `iterdir`), yani
+                # tekillesen adlar birikmiyor. Webui'nin materyal listesi de
+                # ayni dizini glob'luyor ve orada da bugunku EZME bir kazanc
+                # degil, sessiz bir veri kaybiydi.
+                video_file = f"{material_source_path}-{len(valid_materials):02d}.mp4"
                 final_clip.write_videofile(video_file, fps=30, logger=None)
                 close_clip(clip)
                 close_clip(final_clip)
