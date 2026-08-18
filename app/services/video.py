@@ -1282,6 +1282,41 @@ def generate_video(
         return bgm_mix_succeeded
 
 
+DONUSUMLU_ZOOM_ORANI = 0.12
+"""Donusumlu kipte zoom'un toplam buyume orani — SUREDEN BAGIMSIZ SABIT.
+
+⚠️ NEDEN SABIT — duz kipte oran `clip_duration * 0.03`, yani sure ile
+degisiyor. Butun klipler ayni surede oldugu surece bu gorunmez; yuva basina
+AYRI sure verilince (`--video-clip-durations`) klipler farkli olceklerde
+biter ve sahne sinirinda sicrama olusur:
+
+    2,5 sn klip -> 1,075'te biter
+    4,0 sn klip -> 1,120'de baslar    -> sinirda ~%4,5 sicrama
+
+Donusumlu kipin BUTUN AMACI sinirlarin surekli olmasi, yani orani sabitlemek
+bir tercih degil gereklilik. Deger 0,12: uretimin gercek klip sureleri
+3,2-4,3 sn ve eski formul orada 0,096-0,130 veriyordu; 0,12 o araligin ortasi,
+yani gorunur hiz degismiyor.
+
+⚠️ Yalnizca DONUSUMLU kipte gecerli. Duz kipte (webui varsayilani) her klip
+zaten 1,00'dan basliyor ve sinirda zaten sicrama var — orayi degistirmek bu
+hattin tercihini herkese dayatmak olurdu.
+"""
+
+
+def _yuva_suresi(clip_duration, sira: int) -> float:
+    """`clip_duration` skaler de olabilir, yuva basina liste de.
+
+    Liste kisa kalirsa SON deger tekrarlaniyor: eksik sure yuzunden uretimin
+    durmasi, biraz kaymis bir kareden kotu.
+    """
+    if isinstance(clip_duration, (list, tuple)):
+        if not clip_duration:
+            return 4.0
+        return float(clip_duration[min(sira, len(clip_duration) - 1)])
+    return float(clip_duration)
+
+
 def preprocess_video(
     materials: List[MaterialInfo], clip_duration=4, zoom=True, donusumlu_zoom=False
 ):
@@ -1294,6 +1329,12 @@ def preprocess_video(
       davranis.
     - `zoom=False`: gorsel duragan kalir.
     - `zoom=True, donusumlu_zoom=True`: yon kare paritesine gore degisir.
+
+    ⚠️ `clip_duration` SKALER ya da YUVA BASINA LISTE olabilir. Liste kipi
+    2026-08-18'de eklendi: klip suresi sahneden bagimsiz esitken uzun bir
+    anlatimin karesi, kisa bir anlatimin cumlesi soylenirken ekranda kaliyordu
+    (olculdu: 5,3 sn kayma). Skaler varsayilan aynen duruyor, yani webui ve
+    eski cagiranlar etkilenmiyor.
 
     ⚠️ DONUSUMLU KIP NEDEN VAR — olculdu. Duz zoom'da her klip yeniden
     1,00'dan basliyor, yani onceki klip 1,00+Δ'da biterken sinirda ani bir
@@ -1335,9 +1376,14 @@ def preprocess_video(
     valid_materials = []
     local_videos_dir = utils.storage_dir("local_videos", create=True)
 
-    for material in materials:
+    for girdi_sirasi, material in enumerate(materials):
         if not material.url:
             continue
+        # ⚠️ Sure GIRDI sirasindan okunuyor, `valid_materials` uzunlugundan
+        # DEGIL: liste sahne anlatimlarindan turuyor, yani "kacinci yuva"
+        # sorusunun cevabi cagiranin verdigi siradir. (Zoom paritesi ise
+        # CIKTI sirasini kullaniyor — orada soru "onceki klip nasil bitti".)
+        bu_klip_suresi = _yuva_suresi(clip_duration, girdi_sirasi)
 
         try:
             material_source_path = file_security.resolve_path_within_directory(
@@ -1393,7 +1439,7 @@ def preprocess_video(
                 # Create an image clip and set its duration to 3 seconds
                 clip = (
                     ImageClip(material_source_path)
-                    .with_duration(clip_duration)
+                    .with_duration(bu_klip_suresi)
                     .with_position("center")
                 )
                 # Apply a zoom effect using the resize method.
@@ -1408,7 +1454,16 @@ def preprocess_video(
                     # aliniyor (`valid_materials` uzunlugu), girdideki degil:
                     # dusuk cozunurluklu materyal eleniyor ve sinirlar nihai
                     # klip sirasinda olusuyor.
-                    buyume = clip_duration * 0.03
+                    # ⚠️ DONUSUMLU kipte oran SUREDEN BAGIMSIZ SABIT; gerekce
+                    # `DONUSUMLU_ZOOM_ORANI`nda. Yuva basina ayri sure
+                    # verilince sureyle olceklenen bir Δ, sahne sinirinda
+                    # sicrama uretiyor — donusumlu kipin kapatmak icin var
+                    # oldugu kusurun ta kendisi.
+                    buyume = (
+                        DONUSUMLU_ZOOM_ORANI
+                        if donusumlu_zoom
+                        else bu_klip_suresi * 0.03
+                    )
                     if len(valid_materials) % 2 == 0:
                         # Tek numarali kare (1., 3., ...): 1,00 -> 1,00+Δ
                         render_clip = clip.resized(

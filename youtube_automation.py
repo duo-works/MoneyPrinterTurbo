@@ -5425,6 +5425,93 @@ def klip_suresi(ses_saniye: float, sahne_sayisi: int, senaryo: str = "") -> floa
     return round(ses_saniye / sahne_sayisi * KLIP_PAYI, 2)
 
 
+ASGARI_YUVA_SURESI = 1.2
+"""Bir yuva bundan kisa kalamaz.
+
+Cok kisa bir anlatim, oraninda hesaplandiginda goz kirpmalik bir kare uretirdi.
+Taban YUKARI dogru caliştigi icin toplam sure yalnizca BUYUR — yani
+`KLIP_PAYI`nin garantisi ("toplam >= ses") bozulmaz.
+"""
+
+
+def klip_sureleri(
+    ses_saniye: float,
+    plan: ContentPlan,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+) -> list[float]:
+    """Her YUVA icin ayri sure — sahnenin anlatim uzunluguyla ORANTILI.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-18, Cemal Pasha, YAYINLANMIS video).
+    `klip_suresi` sesi kare sayisina esit boluyor, yani her sahne ekranda ayni
+    kadar kaliyor. Cumleler esit degilse gorsel, anlattigi cumleden KAYIYOR:
+
+        sahne   gorsel ekranda   cumlesi soyleniyor   kayma
+        s2       6,4-12,8         7,9-16,3            cumle 3,5 sn tasiyor
+        s3      12,8-19,2        16,6-24,2            gorsel 3,8 sn ONCE
+        s4      19,2-25,6        24,5-27,4            gorsel 5,3 sn ONCE
+
+    `ANLATIM_DENGESI` kapisi kaymayi SINIRLIYOR; burasi KAYNAGINI kaldiriyor.
+
+    ⚠️ Sahnenin iki yuvasi sureyi ESIT paylasiyor. Yuvalarin ikisi cogu zaman
+    ayni goruntu ([A, A]) ya da ayni yapistirmanin iki yarisi ([AB, AB]); ayri
+    surelerin anlatimda bir karsiligi yok.
+
+    ⚠️ TOPLAM >= ses × KLIP_PAYI olmali. Aksi halde MPT acigi kapatmak icin
+    bastan bir klibi TEKRAR ediyor ve video 1. sahnenin tekrariyla bitiyor —
+    `klip_suresi` docstring'inde olculmus bir gerileme. Taban yalnizca yukari
+    calistigi icin bu garanti korunuyor.
+
+    ⚠️ Ses olcumu DUSEBILIR (`anlatim_suresi` agdan cekiyor ve hatayi yutuyor).
+    O zaman `klip_suresi`nin kelime yedegi devreye giriyor; oranlar zaten
+    kelime sayilarindan geldigi icin gecerli kalir.
+
+    ⚠️ KAYMA SIFIRLANMIYOR, ~1,1 sn kaliyor ve bu bir SINIR: TTS suresi kelime
+    sayisiyla TAM orantili degil (cumle sonlarindaki duraklamalar, sayilarin
+    ve ozel adlarin okunusu). Sifira indirmenin tek yolu gercek altyazi
+    zamanlarini kullanmak, ama onlar `cli.py` icinde render sirasinda
+    uretiliyor — sureler ise ondan ONCE veriliyor. Bugunku kazanc 4,40 -> 1,10.
+    """
+    yuva = max(int(bicim.kare_yuvasi), 1)
+    agirliklar = [
+        len(re.findall(r"\b[\w'-]+\b", str(sahne.get("narration", ""))))
+        for sahne in plan.scenes
+    ]
+    kare_sayisi = len(agirliklar) * yuva
+    # ⚠️ Tek sure hesabina GERI DUSUYORUZ: anlatimlar olculemiyorsa (hepsi bos)
+    # orantilamak icin bilgi yok ve duz bolusum bugunku davranis.
+    if not agirliklar or sum(agirliklar) <= 0:
+        return [klip_suresi(ses_saniye, kare_sayisi, plan.script)] * kare_sayisi
+    # Toplami mevcut davranisla AYNI kaynaktan al ki `KLIP_PAYI` tek yerde
+    # yasasin ve ses olcumu dustugunde kelime yedegi de tek yerden gelsin.
+    toplam = klip_suresi(ses_saniye, kare_sayisi, plan.script) * kare_sayisi
+    # ⚠️ PAY SONA TOPLANIYOR, sahnelere DAGITILMIYOR. `KLIP_PAYI` her sahneyi
+    # %2 uzatsaydi kayma video boyunca BIRIKIRDI: 30. saniyede %2 = 0,6 sn ve
+    # bu, duzeltmenin kazandirdigi seyin buyuk kismini geri alirdi. Olculdu
+    # (Cemal Pasha, kelime bazli olcum):
+    #
+    #     esit sure          en buyuk kayma 4,40 sn   <- yayinlanan videonun hali
+    #     pay dagitilmis     en buyuk kayma 1,65 sn
+    #     pay sona toplanmis en buyuk kayma 1,10 sn
+    #
+    # Son yuvanin biraz uzun kalmasi zararsiz: video zaten sesin bitiminde
+    # kesiliyor. `KLIP_PAYI`nin ikinci kosulu da korunuyor — ilk n-1 klibin
+    # toplami tam olarak sese esit, yani sesten KISA, yani son klip videoya
+    # giriyor.
+    ses_payi = toplam / KLIP_PAYI
+    toplam_agirlik = sum(agirliklar)
+    sureler: list[float] = []
+    for agirlik in agirliklar:
+        sahne_suresi = ses_payi * agirlik / toplam_agirlik
+        sureler.extend([max(sahne_suresi / yuva, ASGARI_YUVA_SURESI)] * yuva)
+    # ⚠️ Taban yukari calismis olabilir; artik ne kalirsa son yuvaya ekleniyor
+    # ve eksi cikmasi durumunda hicbir sey yapilmiyor (toplam zaten yeterli).
+    artan = toplam - sum(sureler)
+    if artan > 0:
+        sureler[-1] += artan
+    return [round(s, 2) for s in sureler]
+
+
 BENZERLIK_ESIGI = gorsel_olcum.BENZERLIK_ESIGI
 
 # ⚠️ Olcumler `gorsel_olcum`'da: `wikimedia_materials` de ayni parmak izini
@@ -6056,10 +6143,34 @@ def run_generator(
     # ⚠️ Senaryo GECILIYOR: ses olcumu agdan dondugu icin dusebilir ve o
     # zaman tek gercek kaynak senaryonun kelime sayisi kalir.
     klip = klip_suresi(ses_saniye, len(material_files), plan.script)
+    # ⚠️ YUVA BASINA sure — gerekce `klip_sureleri`de. Kare sayisi ile listenin
+    # uzunlugu ayrilirsa (onarim yolu bir kareyi dusurmusse) liste
+    # KULLANILMIYOR: yanlis hizalanmis sureler, esit surelerden kotudur cunku
+    # kayma o zaman rastgele olur ve teshis edilemez.
+    yuva_sureleri = klip_sureleri(ses_saniye, plan, bicim=bicim)
+    if len(yuva_sureleri) != len(material_files):
+        print(
+            f"⚠️ yuva suresi listesi kare sayisiyla uyusmuyor "
+            f"({len(yuva_sureleri)} vs {len(material_files)}); esit sureye donuluyor",
+            flush=True,
+        )
+        yuva_sureleri = []
+    # ⚠️ `combine_videos` klipleri `--video-clip-duration`a gore YENIDEN
+    # KIRPIYOR (`video.py`, `if clip.duration > max_clip_duration`). Skaler bu
+    # yuzden listenin AZAMISI olmali; klip ortalamasi verilseydi uzun yuvalar
+    # sessizce kesilirdi.
+    if yuva_sureleri:
+        klip = max(yuva_sureleri)
+    toplam = sum(yuva_sureleri) if yuva_sureleri else klip * len(material_files)
     print(
         f"anlatim {ses_saniye:.2f} sn · {len(plan.scenes)} sahne × "
-        f"{bicim.kare_yuvasi} yuva · klip {klip} sn "
-        f"(toplam {klip * len(material_files):.2f} sn)",
+        f"{bicim.kare_yuvasi} yuva · klip "
+        + (
+            f"{min(yuva_sureleri)}-{max(yuva_sureleri)} sn (yuvaya gore)"
+            if yuva_sureleri
+            else f"{klip} sn"
+        )
+        + f" (toplam {toplam:.2f} sn)",
         flush=True,
     )
 
@@ -6226,6 +6337,14 @@ def run_generator(
         # piksel pahali.
         "--no-subtitle-background-enabled",
     ]
+    # ⚠️ Yuva sureleri KOSULLU ekleniyor. Liste bos oldugunda bayrak hic
+    # gecmiyor ve MPT eski davranisina (esit sure) duşuyor — yani hesap
+    # bozulursa video yine uretiliyor, yalnizca kayma geri geliyor.
+    if yuva_sureleri:
+        command += [
+            "--video-clip-durations",
+            ",".join(str(s) for s in yuva_sureleri),
+        ]
     result = subprocess.run(
         command,
         cwd=ROOT,

@@ -86,6 +86,12 @@ class VideoParams(BaseModel):
     # klibi tekrar ediyor ya da son sahneyi hic gostermiyor. Tamsayi kisiti
     # ikisinden birini kacinilmaz kiliyordu (bkz. cli.py --video-clip-duration).
     video_clip_duration: Optional[float] = 5
+    # ⚠️ YUVA BASINA sure. Doluysa gorseller `video_clip_duration` yerine bu
+    # listeden sure aliyor; gerekcesi `youtube_automation.klip_sureleri`
+    # docstring'inde (olculdu: gorsel, anlattigi cumleden 5,3 sn kayiyordu).
+    # `video_clip_duration` YINE DE gerekli ve listenin AZAMISI olmali:
+    # `combine_videos` klipleri o degere gore yeniden kirpiyor (video.py:693).
+    video_clip_durations: Optional[List[float]] = None
     # ⚠️ Varsayilan True: webui ayni servisi kullaniyor, bugunku davranis
     # (duragan gorsele yavas buyutme) korunuyor.
     video_zoom: Optional[bool] = True

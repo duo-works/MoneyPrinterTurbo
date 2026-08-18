@@ -568,7 +568,11 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
             materials=params.video_materials,
-            clip_duration=params.video_clip_duration,
+            # ⚠️ Yuva basina liste varsa O gecerli, yoksa tek sure. Gerekce
+            # `youtube_automation.klip_sureleri`de. `combine_videos`a yine
+            # `video_clip_duration` gidiyor ve o degerin listenin AZAMISI
+            # olmasi sart, yoksa uzun yuvalar orada sessizce kirpilir.
+            clip_duration=(params.video_clip_durations or params.video_clip_duration),
             zoom=params.video_zoom,
             donusumlu_zoom=params.video_zoom_donusumlu,
         )

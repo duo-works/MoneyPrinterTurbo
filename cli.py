@@ -68,6 +68,21 @@ def _positive_float(value: str) -> float:
     return parsed
 
 
+def _pozitif_ondalik_listesi(value: str) -> list[float]:
+    """"3.2,4.1,4.1" -> [3.2, 4.1, 4.1].
+
+    ⚠️ Her oge ayri ayri dogrulaniyor ve BOS liste reddediliyor: sessizce bos
+    donen bir ayristirici, yuva sureleri hic uygulanmadan videoyu uretirdi ve
+    kusur ancak bitmis videoda gorunurdu.
+    """
+    parcalar = [p.strip() for p in value.split(",") if p.strip()]
+    if not parcalar:
+        raise argparse.ArgumentTypeError(
+            f"expected a comma separated list of numbers > 0, got {value!r}"
+        )
+    return [_positive_float(p) for p in parcalar]
+
+
 def _percent_position(value: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed) or parsed < 0 or parsed > 100:
@@ -269,6 +284,25 @@ Output and exit status:
         default=None,
         help=(
             "maximum duration of each source clip in seconds, greater than 0 (default: 5)"
+        ),
+    )
+    video_group.add_argument(
+        "--video-clip-durations",
+        # ⚠️ YUVA BASINA sure — `--video-clip-duration`in yerine gecer.
+        # Gerekcesi `youtube_automation.klip_sureleri`de: klip suresi sahneden
+        # bagimsiz esitken uzun bir anlatimin karesi, KISA bir anlatimin
+        # cumlesi soylenirken ekranda kaliyordu (olculdu: 5,3 sn kayma).
+        #
+        # ⚠️ `--video-clip-duration` YINE DE verilmeli ve listenin AZAMISI
+        # olmali: `combine_videos` klipleri o degere gore yeniden kirpiyor
+        # (`video.py`, `if clip.duration > max_clip_duration`). Kucuk verilirse
+        # uzun yuvalar sessizce kesilir.
+        type=_pozitif_ondalik_listesi,
+        default=None,
+        metavar="SN,SN,...",
+        help=(
+            "per-slot clip durations in seconds, comma separated; overrides "
+            "--video-clip-duration for image materials"
         ),
     )
     video_group.add_argument(
@@ -569,6 +603,7 @@ def build_video_params(args: argparse.Namespace) -> VideoParams:
         "video_concat_mode",
         "video_transition_mode",
         "video_clip_duration",
+        "video_clip_durations",
         "video_zoom",
         "video_zoom_donusumlu",
         "match_materials_to_script",
