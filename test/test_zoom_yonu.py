@@ -27,6 +27,30 @@ bizim hat donusumlu geciyor. Ayni ilke `dikeye_uydur` docstring'inde de yazili.
 ⚠️ Bu testler gorseli GERCEKTEN render ediyor ve kareleri karsilastiriyor.
 Kaynak metninde "zoom" dizesi aramak bunu goremezdi: 2026-08-14'te ayni sinif
 kusur (dize dogru, cagri yolu calismiyor) uc uretim koşumunu oldurdu.
+
+**2026-08-18 — "donusumlu zoom hakem puanini dusuruyor" suphesi OLCULDU ve
+DUSTU.** Sunu KAYIT icin yaziyorum ki bir sonraki oturum alti render'lik
+pahali A/B'yi bastan kurmasin.
+
+Suphe gercekti ve ciddiye alindi:
+
+    zoom oncesi (16 Agu→)  n=33   ≥75 alan: 15  (%45)
+    zoom sonrasi           n=6    ≥75 alan:  0
+
+Iki bagimsiz olcum sucu dusurdu:
+
+1. **Geometri.** `create_review_montage` kareyi klibin ORTASINDAN aliyor;
+   orada olcek her iki yonde de 1,0435 — yani duz ve donusumlu zoom hakemin
+   GORDUGU karede AYNI. Kirpilan ~%4 karenin KENARI ve kenar zaten
+   `GaussianBlur` bandi; net bant ortada ve oransal olarak BUYUYOR.
+
+2. **Sonuc.** #43-#47 indikten SONRA, zoom ACIKKEN iki video pes pese
+   yayinlandi (11:17 Gobekli Tepe 78 · 12:23 Cemal Pasha 75). Yani %0'lik
+   seri zoom'un degil, kuyrugun kurumasinin ve 72'nin konuyu yakmasinin
+   sonucuymus.
+
+⚠️ Dogru okuma: n=6'lik bir seri bir NEDEN degil bir SORU'ydu. Mekanizmasi
+cürütülen bir hipotez icin render harcanmadi.
 """
 
 import os
