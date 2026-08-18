@@ -1297,6 +1297,73 @@ def kategori_havuzunu_coz(visual_anchor: str, topic: str) -> list[dict[str, Any]
     return []
 
 
+_ANLAMSIZ_TERIMLER = frozenset(
+    {
+        "the", "a", "an", "of", "in", "on", "at", "and", "or", "to", "with",
+        "for", "from", "by", "his", "her", "its", "their", "this", "that",
+        "photo", "photograph", "picture", "image", "view",
+    }
+)
+"""Eslesme puanina katilmayan kelimeler.
+
+Ikisi ayri sebeple burada: dilbilgisi kelimeleri her metinde geciyor, "photo"
+/"view" gibi kelimeler ise Commons aciklamalarinin YARISINDA var. Ikisi de
+sinyal tasimiyor ve esigi dejenere ediyor.
+"""
+
+
+def _menuden_ikincil(
+    menu: list[dict[str, str]],
+    scene: dict[str, str],
+    kullanilan: set[str],
+    capa_kelimeleri: set[str],
+) -> str:
+    """Sahneye en cok uyan KULLANILMAMIS menu girdisinin adi; yoksa bos dize.
+
+    ⚠️ NEDEN MENU, NEDEN KATEGORI DEGIL — bu dosyanin kendi olcumu
+    (`ikincil_gorseller` icindeki kategori notu) sunu yaziyor: "Gorsel ritmini
+    geri getirmek ayri bir is ve dogru kaynak KATEGORI DEGIL ARSIV MENUSU".
+    Sebep menunun UC suzgecten gecmis olmasi: lisans, kadraj ve ACIKLAMA.
+    Kategori havuzunda bunlarin hicbiri yok, o yuzden Palmyra'nin modern
+    turist fotograflari oradan geliyordu.
+
+    ⚠️ OLCULDU (2026-08-18, Cemal Pasha — yayinlanmis video): menu 32 girdi,
+    birincil olarak 6'si kullanilmis, **26'si bosta** duruyordu. Hepsi konuya
+    ait ve aciklamali ("Djemal Pasha - The Turkish Minister of Marine",
+    "Last review by Jamal Pasha ... in Jerusalem"). Yani arz vardi, yalnizca
+    hicbir kod ona bakmiyordu: model ikinci alinti yazmadiginda sahne dogrudan
+    kategori havuzuna dusuyor, orada da aday cikmiyordu.
+
+    ⚠️ CAPA KELIMELERI PUANA KATILMIYOR. Menunun HER girdisinde capa geciyor
+    ("Cemal Pasha"), yani capayla eslesme sifir bilgi tasir ve esigi dejenere
+    eder. Ayni delik birincil yolda olculup belgelenmis (`select_candidate`
+    yanindaki not: "iki terimlik bir sorguda asgari eslesme 1'e DUSUYOR").
+
+    ⚠️ EN AZ BIR anlamli eslesme SART. Eslesmeyen sahne bos donuyor ve
+    `kare_yerlesimi` onu `[A, A]`ya ceviriyor — yani bugunku davranis. Rastgele
+    bir menu girdisi koymak, tam da `ikincil_gorselleri_denetle`nin dusurdugu
+    kusuru uretirdi.
+    """
+    metin = f"{scene.get('search_term', '')} {scene.get('narration', '')}"
+    terimler = {
+        kelime
+        for kelime in re.findall(r"\b[\w'-]+\b", metin.lower())
+        if len(kelime) > 2 and kelime not in _ANLAMSIZ_TERIMLER
+    } - capa_kelimeleri
+    if not terimler:
+        return ""
+    en_iyi, en_iyi_puan = "", 0
+    for girdi in menu:
+        ad = str(girdi.get("dosya", "")).strip()
+        if not ad or f"File:{ad}" in kullanilan or ad in kullanilan:
+            continue
+        govde = f"{ad} {girdi.get('gosterdigi', '')}".lower()
+        puan = sum(1 for terim in terimler if terim in govde)
+        if puan > en_iyi_puan:
+            en_iyi, en_iyi_puan = ad, puan
+    return en_iyi
+
+
 def ikincil_gorseller(
     scenes: list[dict[str, str]],
     target_dir: Path,
@@ -1304,6 +1371,8 @@ def ikincil_gorseller(
     used_titles: set[str] | None = None,
     esleme_gerekli: list[bool] | None = None,
     birincil_dosyalar: list[Path | None] | None = None,
+    menu: list[dict[str, str]] | None = None,
+    capa: str = "",
 ) -> tuple[list[Path | None], list[dict[str, Any]]]:
     """Sahnelerin IKINCI alintisini indirir; bulunamayan sahne icin None.
 
@@ -1336,10 +1405,25 @@ def ikincil_gorseller(
     for birincil in birincil_dosyalar or []:
         if birincil:
             _izi_ekle(birincil, izler)
+    # Capa kelimeleri puanlamadan cikariliyor; gerekce `_menuden_ikincil`de.
+    capa_kelimeleri = {
+        kelime for kelime in re.findall(r"\b[\w'-]+\b", capa.lower()) if len(kelime) > 2
+    }
     for index, scene in enumerate(scenes, 1):
         aday = None
         if alinti := str(scene.get("kaynak_dosya_2", "")).strip():
             aday = _alinti_adayi(alinti, kategori_havuzu, kullanilan)
+        # ⚠️ MENU YEDEGI — model ikinci alinti yazmadiginda ya da yazdigi
+        # dosya indirilemediginde. Gerekce ve olcum `_menuden_ikincil`de:
+        # Cemal Pasha koşumunda menunun 32 girdisinden 26'si BOSTA duruyordu
+        # ve hicbir kod onlara bakmiyordu.
+        #
+        # ⚠️ Sira onemli: once modelin SECIMI (anlatimi o yazdi, en iyi
+        # eslesmeyi o bilir), sonra menu, en son kategori havuzu. Kategori en
+        # sonda cunku olculen kalitesi en dusuk olan o (bkz. asagidaki not).
+        if aday is None and menu and (esleme_gerekli or [])[index - 1 : index] == [True]:
+            if menu_adi := _menuden_ikincil(menu, scene, kullanilan, capa_kelimeleri):
+                aday = _alinti_adayi(menu_adi, kategori_havuzu, kullanilan)
         # ⚠️ ESLESTIRME YEDEGI — yalnizca birincil gorsel BANT ISTIYORSA.
         #
         # Olculdu (2026-08-14, son 4 koşumun 24 gorseli): **%54'u** tam

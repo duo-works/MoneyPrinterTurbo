@@ -6101,6 +6101,20 @@ def run_generator(
             esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
             # Algisal tekrar elemesi icin; gerekcesi `ikincil_gorseller`de.
             birincil_dosyalar=list(material_files),
+            # ⚠️ MENU YEDEGI (2026-08-18). Olculdu: Cemal Pasha koşumunda menu
+            # 32 girdiydi, birincil olarak 6'si kullanilmisti ve **26'si
+            # bostaydi** — hepsi lisans/kadraj/aciklama suzgecinden gecmis,
+            # konuya ait dosyalar. Model ikinci alinti yazmadiginda sahne
+            # dogrudan kategori havuzuna dusuyor ve orada aday cikmiyordu.
+            # Gerekcenin tamami `wikimedia_materials._menuden_ikincil`de.
+            # ⚠️ Capa kullaniliyor, konu DEGIL: `run_generator` konuyu hic
+            # almiyor ve birincil gorseller de capadan indirildi, yani ikincil
+            # AYNI havuzdan gelmeli. `ikincil_alintilari_temizle` menu konusu
+            # bos oldugunda tam olarak ayni sey yapiyor.
+            menu=arsiv_envanteri(
+                plan.visual_anchor, sinir=envanter_siniri(bicim), bicim=bicim
+            ),
+            capa=plan.visual_anchor,
         )
         # ⚠️ IKINCIL DENETIMI — gerekcesi `ikincil_gorselleri_denetle`de.
         # Kaynak kapisi bu dosyalari HIC gormuyordu ve 01 slotunda iki
