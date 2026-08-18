@@ -818,6 +818,7 @@ The script must be 80-120 spoken English words and end with a memorable line. AI
 NEVER open with "Did you know", "Have you ever wondered", "Imagine a world", or any other stock quiz-show phrasing; an opening that could be pasted onto a different topic is a failed hook. Open instead with the single most surprising concrete detail of THIS subject (a number, an object, a contradiction, or an unfinished action) so the first six words could belong to no other video.
 Create 6-10 chronological scenes. Define visual_anchor as a specific named civilization, landmark, artifact, archaeological site, vessel, invention, or PERSON in 1-4 words. WHEN THE STORY IS ABOUT ONE NAMED PERSON, THE VISUAL_ANCHOR MUST BE THAT PERSON'S NAME, never an award, institution, or object associated with them, because an anchor like "Victoria Cross" or "Vassar College" retrieves pictures of other people who share it, and the video then shows the wrong human being.
 Every scene needs narration and a concrete 3-7 word English Wikimedia Commons search term that repeats at least one distinctive visual_anchor word. Never use abstract terms alone. When the user request carries an ARCHIVE MENU, each scene also needs source_file: one entry's 'dosya' value copied exactly, never invented, never reused by two scenes, and the narration must describe what that file shows.
+GIVE EVERY SCENE ABOUT THE SAME NUMBER OF WORDS. Each image is on screen for exactly the same number of seconds, so a scene carrying three times the words of its neighbour leaves the wrong picture on screen while a different sentence is being spoken, and the mismatch accumulates across the rest of the video. Split a long scene in two and merge a very short one into its neighbour rather than letting the lengths drift apart.
 The anchor holds the video together; it does not have to fill every frame. Vary what the camera is actually on: the person, their hands or possessions, the room, the wider place, the landscape, a document, the crowd, the aftermath. Six scenes of the same building from six angles is a failed scene list even when every search term is correct.
 EVERY SCENE NEEDS ITS OWN SEARCH TERM AND THE BARE ANCHOR IS NOT A SEARCH TERM. Repeating one query ("Murad III", "Murad III", ...) returns the same ranked archive results every time, and the video becomes a row of near-identical portraits, which is the single most common reason a video is rejected. Write instead: "Murad III tughra", "Murad III imperial berat", "Murad III Topkapi palace", "Murad III Ottoman map", which is the anchor plus the concrete thing THIS scene is about.
 Prefer subjects with visual evidence on Wikimedia Commons or Met Open Access (photographs of any era, engravings, archaeological plates, museum scans), but do not reject a strong story because its imagery is thin; scenes without an archive match are illustrated instead. Use the eligible visual-anchor shortlist in the user request rather than defaulting to famous examples from prior plans. Modern colour photographs of a surviving place or object are welcome; generic modern people, factories, vehicles, schools, water systems, maps, or buildings that merely share one broad word with the narration are forbidden.
@@ -1207,6 +1208,76 @@ def kanca_kusuru(metin: str) -> str:
             "lead with the surprising fact and let the date arrive in a later sentence"
         )
     return ""
+
+
+ANLATIM_DENGESI = 2.5
+"""Bir sahnenin anlatimi, en kisa sahnenin en fazla kac kati olabilir.
+
+⚠️ NEDEN VAR — klip suresi sahneden BAGIMSIZ esit (`klip_suresi`: ses ÷ kare
+sayisi). Cumleler esit degilse gorsel, anlattigi cumleden KAYIYOR ve kayma
+video boyunca birikiyor.
+
+⚠️ OLCULDU (2026-08-18, Cemal Pasha — YAYINLANMIS video). Altyazi dosyasi
+(`subtitle.srt`) ile klip sinirlari ust uste konuldu:
+
+    sahne   gorsel ekranda    cumlesi soyleniyor    kayma
+    s2       6,4-12,8          7,9-16,3             cumle 3,5 sn tasiyor
+    s3      12,8-19,2         16,6-24,2             gorsel 3,8 sn ONCE
+    s4      19,2-25,6         24,5-27,4             gorsel 5,3 sn ONCE
+
+Sahne kelime sayilari: [23, 25, 24, 7, 7, 19] — oran 25/7 = **3,57**.
+
+⚠️ Kaymanin IKINCI yarisi: hakem `lettering_text`'i klip ORTASINDAN okuyor,
+yani KAYMIS eslesmeyi. "Aile fotografi 'assassinated in Tiflis' cumlesini
+karsilamiyor" sikayeti bir ZAMANLAMA artefaktiydi, gorsel secimi kusuru degil.
+Yani bu kapi izleyici kadar hakem skorunu da ilgilendiriyor.
+
+⚠️ 2,5 GECICI ve bu durum bilincli olarak kayda geciriliyor: depo sahne
+anlatimlarini HIC saklamiyor (`state.json` yalnizca birlesik `script` tutuyor,
+`*-rejected.json` plani hic yazmiyor), yani kalibre edilecek bir dagilim YOK.
+Tek olcum yukaridaki 3,57 ve o kayma GORUNUR. 2,5 onun altinda, ama modelin
+normal degiskenligini bogmayacak kadar da genis.
+
+⚠️ Bu yuzden kapi YUMUSAK (ilk uc denemede zorlar, sonra gecirir) — sert kapi
+olsaydi kalibresiz bir sayi bes denemeyi de yakabilirdi. Ayni gerekce
+`acilis_kadraji_kusuru`da da yazili. Kalibrasyon verisi icin sahne kelime
+sayilari artik yayin kaydina yaziliyor (#56); birkac video birikince bu sayi
+OLCUYLE guncellenmeli.
+
+⚠️ Sabit HICBIR ISTEME GIRMEZ (DW-87): esigi bilen model olcmeyi birakip
+esigin bir tik altina yaziyor. Isteme yalnizca "anlatimlar birbirine yakin
+uzunlukta olsun" diye NITEL bir madde konuyor.
+"""
+
+
+def anlatim_dengesi_kusuru(plan: ContentPlan) -> str:
+    """Sahne anlatimlari arasindaki uzunluk dengesizligi — yoksa bos dize.
+
+    Gerekce `ANLATIM_DENGESI`de. Olcum kelime sayisi uzerinden yapiliyor
+    cunku `klip_suresi` de sesi kelime hiziyla tahmin ediyor (`KELIME_HIZI`),
+    yani iki taraf ayni birimi konusuyor.
+    """
+    sayilar = [
+        len(re.findall(r"\b[\w'-]+\b", str(sahne.get("narration", ""))))
+        for sahne in plan.scenes
+    ]
+    sayilar = [s for s in sayilar if s > 0]
+    if len(sayilar) < 2:
+        return ""
+    en_uzun, en_kisa = max(sayilar), min(sayilar)
+    if en_uzun <= en_kisa * ANLATIM_DENGESI:
+        return ""
+    # ⚠️ Mesaj NE YAPILACAGINI soyluyor: dogrulama hatasi modele geri
+    # besleniyor ve yalnizca kurali tekrarlayan mesajlarda model ayni plani
+    # geri yaziyor (bkz. `visual anchor` mesajinin gerekcesi).
+    return (
+        f"scene narrations are too uneven: the longest is {en_uzun} words and the "
+        f"shortest is {en_kisa}. Every scene is on screen for the same number of "
+        "seconds, so an uneven scene leaves the wrong picture on screen while a "
+        "different sentence is being spoken. Redistribute the same story so that "
+        "every narration is about the same length, splitting long scenes and "
+        "merging very short ones"
+    )
 
 
 KARE_YUVASI = 2
@@ -4156,6 +4227,19 @@ def generate_content_plan(
             son_kusur = f"acilis kadraji: {kusur}"
             print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += f"\nThe last plan opened badly: {kusur}"
+            continue
+        # ⚠️ ANLATIM DENGESI — gerekce `ANLATIM_DENGESI`de. Kapinin KOD
+        # tarafinda olmasi sart: istemde "anlatimlar birbirine yakin uzunlukta
+        # olsun" YAZIYOR ve model yine 25 kelimelik sahnenin yanina 7
+        # kelimelik sahne koydu (Cemal Pasha, yayinlandi). `kanca_kusuru`
+        # docstring'indeki ders: modele kurali soylemek yetmiyor.
+        #
+        # ⚠️ YUMUSAK, cunku esik henuz kalibre DEGIL (tek olcum). Sert kapi
+        # bes denemeyi de yakabilirdi.
+        if yumusak_kapilar_acik and (kusur := anlatim_dengesi_kusuru(plan)):
+            son_kusur = f"anlatim dengesi: {kusur}"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
+            user += f"\nThe last plan was unevenly paced: {kusur}"
             continue
         # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
         # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
