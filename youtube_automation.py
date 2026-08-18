@@ -3563,6 +3563,24 @@ def _menu_talimati(
             else "Leave source_file_2 empty for every scene: this archive is too small "
             "to give each scene a second distinct picture. "
         )
+        # ⚠️ 1. SAHNE AYRI. Olculdu (DW-121, Chaco Canyon ilk 11 saat): 374
+        # goruntuleme, trafigin %97,3'u Shorts akisi — dagitim CALISIYOR ama
+        # izleyicilerin %73'u IZLEMEDEN geciyor. Kalanlar iyi izliyor (%61
+        # tamamlama), yani govde tutuyor ACILIS tutmuyor.
+        #
+        # ⚠️ Kod tarafi da var (`acilis_kadraji_kusuru`) ve bu bilincli:
+        # olculdu ki istem tek basina yetmiyor, model yine uzak plan
+        # alintiliyor ("Remote view of Sigiriya rock", "Sigiriya rock from a
+        # distance").
+        + (
+            "SCENE 1 IS DIFFERENT. Its job is to stop a thumb, so cite the CLOSEST, "
+            "most readable entry you can find — a face, a carving, an object, a "
+            "doorway, something large in the frame — never a distant, aerial or "
+            "panoramic view, however beautiful. Then write scene 1's narration for "
+            "that picture. "
+            if bicim.dikey
+            else ""
+        )
         + "Do not narrate a moment no entry depicts: if "
         "nothing here shows the discovery, the battle, the storm or the person at work, "
         "that moment cannot be a scene, however important it is. Choose entries whose "
@@ -4032,6 +4050,16 @@ def generate_content_plan(
             son_kusur = f"alinti kapisi: {kusur}"
             print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
             user += f"\nThe last plan did not match the archive: {kusur}"
+            continue
+        # ⚠️ ACILIS KADRAJI — gerekce `UZAK_KADRAJ_ISARETLERI`nde. Kapinin
+        # KOD tarafinda olmasi sart: `kanca_kusuru` docstring'indeki ders
+        # ("modele kurali soylemek yetmiyor, KOD kontrol etmeli") burada da
+        # gecerli — istemde 1. sahne icin yakin kadraj isteniyor ama olculdu
+        # ki model yine uzak plan alintiliyor.
+        if yumusak_kapilar_acik and (kusur := acilis_kadraji_kusuru(plan)):
+            son_kusur = f"acilis kadraji: {kusur}"
+            print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
+            user += f"\nThe last plan opened badly: {kusur}"
             continue
         # ⚠️ TEMIZLIK, KAPI DEGIL — ve kapilardan SONRA calisiyor ki
         # reddedilecek bir plan icin bosuna menu cozulmesin. Bozuk ya da
@@ -4948,6 +4976,74 @@ def acilis_karesi(konu: str) -> str:
     """1. sahnenin kadraji — konuya gore kararli sekilde secilir."""
     tohum = zlib.crc32(konu.strip().lower().encode("utf-8")) % len(ACILIS_KARELERI)
     return ACILIS_KARELERI[tohum]
+
+
+# 1. sahnede UZAK KADRAJ isaretleri — arsiv yolunun `ACILIS_KARELERI`
+# karsiligi.
+#
+# ⚠️ NEDEN VAR — `ACILIS_KARELERI` (DW-121) dogru teshisi koydu ama YALNIZCA
+# yapay gorsel uretim yolundan cagriliyor (`generate_ai_scene_materials`) ve o
+# yol `enable_ai_visual_fallback = false` bayraginin arkasinda. Yani arsivden
+# gelen 1. sahne gorseli duzeltmeden HIC etkilenmiyordu; `test_acilis_karesi.py`
+# uretimin hic kosmadigi bir yolu dogruluyordu.
+#
+# ⚠️ ISARETLER OLCULDU (2026-08-18), son render'larin 1. sahne dosyalari:
+#
+#     "Remote view of Sigiriya rock, Central Province..."   <- olculdu
+#     "Sigiriya rock from a distance.jpg"                   <- olculdu
+#     "Hadrian's Wall east of Walltown Quarry..."           <- manzara
+#
+# Hakem de ayni seyi yaziyordu: "The opening frames (1-2) are passive scenic
+# overlooks", "frames 1-2 show standard pastoral wall views".
+#
+# ⚠️ Ilk iki kalip GOZLENDI; kalanlar ayni sinifin bariz kardesleri ve
+# GOZLENMEDI — biri yanlis eleme yaparsa buradan cikarilmali.
+UZAK_KADRAJ_ISARETLERI = (
+    "remote view",      # olculdu
+    "from a distance",  # olculdu
+    "aerial",
+    "panorama",
+    "panoramic",
+    "general view",
+    "overall view",
+    "overview",
+    "bird's-eye",
+    "birds eye",
+    "skyline",
+    "seen from",
+)
+
+
+def uzak_kadraj_mi(metin: str) -> bool:
+    """Dosya adi/aciklamasi UZAK bir kadraj tarif ediyor mu."""
+    kucuk = str(metin or "").lower()
+    return any(isaret in kucuk for isaret in UZAK_KADRAJ_ISARETLERI)
+
+
+def acilis_kadraji_kusuru(plan: ContentPlan) -> str:
+    """1. sahne uzak bir kadraj alintiladiysa gerekce doner, yoksa "".
+
+    ⚠️ YUMUSAK KAPI olarak baglaniyor ve bu SART: bazi arsivlerde ozne zaten
+    yalnizca uzaktan fotograflanmis (Sigiriya kayasi boyle). Sert kapi olsaydi
+    o konularda bes deneme de yanardi. Yumusak kapi ilk uc denemede zorluyor,
+    sonra geciriyor — `alinti_kusuru`nun yaninda, ayni desen.
+
+    ⚠️ MENUYE BAKMIYOR ve bu bilincli: `arsiv_envanteri` onbelleksiz ve plan
+    dongusunde zaten iki kez cagriliyor. Isaretler olculdu ki DOSYA ADINDA
+    gecsin, yani ucuncu bir ag istegine gerek yok.
+    """
+    if not plan.scenes:
+        return ""
+    dosya = str(plan.scenes[0].get("kaynak_dosya", "")).strip()
+    if not dosya or not uzak_kadraj_mi(dosya):
+        return ""
+    return (
+        f"scene 1 cites {dosya!r}, which is a distant/wide view. The first two "
+        "seconds decide whether the viewer stays, and a subject that is small on "
+        "a phone screen loses them. Cite a closer entry for scene 1 — a face, a "
+        "carving, an object, a doorway, something large and readable in the frame "
+        "— and write scene 1's narration for THAT picture."
+    )
 
 
 def kare_dili(sahne_no: int, konu: str = "") -> str:
