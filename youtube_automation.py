@@ -2726,6 +2726,18 @@ def _windows() -> bool:
     return os.name == "nt"
 
 
+class CikarimZamanAsimi(RuntimeError):
+    """`hermes` cagrisi zaman asimina ugradi — SAGLAYICI HATASI DEGIL.
+
+    ⚠️ AYRI TUR OLMASI SART. Cagiran taraf zaman asimini yutup denemeye
+    devam ediyor; ayni sefkati 403/429'a gosterirse olu bir saglayici bes
+    denemeyi yakar ve log "red | skor 0" der. O satir "kalite kapilari bes
+    plani reddetti" ile AYIRT EDILEMEZ hale gelir — bu deponun iki kez
+    olctugu kusur sinifi (`hermes -z` birincil hatayi yutup yedege dusuyordu;
+    `capa-havuzu-tukeniyor` da ayni bicimde sessizdi).
+    """
+
+
 def _run_hermes(command: list[str], timeout: int) -> subprocess.CompletedProcess[str]:
     popen_kwargs: dict[str, Any] = {
         "cwd": ROOT,
@@ -2759,7 +2771,9 @@ def _run_hermes(command: list[str], timeout: int) -> subprocess.CompletedProcess
             process.communicate(timeout=10)
         except subprocess.TimeoutExpired:
             process.kill()
-        raise RuntimeError(f"Hermes CLI inference timed out after {timeout} seconds") from exc
+        raise CikarimZamanAsimi(
+            f"Hermes CLI inference timed out after {timeout} seconds"
+        ) from exc
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
@@ -2792,8 +2806,31 @@ def hermes_temel_komut() -> list[str]:
     return komut
 
 
-CIKARIM_ZAMAN_ASIMI = 180
-"""Kisa (Shorts) bir JSON cevabi icin ust sinir, saniye."""
+CIKARIM_ZAMAN_ASIMI = 360
+"""Kisa (Shorts) bir JSON cevabi icin ust sinir, saniye.
+
+⚠️ 180'DEN 360'A CIKARILDI (2026-08-19). 180 sayisi KIMI'ye gore konmustu;
+arka uc o gun Copilot/gpt-4.1 oldu ve istem de bu arada buyudu (kurallar +
+40 girdilik arsiv menusu + her denemede eklenen geri bildirim: ~16 KB).
+
+Olculdu (00:05 kosumu): dort deneme tamamlandi, BESINCISI 180 sn'de takildi
+ve kosumun TAMAMI `HATA / cikis 1` ile oldu — hicbir kapi reddetmemisken.
+Kosum penceresinden turetilen kaba hiz deneme basina ~120 sn, yani tipik
+cagri zaten tavana yaslanmisti.
+
+⚠️ ~120 sn TURETILMIS bir sayi, olculmus degil: 00:05-00:16 penceresi aday
+kapma, menu kurma ve Wikipedia cekmeyi de iceriyor. Yon icin yeterli,
+kalibrasyon icin degil — gercek dagilim birkac kosumda izlenmeli.
+
+Bu, deponun daha once ayni bicimde yasadigi kusur: `UZUN_CIKARIM_ZAMAN_ASIMI`
+docstring'i bir is yukune gore konmus 180'in baska bir is yukunu 188,4
+saniyede oldurdugunu kaydediyor. Ayni sinif, ayni sayi.
+
+Sinir KALDIRILMADI: asili kalan bir cagri zamanlayici slotunu sessizce yer.
+360, turetilen tipik surenin ~3 kati ve en kotu durumda 5 x 360 = 30 dakika,
+yani 3 saatlik koşum araligina rahat siğiyor. `UZUN_CIKARIM_ZAMAN_ASIMI`
+(600) ile ayri kaldi cunku oradaki is yuku hala baska.
+"""
 
 GORU_ZAMAN_ASIMI = 360
 """Gorü (montaj okuma) cagrilari icin ust sinir, saniye — SHORTS olcusu.
@@ -4269,18 +4306,40 @@ def generate_content_plan(
     YUMUSAK_KAPI_DENEMESI = 3
     # Son dogrulama/kapi kusuru — hata mesajina giriyor (bkz. dongu sonu).
     son_kusur = ""
+    # ⚠️ SAGLAYICI SESSIZCE OLMESIN. Bes denemenin BESI de zaman asimina
+    # ugrarsa bu bir kalite sonucu degil altyapi arizasidir ve oyle
+    # bildirilmeli; aksi halde "provider bes kez asili kaldi" ile "kapilar
+    # bes plani reddetti" ayni satiri yazar.
+    zaman_asimi_sayisi = 0
     for deneme in range(1, 6):
         yumusak_kapilar_acik = deneme <= YUMUSAK_KAPI_DENEMESI
         # ⚠️ Uzun kipte zaman asimi GENIS. Gerekce
         # `UZUN_CIKARIM_ZAMAN_ASIMI`nda: ~7.000 tokenlik bir cevap Shorts'un
         # 180 saniyesine sigmiyor ve koşum 188,4 saniyede oluyordu.
-        data = _json_completion(
-            system,
-            user,
-            zaman_asimi=(
-                CIKARIM_ZAMAN_ASIMI if bicim.dikey else UZUN_CIKARIM_ZAMAN_ASIMI
-            ),
-        )
+        # ⚠️ ZAMAN ASIMI DENEMEYI YAKAR, KOSUMU DEGIL. Olculdu (2026-08-19,
+        # 00:05 kosumu): besinci cagri takildi ve butun kosum `HATA / cikis 1`
+        # ile oldu. Ayni takilma BIRINCI denemede olsaydi video uretecek bir
+        # kosum hicbir kapi reddetmeden cope giderdi.
+        #
+        # ⚠️ YALNIZCA ZAMAN ASIMI yutuluyor — 403/429 DEGIL. Saglayici hatasi
+        # da yutulsaydi olu bir anahtar bes denemeyi yakar ve log "red | skor
+        # 0" derdi; o satir "kalite kapilari bes plani reddetti" ile ayirt
+        # edilemez. Gerekce `CikarimZamanAsimi` docstring'inde.
+        #
+        # Geri bildirim EKLENMIYOR: ortada elestirilecek bir plan yok.
+        try:
+            data = _json_completion(
+                system,
+                user,
+                zaman_asimi=(
+                    CIKARIM_ZAMAN_ASIMI if bicim.dikey else UZUN_CIKARIM_ZAMAN_ASIMI
+                ),
+            )
+        except CikarimZamanAsimi as exc:
+            son_kusur = f"cikarim zaman asimi: {exc}"
+            print(f"⚠️ deneme {deneme}/5 — {son_kusur}", flush=True)
+            zaman_asimi_sayisi += 1
+            continue
         plan = ContentPlan(
             topic=str(data.get("topic", "")).strip(),
             visual_anchor=str(data.get("visual_anchor", "")).strip(),
@@ -4506,6 +4565,17 @@ def generate_content_plan(
     # Herculaneum koşumu 9,6 dakika yandi ve log yalnizca bu cumleyi verdi;
     # gercek sebep (kelime sayisi ve terim tekrari) ancak kapilar elle
     # izlenerek bulundu. Ayni sinif korluk `parse_cli_result`te de vardi.
+    # ⚠️ BES DENEMENIN BESI DE ZAMAN ASIMIYSA bu bir KALITE sonucu degil.
+    # `DistinctTopicUnavailableError` zamanlayici loguna "red" yaziyor; asili
+    # kalan bir saglayici oradan "kapilar bes plani reddetti" gibi gorunur ve
+    # teshis gunlerce yanlis yone gider. Bu deponun tekrar eden kusuru: red
+    # kayitlari zaten koşum paydasi degil (`red-kayitlari-kosum-paydasi-degil`)
+    # ve `hermes -z` de birincil hatayi ayni bicimde yutuyordu.
+    if zaman_asimi_sayisi == 5:
+        raise CikarimZamanAsimi(
+            "5 denemenin BESI de cikarim zaman asimina ugradi; bu bir kalite "
+            "reddi degil, saglayici asili kaliyor"
+        )
     raise DistinctTopicUnavailableError(
         f"5 denemede gecerli plan uretilemedi; son kusur: {son_kusur or 'bilinmiyor'}"
         if konu

@@ -101,6 +101,14 @@ def bitisik_geciyor(
     kaliyor. Kural, capa metninin kendisini elemek zorunda kalirsa yanlis
     kuraldir.
 
+    ⚠️ BU KURALIN KAPATMADIGI SINIF — bilerek acik birakildi. Capa obegini
+    BOZMADAN uzatan adaslar geciyor: "Great Sphinx" capasi Louvre'daki
+    "Great Sphinx of Tanis"i geciriyor (00:05 koşumunun menusunde uc dosya).
+    Kapatilamaz, cunku ayni bicim MESRU dosyalarin cogunda var: "Operation
+    Storm 1995 map", "Cutty Sark in full sails". Son ek uzantisini reddeden
+    bir kural arzi kurutur — ve arz olcumu bu turda zaten yapildi. Bu sinifin
+    dogru bekcisi GORU kapisi; ad kapisi goruntuyu goremez.
+
     ⚠️ ON EK ESLESMESI, TAM ESITLIK DEGIL: eski kapi alt dize ariyordu ve bu
     bilincliydi — cogul/tamlama eklerini tasiyordu ("pyramid" -> "pyramids").
     On ek o kazanci korur, ama "storm" ile "brainstorm"u ayirir; alt dize

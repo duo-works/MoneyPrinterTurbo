@@ -327,7 +327,9 @@ def test_json_completion_uses_hermes_cli_and_parses_last_json(monkeypatch):
     assert "-z" in captured["command"]
     assert "system" in captured["command"][-1]
     assert "user" in captured["command"][-1]
-    assert captured["timeout"] == 180
+    assert captured["timeout"] == __import__(
+        "youtube_automation"
+    ).CIKARIM_ZAMAN_ASIMI
 
 
 def test_vision_json_uses_hermes_cli_with_native_image_path(monkeypatch, tmp_path):
