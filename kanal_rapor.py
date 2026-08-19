@@ -28,7 +28,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from google.auth.exceptions import RefreshError
@@ -44,6 +44,7 @@ KOK = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_FILE = os.path.join(KOK, "client_secret.json")
 TOKEN_FILE = os.path.join(KOK, "youtube_analytics_token.json")
 STATE_YOLU = os.path.join(KOK, "storage", "youtube_automation", "state.json")
+ANALITIK_DIZINI = os.path.join(KOK, "storage", "youtube_automation", "analitik")
 
 SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
@@ -447,6 +448,41 @@ def _yazdir(veri: dict[str, Any]) -> None:
         print(f"{t['izlenme']:>6} | {t['kaynak']}")
 
 
+def arsivle(veri: dict, *, gun: int) -> str:
+    """Raporu tarihli bir anlik goruntu olarak diske yazar; yolu doner.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-19). Bu dosya bugune kadar YALNIZCA
+    EKRANA basiyordu (`--json` bile stdout'a gidiyordu) ve diskte tek bir
+    performans kaydi yoktu. Sonucu: her bakis tek seferlik, zaman serisi
+    yok, hicbir deney kolu karsilastirilamiyor.
+
+    Bedeli somut: `state.json` her yayinda `sahne_sayisi`, `bicim`,
+    `kare_duzeni`, `iki_gorselli_sahne` yaziyor — yani deney kollari
+    KAYDEDILIYOR — ama karsiligi olan izlenme/tutunma hicbir yerde
+    durmuyordu. Kol karsilastirmasi ancak iki taraf da diskteyse yapilir.
+
+    ⚠️ ANLIK GORUNTU, TOPLAM DEGIL. Dosya adi cekim gunu; icerik o gune
+    kadarki `gun` gunluk pencere. Ayni gun tekrar cekilirse UZERINE
+    yaziliyor — gun icinde birden cok kayit tutmak, ayni pencerenin birkac
+    saat farkli hallerini ayri olcum sanmaya yol acardi.
+
+    ⚠️ ANALYTICS 2-3 GUN GECIKMELI (olculdu: 19 Agu'da veri 17 Agu'da
+    bitiyor). Yani en yeni videolar hicbir anlik goruntude tam gorunmez;
+    karsilastirma yaparken pencerenin bitis tarihine bakilmali.
+    """
+    os.makedirs(ANALITIK_DIZINI, exist_ok=True)
+    bugun = date.today().isoformat()
+    yol = os.path.join(ANALITIK_DIZINI, f"{bugun}.json")
+    kayit = {
+        "cekim": datetime.now().astimezone().isoformat(),
+        "pencere_gun": gun,
+        "rapor": veri,
+    }
+    with open(yol, "w", encoding="utf-8") as dosya:
+        json.dump(kayit, dosya, ensure_ascii=False, indent=2)
+    return yol
+
+
 def main() -> None:
     ayristirici = argparse.ArgumentParser(description="Kanal analitigi raporu")
     ayristirici.add_argument("--gun", type=int, default=28)
@@ -486,6 +522,11 @@ def main() -> None:
         "--tekrar",
         action="store_true",
         help="Videolar birbirinden ayirt edilebilir mi (API'siz, state.json'dan)",
+    )
+    ayristirici.add_argument(
+        "--arsivle",
+        action="store_true",
+        help="Raporu storage/youtube_automation/analitik/<tarih>.json'a da yaz",
     )
     secenekler = ayristirici.parse_args()
 
@@ -550,6 +591,11 @@ def main() -> None:
                 "Actiktan birkac dakika sonra komutu tekrar calistir."
             )
         raise
+    if secenekler.arsivle:
+        # ⚠️ EKRAN CIKTISINI DEGISTIRMIYOR, ona EKLIYOR: arsivleme bir yan
+        # etki olmali, cunku bu komut elle de cagriliyor ve insanin gordugu
+        # sey bayragin varligina gore degismemeli.
+        print(f"📁 arsivlendi: {arsivle(veri, gun=secenekler.gun)}")
     if secenekler.json:
         print(json.dumps(veri, ensure_ascii=False, indent=2))
     else:

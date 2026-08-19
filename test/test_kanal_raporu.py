@@ -302,3 +302,61 @@ def test_tutunma_olcumu_isteniyor():
     """⚠️ Izlenme dagitimin SONUCU, tutunma SEBEBI. Sorgudan dusmemeli."""
     assert "averageViewPercentage" in kr.VIDEO_OLCUMLERI
     assert "subscribersGained" in kr.VIDEO_OLCUMLERI
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Arsivleme — zaman serisi (2026-08-19)
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def test_arsiv_DISKE_yaziyor(monkeypatch, tmp_path):
+    """⚠️ Olculdu (2026-08-19): bu dosya bugune kadar YALNIZCA ekrana
+    basiyordu (`--json` bile stdout'a gidiyordu) ve diskte tek bir performans
+    kaydi yoktu. `state.json` deney kollarini (`sahne_sayisi`, `bicim`,
+    `kare_duzeni`) her yayinda kaydediyor ama karsiligi olan izlenme/tutunma
+    hicbir yerde durmuyordu — kol karsilastirmasi iki taraf da diskteyken
+    yapilabilir.
+    """
+    monkeypatch.setattr(kr, "ANALITIK_DIZINI", str(tmp_path / "analitik"))
+
+    yol = kr.arsivle({"kanal": {"views": 3879}, "videolar": []}, gun=28)
+
+    kayit = json.loads(Path(yol).read_text(encoding="utf-8"))
+    assert kayit["rapor"]["kanal"]["views"] == 3879
+    assert kayit["pencere_gun"] == 28
+    assert kayit["cekim"], "cekim damgasi olmadan anlik goruntu tarihsiz kalir"
+
+
+def test_arsiv_dosyasi_TARIHLE_adlandiriliyor(monkeypatch, tmp_path):
+    """Zaman serisi ancak dosyalar ayirt edilebilirse birikir."""
+    from datetime import date
+
+    monkeypatch.setattr(kr, "ANALITIK_DIZINI", str(tmp_path / "analitik"))
+
+    yol = kr.arsivle({"kanal": {}}, gun=7)
+
+    assert Path(yol).name == f"{date.today().isoformat()}.json"
+
+
+def test_ayni_gun_UZERINE_yaziyor(monkeypatch, tmp_path):
+    """⚠️ Bilincli: gun icinde birden cok kayit tutmak, ayni pencerenin
+    birkac saat farkli hallerini AYRI olcum sanmaya yol acardi.
+    """
+    monkeypatch.setattr(kr, "ANALITIK_DIZINI", str(tmp_path / "analitik"))
+
+    kr.arsivle({"kanal": {"views": 1}}, gun=28)
+    kr.arsivle({"kanal": {"views": 2}}, gun=28)
+
+    dosyalar = list((tmp_path / "analitik").glob("*.json"))
+    assert len(dosyalar) == 1
+    assert json.loads(dosyalar[0].read_text(encoding="utf-8"))["rapor"]["kanal"]["views"] == 2
+
+
+def test_arsiv_dizini_YOKSA_aciliyor(monkeypatch, tmp_path):
+    """Ilk cagride dizin yok; arsivleme bunun icin dusmemeli."""
+    hedef = tmp_path / "hic" / "olmayan" / "analitik"
+    monkeypatch.setattr(kr, "ANALITIK_DIZINI", str(hedef))
+
+    kr.arsivle({"kanal": {}}, gun=1)
+
+    assert hedef.is_dir()
