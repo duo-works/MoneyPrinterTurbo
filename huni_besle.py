@@ -33,6 +33,7 @@ import notion_kuyrugu
 import wikimedia_materials
 from youtube_automation import (
     ASGARI_SAHNE_ARZI,
+    SAHNE_KOLU_TAVANI,
     SHORTS_BICIMI,
     YTOTO_PATH,
     aday_kapilabilir_mi,
@@ -86,7 +87,7 @@ sessiz kesme, "kuyruk kuru" ile "kuyrugu tarayamadim"i birbirine
 karistirirdi.
 """
 
-ASGARI_MENU = ASGARI_SAHNE_ARZI
+ASGARI_MENU = SAHNE_KOLU_TAVANI
 """Terfi esigi — URETIMIN kendi esigi, burada yeniden tanimlanmiyor.
 
 ⚠️ ESKIDEN `6 * KARE_YUVASI` = 12 IDI ve dogru sayi oydu: "her sahneye IKI
@@ -96,7 +97,11 @@ gorsel bir iyilestirme, on kosul degil) ve BURASI 12'de kaldi. Olculdu
 `menu 4 < 12`, `menu 0-3 < 12`. Docstring "iki yerde ayri sayi tutmak"
 tehlikesini zaten yaziyordu; tehlike gerceklesti.
 
-Sayi artik `youtube_automation.ASGARI_SAHNE_ARZI`; gerekce orada.
+⚠️ VE TERFI TARAFINDA SAYI `SAHNE_KOLU_TAVANI` (8), `ASGARI_SAHNE_ARZI`
+(6) DEGIL. Kuyruga giren aday hangi slota duseceğini bilmiyor ve slotlar
+iki deney koluna ayriliyor (6 ve 8 sahne). 6 varsaymak, sekiz sahneli
+slotlarda plan kapisinda yanacak adayi kuyruga sokmak demek — olculdu:
+`Batalla de Boyacá` menu 7. Gerekce `SAHNE_KOLU_TAVANI`da.
 """
 
 
@@ -180,7 +185,7 @@ def uretilebilir_mi(baslik: str) -> tuple[bool, int]:
     except Exception as hata:  # ag hatasi tek adayi atlatmali, koşumu degil
         print(f"  ⚠️ {baslik[:40]}: menu olculemedi ({str(hata)[:60]})", flush=True)
         return False, 0
-    return arsiv_videoyu_tasir(envanter, ASGARI_SAHNE_ARZI), len(envanter)
+    return arsiv_videoyu_tasir(envanter, SAHNE_KOLU_TAVANI), len(envanter)
 
 
 def _kullanilmis_capalar() -> list[str]:
@@ -296,7 +301,9 @@ def besle(kuru: bool = False) -> dict:
     kapilabilir = [
         aday
         for aday in mevcut
-        if aday_kapilabilir_mi(aday.baslik, state, bicim=SHORTS_BICIMI).kapilabilir
+        if aday_kapilabilir_mi(
+            aday.baslik, state, bicim=SHORTS_BICIMI, sahne_sayisi=SAHNE_KOLU_TAVANI
+        ).kapilabilir
     ]
     eksik = HEDEF_DERINLIK - len(kapilabilir)
     print(

@@ -128,10 +128,21 @@ def test_esik_URETIMIN_esigiyle_AYNI():
     12'de kaldi ve huni uretimin kapacagi adayi terfi ettirmedi (`menu 4 <
     12`). Test eski sayiyi pinledigi icin bu ayrismayi GORMEDI — sayiyi
     degil, KAYNAGI pinlemek gerekiyordu.
+
+    ⚠️ SAYI 2026-08-19'da bir kez daha degisti: terfi esigi uretimin TABAN
+    esigi (`ASGARI_SAHNE_ARZI` = 6) degil, deney kollarinin EN BUYUGU
+    (`SAHNE_KOLU_TAVANI` = 8). Kuyruga giren aday hangi slota duseceğini
+    bilmiyor ve slotlar 6/8 sahne diye ikiye ayriliyor; 6 varsaymak, sekiz
+    sahneli slotlarda plan kapisinda yanacak adayi kuyruga sokmak demekti
+    (olculdu: `Batalla de Boyacá` menu 7). Bu bir GEVSETME degil
+    SIKILASTIRMA.
     """
     import youtube_automation
 
-    assert huni_besle.ASGARI_MENU == youtube_automation.ASGARI_SAHNE_ARZI
+    assert huni_besle.ASGARI_MENU == youtube_automation.SAHNE_KOLU_TAVANI
+    assert (
+        youtube_automation.SAHNE_KOLU_TAVANI >= youtube_automation.ASGARI_SAHNE_ARZI
+    ), "terfi kapisi uretimin tabanindan GEVSEK olamaz"
 
 
 def test_uretilmis_konuya_benzer_aday_atlaniyor(monkeypatch):
@@ -567,11 +578,11 @@ def test_KAPILABILIR_aday_varsa_kuyruga_dokunulmuyor(monkeypatch):
     assert secilen == []
 
 
-def test_terfi_esigi_URETIMIN_esigiyle_ayni_sayiyi_kullaniyor(monkeypatch):
-    """⚠️ Sayi degil DAVRANIS pinleniyor: uretimin kapacagi bir aday
-    (`ASGARI_SAHNE_ARZI` kadar gorsel) terfi de EDEBILMELI.
+def test_EN_KOTU_kolda_uretilebilen_aday_terfi_ediyor(monkeypatch):
+    """⚠️ Sayi degil DAVRANIS pinleniyor: HER slotta uretilebilen bir aday
+    (en buyuk kol kadar gorsel) terfi de EDEBILMELI.
 
-    Eski halde bu aday `menu 6 < 12` ile elenirdi ve kuyruk kurur, uretim
+    Eski halde bu aday `menu 8 < 12` ile elenirdi ve kuyruk kurur, uretim
     yedek kipe duserdi.
     """
     import youtube_automation
@@ -580,8 +591,77 @@ def test_terfi_esigi_URETIMIN_esigiyle_ayni_sayiyi_kullaniyor(monkeypatch):
         monkeypatch,
         mevcut=[],
         yeni=[_aday("Tam Esik", "a1")],
-        menuler={"Tam Esik": youtube_automation.ASGARI_SAHNE_ARZI},
+        menuler={"Tam Esik": youtube_automation.SAHNE_KOLU_TAVANI},
     )
 
     assert huni_besle.besle()["terfi"] == ["Tam Esik"]
+    assert secilen == ["a1"]
+
+
+def test_YALNIZCA_kucuk_kolda_uretilebilen_aday_terfi_ETMIYOR(monkeypatch):
+    """⚠️ Olculdu (2026-08-19): `Batalla de Boyacá` menu 7 — alti sahneli
+    slotta uretilebilir, sekiz sahnelide plan kapisi reddeder ve o red bir
+    URETIM SLOTU yakar (aday kuyruktan cekilmis olur).
+
+    Kuyruga giren aday hangi slota duseceğini bilmiyor, o yuzden terfi
+    kapisi en kotu hali varsaymak zorunda.
+    """
+    import youtube_automation
+
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[],
+        yeni=[_aday("Yarim", "a1")],
+        menuler={"Yarim": youtube_automation.SAHNE_KOLU_TAVANI - 1},
+    )
+
+    assert huni_besle.besle()["terfi"] == []
+    assert secilen == []
+
+
+def test_URETIM_slotun_GERCEK_sahne_sayisini_olcuyor(monkeypatch):
+    """⚠️ Uretim tavani DEGIL gercek sayiyi kullanmali — yoksa alti sahneli
+    slotta menusu 6-7 olan aday bosuna atlanir ve hat yedek kipe duser.
+    """
+    import youtube_automation as ya
+
+    monkeypatch.setattr(
+        ya, "arsiv_envanteri", lambda konu, **_k: [{"dosya": f"{konu}-{i}"} for i in range(7)]
+    )
+
+    alti = ya.aday_kapilabilir_mi("X", {}, bicim=ya.SHORTS_BICIMI, sahne_sayisi=6)
+    sekiz = ya.aday_kapilabilir_mi("X", {}, bicim=ya.SHORTS_BICIMI, sahne_sayisi=8)
+
+    assert alti.kapilabilir, "7 dosya alti sahneyi tasir"
+    assert not sekiz.kapilabilir, "7 dosya sekiz sahneyi TASIMAZ"
+
+
+
+def test_MEVCUT_aday_da_en_kotu_kola_gore_sayiliyor(monkeypatch):
+    """⚠️ Derinlik olcumunun KENDI kapisi — terfi kapisindan AYRI yol.
+
+    Mutasyon testi bir bosluk gosterdi (2026-08-19): derinlik olcumu taban
+    esige (6) donerse, menusu 7 olan MEVCUT adaylar "kapilabilir" sayilir,
+    kuyruk dolu gorunur ve terfi olmaz. `uretilebilir_mi` bunu maskeliyordu
+    cunku o TERFI EDILECEK adayi olcuyor, kuyrukta ZATEN duranlari degil.
+
+    Kuyrukta duran aday da hangi slota duseceğini bilmiyor: sekiz sahneli
+    slotta menu 7 plan kapisinda yanar.
+    """
+    import youtube_automation
+
+    az = youtube_automation.SAHNE_KOLU_TAVANI - 1
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Yarim", "y1")] * huni_besle.HEDEF_DERINLIK,
+        yeni=[_aday("Alhambra", "a1")],
+        menuler={"Yarim": az, "Alhambra": 40},
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == ["Alhambra"], (
+        f"menu {az} olan mevcut aday kuyrugu dolu saymamali; "
+        f"terfi: {ozet['terfi']}"
+    )
     assert secilen == ["a1"]

@@ -694,6 +694,24 @@ kusur kapisi). Sayi bu yuzden burada duruyor ve iki taraf da buradan
 okuyor.
 """
 
+SAHNE_KOLU_TAVANI = 8
+"""Sahne sayisi deneyinin EN BUYUK kolu — huninin varsaymasi gereken hal.
+
+`scripts/uret.sh` slotu saate gore iki kola ayiriyor: 0/6/12/18 → 6 sahne,
+3/9/15/21 → 8 sahne. Bir aday kuyruga girerken hangi slota duseceğini
+BILMIYOR, o yuzden terfi kapisi en kotu hali varsaymak zorunda.
+
+⚠️ Olculdu (2026-08-19, kuru koşum): `Batalla de Boyacá` menu 7. Alti
+sahneli slotta uretilebilir, sekiz sahneli slotta plan kapisi
+(`_capa_arzi_kusuru`) reddeder — ve o red bir URETIM SLOTU yakar, cunku
+aday kuyruktan cekilmis olur. Terfide 6 varsaymak, yari slotlarda yanacak
+adayi kuyruga sokmak demek.
+
+⚠️ URETIM bu tavani KULLANMIYOR: `run_cycle` slotun GERCEK sahne sayisini
+biliyor ve onu geciriyor. Tavan yalnizca "hangi slot oldugunu bilmeyen"
+taraf icin.
+"""
+
 ADAY_SOGUMA_SAATI = 24
 """Reddedilen bir Notion adayinin kuyrukta yeniden gorunmesi icin gecmesi
 gereken sure.
@@ -821,7 +839,11 @@ class KapmaKarari:
 
 
 def aday_kapilabilir_mi(
-    baslik: str, state: dict[str, Any], *, bicim: "VideoBicimi"
+    baslik: str,
+    state: dict[str, Any],
+    *,
+    bicim: "VideoBicimi",
+    sahne_sayisi: int | None = None,
 ) -> KapmaKarari:
     """Uretim bu adayi SIMDI kapabilir mi — kuyrugun TEK kapma olcutu.
 
@@ -865,11 +887,17 @@ def aday_kapilabilir_mi(
             f"{kalan_saat:.1f} saat daha soğumada",
             "soguma",
         )
+    # ⚠️ SAHNE SAYISI OLCUTUN KENDISI — sabit degil. Plan kapisi
+    # (`_capa_arzi_kusuru`) slotun GERCEK sahne sayisiyla olcuyor; burasi
+    # sabit 6 varsayarsa sekiz sahneli slotta menusu 6-7 olan aday KAPILIR
+    # ve plan asamasinda reddedilir, yani slot yanar. Olculdu (2026-08-19):
+    # `Batalla de Boyacá` menu 7.
+    gereken = int(sahne_sayisi or ASGARI_SAHNE_ARZI)
     envanter = arsiv_envanteri(baslik, bicim=bicim)
-    if not arsiv_videoyu_tasir(envanter, ASGARI_SAHNE_ARZI):
+    if not arsiv_videoyu_tasir(envanter, gereken):
         return KapmaKarari(
             False,
-            f"arşiv menüsü {len(envanter)} < {ASGARI_SAHNE_ARZI} — her sahneye "
+            f"arşiv menüsü {len(envanter)} < {gereken} — her sahneye "
             "ayrı görsel düşmüyor",
             "arsiv",
         )
@@ -7451,7 +7479,9 @@ def run_cycle(
             # ⚠️ Olcut `aday_kapilabilir_mi`de — HUNI DE AYNISINI cagiriyor.
             # Burada yeniden yazmak, 2026-08-19'da olculen ayrismayi geri
             # getirirdi (terfi 12/`arsiv_menusu`, kapma 6/`arsiv_envanteri`).
-            karar = aday_kapilabilir_mi(sirasiyla.baslik, state, bicim=bicim)
+            karar = aday_kapilabilir_mi(
+                sirasiyla.baslik, state, bicim=bicim, sahne_sayisi=sahne_sayisi
+            )
             if not karar.kapilabilir:
                 print(
                     f"ℹ️ aday atlandı ({sirasiyla.baslik}): {karar.gerekce}",
