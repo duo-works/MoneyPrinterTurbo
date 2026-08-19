@@ -72,7 +72,9 @@ def test_zaman_asimi_DENEMEYI_yakar_kosumu_degil(monkeypatch):
     def sahte(system: str, user: str, **_) -> dict:
         cagrilar.append(user)
         if len(cagrilar) == 1:
-            raise ya.CikarimZamanAsimi("Hermes CLI inference timed out after 360 seconds")
+            raise ya.CikarimZamanAsimi(
+                "Hermes CLI inference timed out after 360 seconds"
+            )
         return _plan_yaniti()
 
     monkeypatch.setattr(ya, "_json_completion", sahte)
@@ -149,3 +151,113 @@ def test_sinir_KIMI_olcusunun_ustunde_ve_uzun_formatin_altinda():
     assert ya.CIKARIM_ZAMAN_ASIMI < ya.UZUN_CIKARIM_ZAMAN_ASIMI
     # En kotu durum 5 deneme, ve bu 3 saatlik koşum araligina sigmali.
     assert 5 * ya.CIKARIM_ZAMAN_ASIMI < 3 * 60 * 60
+
+
+# ---------------------------------------------------------------------------
+# ⚠️ ARKA UC ESITLIGI — yukaridaki dort test `_json_completion`i MOCKLUYOR,
+# yani "asim `CikarimZamanAsimi` olarak CIKIYOR mu" sorusunu hic sormuyorlar.
+# O soru arka uca gore farkli cevaplaniyordu: `hermes` dalinda
+# `subprocess.TimeoutExpired` cevriliyordu, `openai` dalinda `APITimeoutError`
+# ceviriLMEDEN yukari gidiyor ve cagirandaki `except CikarimZamanAsimi`
+# filtresini deliyordu. Yani 19 Agu'da kapatilan kusur, arka uc Kimi'ye geri
+# cevrildiginde AYNEN geri geliyordu.
+#
+# Bu, deponun ucuncu kez kaydettigi "duzeltme tek yola uygulandi" sinifi:
+# `METIN_JSON_DENEMESI` docstring'i ("AYNI DERS, IKINCI YOL") ve
+# `GORU_ZAMAN_ASIMI` docstring'i ("hermes yolunda gomuluydu, openai yolunda
+# hic zaman asimi yoktu") ayni korlugu yaziyor.
+# ---------------------------------------------------------------------------
+
+
+class _SahteCagrilar:
+    def __init__(self, hata: Exception):
+        self._hata = hata
+        self.cagri_sayisi = 0
+
+    def create(self, **_):
+        self.cagri_sayisi += 1
+        raise self._hata
+
+
+class _SahteIstemci:
+    def __init__(self, hata: Exception):
+        self.completions = _SahteCagrilar(hata)
+
+    @property
+    def chat(self):
+        return self
+
+
+def _openai_arka_ucu(monkeypatch, hata: Exception) -> _SahteIstemci:
+    istemci = _SahteIstemci(hata)
+    monkeypatch.setattr(ya, "INFERENCE_BACKEND", "openai")
+    monkeypatch.setattr(ya, "_openai_client", lambda: (istemci, "moonshotai/kimi-k2.6"))
+    return istemci
+
+
+def _asim_hatasi() -> Exception:
+    import httpx
+    from openai import APITimeoutError
+
+    return APITimeoutError(request=httpx.Request("POST", "https://ornek.test/v1"))
+
+
+def test_OPENAI_yolunda_asim_da_CikarimZamanAsimi_oluyor(monkeypatch):
+    """⚠️ Arka uc `openai` iken de asim, cagiranin YAKALADIGI tur olmali.
+
+    Cagiran taraf (`generate_content_plan`) hangi saglayicinin kullanildigini
+    bilmiyor ve bilmemeli; `except CikarimZamanAsimi` iki dalda da tutmali.
+    """
+    istemci = _openai_arka_ucu(monkeypatch, _asim_hatasi())
+
+    with pytest.raises(ya.CikarimZamanAsimi):
+        ya._json_completion("sistem", "kullanici", zaman_asimi=7)
+
+    # ⚠️ Asim TEKRAR DENENMIYOR: buradaki dongu okunamayan cevap icin.
+    # 3 kez denemek bir denemeyi 3 x 360 sn yapardi, bes deneme 90 dakika.
+    assert istemci.completions.cagri_sayisi == 1, "asim tekrar denenmemeli"
+
+
+def test_OPENAI_yolunda_SAGLAYICI_hatasi_asim_gibi_gorunmuyor(monkeypatch):
+    """⚠️ Kapinin asil sinavi. 403 `CikarimZamanAsimi`ye cevrilseydi olu bir
+    anahtar bes denemeyi yakar ve zamanlayici logu "red | skor 0" derdi — o
+    satir kalite reddinden ayirt edilemez. Tam da 18 Agu'da yasanan hata.
+    """
+    _openai_arka_ucu(
+        monkeypatch, RuntimeError("Error code: 403 - Key limit exceeded (total limit)")
+    )
+
+    with pytest.raises(RuntimeError, match="403") as yakalanan:
+        ya._json_completion("sistem", "kullanici", zaman_asimi=7)
+
+    assert not isinstance(yakalanan.value, ya.CikarimZamanAsimi)
+
+
+def test_IKI_arka_uc_da_ayni_turu_firlatiyor(monkeypatch):
+    """Esitligin kendisi pinleniyor — sayilar degil ILISKI (`test_kalite_kapisi` kalibi).
+
+    Yarin ucuncu bir arka uc eklenirse bu test onu kapsamaz, ama mevcut iki
+    yolun AYRISMASINI yakalar; ayrisma bu kusurun tek sebebiydi.
+    """
+    import subprocess
+
+    # hermes dali: `subprocess.TimeoutExpired` -> `CikarimZamanAsimi`
+    monkeypatch.setattr(ya, "INFERENCE_BACKEND", "hermes-cli")
+
+    def sahte_popen(*_a, **_k):
+        raise AssertionError("bu testte surec baslatilmamali")
+
+    def sahte_run_hermes(_komut, timeout):
+        raise ya.CikarimZamanAsimi(f"Hermes CLI inference timed out after {timeout}")
+
+    monkeypatch.setattr(ya, "_run_hermes", sahte_run_hermes)
+    monkeypatch.setattr(subprocess, "Popen", sahte_popen)
+
+    with pytest.raises(ya.CikarimZamanAsimi):
+        ya._json_completion("sistem", "kullanici", zaman_asimi=7)
+
+    # openai dali: `APITimeoutError` -> ayni tur
+    _openai_arka_ucu(monkeypatch, _asim_hatasi())
+
+    with pytest.raises(ya.CikarimZamanAsimi):
+        ya._json_completion("sistem", "kullanici", zaman_asimi=7)

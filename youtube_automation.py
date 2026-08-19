@@ -130,9 +130,11 @@ ONARILABILIR_BANT = 10
 AI_VISUAL_FALLBACK_ENABLED = str(
     config.app.get("enable_ai_visual_fallback", "false")
 ).strip().lower() in {"1", "true", "yes", "on"}
-INFERENCE_BACKEND = str(
-    config.app.get("youtube_automation_inference_backend", "hermes-cli")
-).strip().lower()
+INFERENCE_BACKEND = (
+    str(config.app.get("youtube_automation_inference_backend", "hermes-cli"))
+    .strip()
+    .lower()
+)
 # Trend hunisinin CLI koprusu. PATH'te olmadigi icin (her iki kurulumda da bir
 # sanal ortamin icinde) yol yapilandirmadan geliyor; bos birakilirsa
 # `shutil.which` denenir ve bulunamazsa anlasilir bir hata verilir.
@@ -174,24 +176,24 @@ EDITORIAL_ANCHOR_POOL = [
     # gosterdi: Pompeii 0, Leptis Magna 0, Teotihuacan 2, Krak des Chevaliers
     # 2, Skara Brae 3, Terracotta Army 4, Alhambra 5, Sutton Hoo 7.
     # Sutton Hoo'nun 7'si onemli — bu hat onu secmis ve 25 almisti.
-    "Petra",                    # 24
-    "Borobudur",                # 28
-    "Stonehenge",               # 12
+    "Petra",  # 24
+    "Borobudur",  # 28
+    "Stonehenge",  # 12
     "Mesa Verde National Park",  # 47
-    "Gobekli Tepe",             # 18
-    "Ephesus",                  # 29
-    "Hagia Sophia",             # 29
-    "Baalbek",                  # 17
-    "Pont du Gard",             # 15
-    "Brooklyn Bridge",          # 28
-    "Panama Canal",             # 20
-    "Suez Canal",               # 18
-    "Cutty Sark",               # 25
-    "Mary Rose",                # 23
-    "Antikythera mechanism",    # 17
-    "Book of Kells",            # 33
-    "Staffordshire Hoard",      # 33
-    "Tutankhamun",              # 29
+    "Gobekli Tepe",  # 18
+    "Ephesus",  # 29
+    "Hagia Sophia",  # 29
+    "Baalbek",  # 17
+    "Pont du Gard",  # 15
+    "Brooklyn Bridge",  # 28
+    "Panama Canal",  # 20
+    "Suez Canal",  # 18
+    "Cutty Sark",  # 25
+    "Mary Rose",  # 23
+    "Antikythera mechanism",  # 17
+    "Book of Kells",  # 33
+    "Staffordshire Hoard",  # 33
+    "Tutankhamun",  # 29
     # ⚠️ 2026-08-14 ikinci tur — havuz SIFIRLANMISTI. Olculdu: 34 capanin
     # 34'u de kullanilmis, `eligible_anchors` bos donuyor ve yedek kipteki
     # koşumlar "could not generate a sufficiently distinct topic" ile
@@ -205,16 +207,16 @@ EDITORIAL_ANCHOR_POOL = [
     # Lines 11, Machu Picchu 11, Sutton Hoo helmet 11, Carnac stones 7,
     # Karnak Temple 7, Chand Baori 6, Teotihuacan 5, Leptis Magna 4,
     # Skara Brae 3, Vasa ship 2, Ggantija 1.
-    "Angkor Thom",              # 14
-    "Mont Saint-Michel",        # 14
-    "Alhambra",                 # 32
-    "Bagan",                    # 40
-    "Pompeii",                  # 12
-    "Herculaneum",              # 38
-    "Terracotta Army",          # 12
-    "Bayeux Tapestry",          # 15
-    "Eiffel Tower",             # 12
-    "Trevi Fountain",           # 27
+    "Angkor Thom",  # 14
+    "Mont Saint-Michel",  # 14
+    "Alhambra",  # 32
+    "Bagan",  # 40
+    "Pompeii",  # 12
+    "Herculaneum",  # 38
+    "Terracotta Army",  # 12
+    "Bayeux Tapestry",  # 15
+    "Eiffel Tower",  # 12
+    "Trevi Fountain",  # 27
     # ⚠️ 2026-08-16 UCUNCU tur — havuz YINE sifirlandi ve bu kez bedeli
     # olculdu: kanal 27 SAAT sessiz kaldi. 04:18 koşumunun logu birebir
     # "⚠️ Editoryal capa havuzu TUKENDI" yazdi, model konusunu serbest
@@ -246,14 +248,14 @@ EDITORIAL_ANCHOR_POOL = [
     # icinde "city" gecen her dosya sayiliyor, yani sayi guvenilir degil.
     # Ayni tuzak "Great Wall of China" → "china", "Valley of the Kings" →
     # "kings", "Himeji Castle" → "castle" icin de var.
-    "Mycenae",                  # 20
-    "Abu Simbel",               # 19
-    "Colosseum",                # 15
-    "Knossos",                  # 14
-    "Jerash",                   # 14
-    "Copan",                    # 14
-    "Aphrodisias",              # 12
-    "Todai-ji",                 # 27
+    "Mycenae",  # 20
+    "Abu Simbel",  # 19
+    "Colosseum",  # 15
+    "Knossos",  # 14
+    "Jerash",  # 14
+    "Copan",  # 14
+    "Aphrodisias",  # 12
+    "Todai-ji",  # 27
     # ⚠️ "Karnak" ONCE EKLENDI, SONRA CIKARILDI — olcum araci ile KAPININ
     # kendisi ayrisiyor. `arsiv_arzi_olc.py` 13 dedi, ama uretimin gercekten
     # kullandigi `arsiv_envanteri` yalnizca 6 dosya veriyor. Ikisi ayni seyi
@@ -325,17 +327,17 @@ EDITORIAL_ANCHOR_POOL = [
     # bedelinden ucuz. Cikarilmadan sonra bilinen ince capa KALMADI, yani
     # neredeyse hic atesleneceği icin simdi yazilmadi; gorü on kontrolu
     # (ayri DW) bu isi zaten ustlenebilir.
-    "Roman aqueduct",           # 20
-    "Cryptoporticus",           # 16
-    "Mastaba",                  # 15
+    "Roman aqueduct",  # 20
+    "Cryptoporticus",  # 16
+    "Mastaba",  # 15
     #
     # ⚠️ Ikinci hasat (ayni gun): tohum kumesi ANIT/SIT agirlikli genisletildi
     # (Ziggurats, Hittite sites, Mesoamerican pyramids, Ancient Roman baths...),
     # 83 alt kategori tarandi, 9'u Wikidata koprusuyle makaleye baglandi.
     # Tamami Commons+Wikidata, yani ANAHTARSIZ ve KREDISIZ.
-    "Ziggurat of Ur",           # 24
-    "Tepe Sialk",               # 40
-    "Tipasa",                   # 40
+    "Ziggurat of Ur",  # 24
+    "Tepe Sialk",  # 40
+    "Tipasa",  # 40
     # Menu kapisinda kalanlar: Dur-Kurigalzu 2, San Andres 0, Amasra Fortress 6.
     # "Karnak" yine cikti ve capa kapisi onu dogru sekilde eledi.
     #
@@ -405,7 +407,9 @@ class QualityReview:
 
 
 class SourceMaterialRejected(RuntimeError):
-    def __init__(self, review: QualityReview, credits: list[dict[str, Any]] | None = None):
+    def __init__(
+        self, review: QualityReview, credits: list[dict[str, Any]] | None = None
+    ):
         super().__init__("source materials failed the pre-render visual quality gate")
         self.review = review
         # ⚠️ Kunye de tasiniyor: reddin SEBEBINI okumak icin sahnenin NE
@@ -551,9 +555,23 @@ def _kanca_tekrari(senaryo: str, onceki_kancalar: list[str]) -> bool:
 
 def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
     generic = {
-        "ancient", "roman", "greek", "great", "city", "temple", "lighthouse",
-        "mechanism", "shipwreck", "pyramid", "pyramids", "construction",
-        "engineering", "road", "ruins", "site", "statue",
+        "ancient",
+        "roman",
+        "greek",
+        "great",
+        "city",
+        "temple",
+        "lighthouse",
+        "mechanism",
+        "shipwreck",
+        "pyramid",
+        "pyramids",
+        "construction",
+        "engineering",
+        "road",
+        "ruins",
+        "site",
+        "statue",
         # ⚠️ YAPISAL ISIMLER (2026-08-16). Bunlar bir yapinin TURU; iki farkli
         # yapinin ayni turden olmasi ayni konu olduklarini gostermez.
         # Olculdu — havuzda YALNIZCA bu yuzden engellenen iki capa vardi:
@@ -562,7 +580,8 @@ def is_duplicate_visual_anchor(candidate: str, previous: list[str]) -> bool:
         # ⚠️ Liste KORLEMESINE genisletilmedi: kumeyi buyutmek tekrar
         # savunmasini zayiflatir. Once "hangi capa yalnizca yapisal bir isim
         # yuzunden engelli" olculdu, sonra yalnizca kanitlananlar eklendi.
-        "cathedral", "bridge",
+        "cathedral",
+        "bridge",
     }
     candidate_words = _normalize_topic(candidate)
     if not candidate_words:
@@ -1152,7 +1171,9 @@ RESMEDILEMEZ_KALIPLAR = (
         r"(?:does not|cannot|says nothing|is silent)\b",
         re.IGNORECASE,
     ),
-    re.compile(r"\bfrom (?:this|the) (?:summary|account|record) alone\b", re.IGNORECASE),
+    re.compile(
+        r"\bfrom (?:this|the) (?:summary|account|record) alone\b", re.IGNORECASE
+    ),
     re.compile(r"\bcannot be reconstructed (?:here|from this)\b", re.IGNORECASE),
     # ⚠️ Model ayni ailenin YENI bir ifadesini buldu (2026-08-13, Mehmed II
     # 2. deneme): "Why it ended is not known from the evidence given."
@@ -1645,7 +1666,12 @@ def plan_kusurlari(
     # Yalnizca `konu` disaridan verildiginde uygulanir: yedek kipte capayi
     # model sectigi icin karsilastirilacak bir konu YOK. Shorts'ta dar capa
     # kasitli ve dokunulmuyor (bkz. "Vassar College" gerekcesi, `:403`).
-    if capa_gecerli and konu and not bicim.dikey and not (anchor_words & _normalize_topic(konu)):
+    if (
+        capa_gecerli
+        and konu
+        and not bicim.dikey
+        and not (anchor_words & _normalize_topic(konu))
+    ):
         kusurlar.append(
             f"visual anchor {plan.visual_anchor!r} shares no word with the topic "
             f"{konu!r}. In a long form video every scene search term must carry the "
@@ -1675,7 +1701,9 @@ def plan_kusurlari(
         # cunku eski davranis da ilk kusurda duruyordu ve dort kusuru birden
         # yazmak 8 sahnede 32 satir uretirdi.
         if not narration or len(term.split()) < 2:
-            kusurlar.append(f"scene {index} must contain narration and a concrete search term")
+            kusurlar.append(
+                f"scene {index} must contain narration and a concrete search term"
+            )
         elif capa_gecerli and not (_normalize_topic(term) & anchor_words):
             kusurlar.append(f"scene {index} search term must include the visual anchor")
         elif kusur := resmedilemez_kusuru(narration):
@@ -1702,7 +1730,8 @@ def plan_kusurlari(
     # Istem cesitliligi ZATEN istiyordu ("Vary what the camera is actually
     # on..."). DW-87 dersi: modele soylemek yetmiyor, KOD kontrol etmeli.
     terimler = [
-        " ".join(sorted(_normalize_topic(scene.get("search_term", "")))) for scene in plan.scenes
+        " ".join(sorted(_normalize_topic(scene.get("search_term", ""))))
+        for scene in plan.scenes
     ]
     tekrarlayan = {terim for terim in terimler if terimler.count(terim) > 1}
     if tekrarlayan:
@@ -1814,9 +1843,7 @@ def parse_cli_result(stdout: str) -> dict[str, Any]:
         absolute_end = start + relative_end
         if not isinstance(payload, dict):
             continue
-        if absolute_end > best_end or (
-            absolute_end == best_end and start < best_start
-        ):
+        if absolute_end > best_end or (absolute_end == best_end and start < best_start):
             best = payload
             best_end = absolute_end
             best_start = start
@@ -1858,8 +1885,16 @@ def _kaynak_basligi(baslik: str) -> str:
     # yedi — "Pottery found at the Publo Hungo Pavie. R. H. delt." ifadesinde
     # `[\w.\s]*` bastan itibaren esletti ve geriye bos dize kaldi.
     kesim = len(ad)
-    for kunye in (r"\bdelt\b", r"\blith\b", r"\bduval", r"\bsteam press\b",
-                  r"\bphilada\b", r"to accompany", r"reports of the", r"\(IA\b"):
+    for kunye in (
+        r"\bdelt\b",
+        r"\blith\b",
+        r"\bduval",
+        r"\bsteam press\b",
+        r"\bphilada\b",
+        r"to accompany",
+        r"reports of the",
+        r"\(IA\b",
+    ):
         if bulunan := re.search(kunye, ad, flags=re.IGNORECASE):
             kesim = min(kesim, bulunan.start())
     kesilmis = ad[:kesim]
@@ -1930,7 +1965,9 @@ def format_commons_credits(credits: list[dict[str, Any]]) -> str:
         # lisans ihlali.
         serbest = is_safe_license(lisans)
         parcalar = [_kaynak_basligi(str(credit.get("title", "")))]
-        if sanatci := _kaynak_sanatcisi(str(credit.get("artist", "")), zorunlu=not serbest):
+        if sanatci := _kaynak_sanatcisi(
+            str(credit.get("artist", "")), zorunlu=not serbest
+        ):
             parcalar.append(sanatci)
         if not serbest:
             hepsi_serbest = False
@@ -2329,7 +2366,11 @@ def kareyi_onar(
         18:28  78/85  "kare 10: anlatilan kisi degil"      <- IKINCIL
     """
     gecerli_sahne = range(1, len(plan.scenes) + 1)
-    agir = [n for n in agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler) if n in gecerli_sahne]
+    agir = [
+        n
+        for n in agir_kusurlu_kareler(review, bicim.kare_yuvasi, ornekler)
+        if n in gecerli_sahne
+    ]
     # ⚠️ AGIR KUSURLAR ONCE. Tavan dolarsa elenecek olan siradan sikayet
     # olmali: agir kusur tek basina videoyu reddettiriyor, siradan sikayet
     # yalnizca skoru dusuruyor.
@@ -2400,8 +2441,8 @@ def kareyi_onar(
             kusur_metni[sahne_no].extend(metinler)
     try:
         data = _json_completion(
-            "Return JSON only: {\"picks\": [{\"n\": <scene number>, \"source_file\": "
-            "\"<exact dosya value from the menu>\"}]}. For each scene choose the archive "
+            'Return JSON only: {"picks": [{"n": <scene number>, "source_file": '
+            '"<exact dosya value from the menu>"}]}. For each scene choose the archive '
             "file that best illustrates the sentence spoken during it. Copy the file name "
             "exactly. Never choose the same file for two scenes, and never invent a name.",
             json.dumps(
@@ -2789,7 +2830,11 @@ def muzik_sec(
     kademeler: list[list[str]] = []
     if istenen:
         kademeler.append(
-            [a for a in havuz if _ruh_halini_coz(kunye.get(a, {}).get("ruh_hali")) == istenen]
+            [
+                a
+                for a in havuz
+                if _ruh_halini_coz(kunye.get(a, {}).get("ruh_hali")) == istenen
+            ]
         )
         kademeler.append(
             [a for a in havuz if not _ruh_halini_coz(kunye.get(a, {}).get("ruh_hali"))]
@@ -2810,7 +2855,7 @@ def muzik_sec(
     try:
         yol.parent.mkdir(parents=True, exist_ok=True)
         yol.write_text(
-            json.dumps(gecmis[-len(havuz):], ensure_ascii=False, indent=2),
+            json.dumps(gecmis[-len(havuz) :], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     except OSError as hata:
@@ -2824,7 +2869,9 @@ def _openai_client() -> tuple[OpenAI, str]:
     api_key = str(config.app.get("openai_api_key", "")).strip()
     if not api_key:
         raise RuntimeError("openai_api_key is not configured in config.toml")
-    model = str(config.app.get("openai_model_name", "gpt-4o-mini")).strip() or "gpt-4o-mini"
+    model = (
+        str(config.app.get("openai_model_name", "gpt-4o-mini")).strip() or "gpt-4o-mini"
+    )
     base_url = str(config.app.get("openai_base_url", "")).strip()
     kwargs: dict[str, Any] = {"api_key": api_key}
     if base_url:
@@ -2933,7 +2980,14 @@ def _hermes_hata_ozeti(
 
 
 class CikarimZamanAsimi(RuntimeError):
-    """`hermes` cagrisi zaman asimina ugradi — SAGLAYICI HATASI DEGIL.
+    """Cikarim cagrisi zaman asimina ugradi — SAGLAYICI HATASI DEGIL.
+
+    ⚠️ HER IKI ARKA UCTAN DA FIRLATILIR. Ilk yazildiginda yalnizca `hermes`
+    dalindan (`subprocess.TimeoutExpired`) firlatiliyordu; `openai` dalinda
+    asim `APITimeoutError` olarak cikip cagirandaki `except CikarimZamanAsimi`
+    filtresini DELIP GECIYORDU. Yani arka uc `openai`ye cevrildiginde
+    `826777a`nin kapattigi kusur aynen geri geliyordu. Tur, arka uca gore
+    DEGISMEMELI: cagiran taraf hangi saglayicinin kullanildigini bilmiyor.
 
     ⚠️ AYRI TUR OLMASI SART. Cagiran taraf zaman asimini yutup denemeye
     devam ediyor; ayni sefkati 403/429'a gosterirse olu bir saglayici bes
@@ -3075,6 +3129,7 @@ def goru_zaman_asimi(bicim: "VideoBicimi | None" = None) -> int:
         return GORU_ZAMAN_ASIMI
     return UZUN_GORU_ZAMAN_ASIMI
 
+
 UZUN_CIKARIM_ZAMAN_ASIMI = 600
 """Uzun format icin ust sinir.
 
@@ -3129,21 +3184,42 @@ def _json_completion(
     # yolundakinden (0.1) daha fazla degisiklik birakiyor.
     son_hata: Exception | None = None
     for deneme in range(1, METIN_JSON_DENEMESI + 1):
-        response = client.chat.completions.create(
-            model=model,
-            temperature=0.65,
-            response_format={"type": "json_object"},
-            max_tokens=AZAMI_CIKTI_TOKEN,
-            # ⚠️ Zaman asimi ISTEMCIYE de veriliyor. Verilmezse `hermes` yolunda
-            # yakalanan asilma burada SESSIZCE sonsuza kadar bekler ve
-            # zamanlayici slotunu yer.
-            timeout=float(zaman_asimi),
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            **_akil_yurutmeyi_kapat(base_url),
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                temperature=0.65,
+                response_format={"type": "json_object"},
+                max_tokens=AZAMI_CIKTI_TOKEN,
+                # ⚠️ Zaman asimi ISTEMCIYE de veriliyor. Verilmezse `hermes`
+                # yolunda yakalanan asilma burada SESSIZCE sonsuza kadar
+                # bekler ve zamanlayici slotunu yer.
+                timeout=float(zaman_asimi),
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                **_akil_yurutmeyi_kapat(base_url),
+            )
+        except APITimeoutError as exc:
+            # ⚠️ AYNI DERS, UCUNCU YOL. `826777a` zaman asiminin KOSUMU
+            # oldurmesini kapatti ama yalnizca `hermes` dalinda: orada
+            # `subprocess.TimeoutExpired` -> `CikarimZamanAsimi`. Bu dalda
+            # asim `APITimeoutError` olarak cikiyor, cagiran taraftaki
+            # `except CikarimZamanAsimi` onu GORMUYOR ve kosum yigin iziyle
+            # oluyor — tam da 00:05 kosumunda olculen davranis.
+            #
+            # ⚠️ TEKRAR DENENMIYOR, YUKARI FIRLATILIYOR. Buradaki dongu
+            # okunamayan cevap icindir; asimi burada 3 kez denemek bir
+            # denemeyi 3 x 360 sn yapardi ve bes deneme 90 dakikaya cikardi.
+            # Kayitli tasarim: asim BIR denemeyi yakar, kosumu degil.
+            #
+            # ⚠️ YALNIZCA `APITimeoutError`. Ust sinifi `APIConnectionError`
+            # yakalanmiyor, 403/429 zaten hic yakalanmiyor: olu bir anahtar
+            # bes denemeyi yakip loga "red | skor 0" yazdirirdi ve o satir
+            # kalite reddinden ayirt edilemezdi (`CikarimZamanAsimi`).
+            raise CikarimZamanAsimi(
+                f"openai text inference timed out after {zaman_asimi} seconds"
+            ) from exc
         try:
             return _json_govdesi(response.choices[0].message.content)
         except (RuntimeError, ValueError) as hata:
@@ -3239,7 +3315,10 @@ def _vision_json(
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": json.dumps(prompt, ensure_ascii=False)},
+                        {
+                            "type": "text",
+                            "text": json.dumps(prompt, ensure_ascii=False),
+                        },
                         {
                             "type": "image_url",
                             "image_url": {
@@ -3328,7 +3407,9 @@ def kapanis(metin: str) -> str:
     izleyici, kanalin var oldugunu bile ogrenmeden kayiyor. 1.115 izlenme
     yalnizca 1 abone getirdi.
     """
-    cumleler = [p.strip() for p in re.split(r"(?<=[.!?])\s", metin.strip()) if p.strip()]
+    cumleler = [
+        p.strip() for p in re.split(r"(?<=[.!?])\s", metin.strip()) if p.strip()
+    ]
     return cumleler[-1] if cumleler else ""
 
 
@@ -3374,7 +3455,8 @@ def _kapanis_tekrari(senaryo: str, onceki_kapanislar: list[str]) -> bool:
         # Cok kisa kapanista ortusme orani gurultu; olcmeye degmez.
         return False
     return any(
-        tekrar_olcusu.kelime_ortusmesi(kapanis_metni, onceki or "") >= KAPANIS_ORTUSME_ORANI
+        tekrar_olcusu.kelime_ortusmesi(kapanis_metni, onceki or "")
+        >= KAPANIS_ORTUSME_ORANI
         for onceki in onceki_kapanislar
     )
 
@@ -3397,7 +3479,9 @@ ihtimalle uc deneme yanar, koşum olmez.
 def _son_kapanislar(adet: int = TEKRAR_PENCERESI) -> list[str]:
     """Daha once kullanilmis kapanislar — `_son_kancalar`in ikizi."""
     return [
-        k for k in (item.get("kapanis", "") for item in load_state().get("published", [])) if k
+        k
+        for k in (item.get("kapanis", "") for item in load_state().get("published", []))
+        if k
     ][-adet:]
 
 
@@ -3413,9 +3497,11 @@ def _son_kancalar(adet: int = TEKRAR_PENCERESI) -> list[str]:
     Sadece yayinlanan kayitlar okunuyor: reddedilen bir videonun kancasi
     tekrar denenebilir, sorun onda degildi.
     """
-    return [k for k in (item.get("hook", "") for item in load_state().get("published", [])) if k][
-        -adet:
-    ]
+    return [
+        k
+        for k in (item.get("hook", "") for item in load_state().get("published", []))
+        if k
+    ][-adet:]
 
 
 BASLIK_BICIMI_PENCERESI = 3
@@ -3432,9 +3518,11 @@ _baslik_bicimi = tekrar_olcusu.baslik_bicimi
 
 def _son_basliklar(adet: int = BASLIK_BICIMI_PENCERESI) -> list[str]:
     """Son yayinlanan basliklar — bicim tekrarini olcmek icin."""
-    return [t for t in (item.get("title", "") for item in load_state().get("published", [])) if t][
-        -adet:
-    ]
+    return [
+        t
+        for t in (item.get("title", "") for item in load_state().get("published", []))
+        if t
+    ][-adet:]
 
 
 def _baslik_bicimi_tekrari(baslik: str, onceki_basliklar: list[str]) -> bool:
@@ -3593,9 +3681,7 @@ def arsiv_envanteri(
     if anahtar in _ENVANTER_ONBELLEGI:
         return _ENVANTER_ONBELLEGI[anahtar]
     try:
-        adaylar = wikimedia_materials.arsiv_menusu(
-            konu, sinir=sinir, hedef_oran=oran
-        )
+        adaylar = wikimedia_materials.arsiv_menusu(konu, sinir=sinir, hedef_oran=oran)
     except Exception:
         # ⚠️ Menu bir IYILESTIRME; cekilemezse uretim durmamali. Kategori ve
         # arama uclari 429/5xx donebiliyor ve o an plan asamasindayiz, yani
@@ -4119,9 +4205,9 @@ def _menu_talimati(
         "that moment cannot be a scene, however important it is. Choose entries whose "
         "date suits the story, and do not describe a modern photograph as a historical "
         "scene.\n"
-        "NEVER MAKE THE PICTURE ITSELF THE SUBJECT OF A SENTENCE. \"An 1871 image shows "
-        "the vessel\", \"another photograph depicts her under sail\" and \"one later port "
-        "photograph may show Sydney\" are not narration; they are captions, and a video "
+        'NEVER MAKE THE PICTURE ITSELF THE SUBJECT OF A SENTENCE. "An 1871 image shows '
+        'the vessel", "another photograph depicts her under sail" and "one later port '
+        'photograph may show Sydney" are not narration; they are captions, and a video '
         "of captions is a failed video. Say what happened to the ship, the building or "
         "the person that the viewer is looking at."
     )
@@ -4560,7 +4646,9 @@ def generate_content_plan(
             script=tiresiz_anlatim(str(data.get("script", "")).strip()),
             scenes=[
                 {
-                    "narration": tiresiz_anlatim(str(scene.get("narration", "")).strip()),
+                    "narration": tiresiz_anlatim(
+                        str(scene.get("narration", "")).strip()
+                    ),
                     "search_term": str(scene.get("search_term", "")).strip(),
                     # Menuden secilen dosya. Bos kalabilir: menusu olmayan
                     # konularda hat eskisi gibi aramayla calisiyor.
@@ -4586,8 +4674,10 @@ def generate_content_plan(
         # ⚠️ CAPA ONARIMI EN BASTA: terim onarimindan ONCE calismali, cunku
         # terimler capaya gore yeniden turetiliyor. Sirasi ters olsaydi
         # tekillestirilen terimler hemen ardindan uzerine yazilirdi.
-        if not bicim.dikey and konu and (
-            eski_capa := capayi_konuya_genislet(plan, konu)
+        if (
+            not bicim.dikey
+            and konu
+            and (eski_capa := capayi_konuya_genislet(plan, konu))
         ):
             print(
                 f"ℹ️ çapa {eski_capa!r} → {plan.visual_anchor!r} genişletildi "
@@ -4598,9 +4688,7 @@ def generate_content_plan(
         # `arama_terimlerini_tekillestir`de: tek bir yer hakkinda 30 sahnede
         # benzer terim kacinilmaz, ama sahne gorselini ALINTIDAN aldigi icin
         # bu gorsel tekrarina yol acmiyor. Shorts'ta kapi aynen sert kaliyor.
-        if bicim.kare_yuvasi == 1 and (
-            onarilan := arama_terimlerini_tekillestir(plan)
-        ):
+        if bicim.kare_yuvasi == 1 and (onarilan := arama_terimlerini_tekillestir(plan)):
             print(
                 f"ℹ️ {onarilan} tekrarlayan arama terimi alıntılanan dosyadan "
                 "ayırt edildi",
@@ -4655,9 +4743,7 @@ def generate_content_plan(
         # rolde. Kaldirilamaz: havuz tukendiginde dal hala menusuz kaliyor ve o
         # durumda tek savunma bu. Gerekce `alinti_kusuru` docstring'inde.
         if yumusak_kapilar_acik and (
-            kusur := alinti_kusuru(
-                plan, konu or "", sinir=envanter_sinir, bicim=bicim
-            )
+            kusur := alinti_kusuru(plan, konu or "", sinir=envanter_sinir, bicim=bicim)
         ):
             son_kusur = f"alinti kapisi: {kusur}"
             print(f"⚠️ deneme {deneme}/5 reddedildi — {son_kusur}", flush=True)
@@ -4868,6 +4954,7 @@ def kare_orani(bicim: "VideoBicimi | None" = None) -> float:
     """
     en, boy = kare_olcusu(bicim or SHORTS_BICIMI)
     return en / boy
+
 
 # Merkezden kirpma bu orandan fazlasini atacaksa kirpmak yerine bulanik arka
 # plan kullanilir. 0.35 olculerek secildi: 2:3 AI gorselleri %16 kirpiliyor
@@ -5087,7 +5174,9 @@ def kare_yerlesimi(
             )
             kareler.extend([birlesik, birlesik])
         else:
-            kareler.append(dikeye_uydur(birinci, hedef_dizin / f"sahne-{sira:02d}a.jpg"))
+            kareler.append(
+                dikeye_uydur(birinci, hedef_dizin / f"sahne-{sira:02d}a.jpg")
+            )
             kareler.append(dikeye_uydur(ikinci, hedef_dizin / f"sahne-{sira:02d}b.jpg"))
     return kareler, tam_dolan
 
@@ -5160,7 +5249,9 @@ def create_source_montage(
         draw = ImageDraw.Draw(tile)
         draw.rectangle((0, 0, 54, 34), fill="black")
         draw.text((12, 8), str(numara), fill="white")
-        canvas.paste(tile, ((hucre % columns) * cell_width, (hucre // columns) * cell_height))
+        canvas.paste(
+            tile, ((hucre % columns) * cell_width, (hucre // columns) * cell_height)
+        )
     ayirt_edici = f"-{konu_slug(konu)}" if konu else ""
     # ⚠️ `ek` OLMADAN ikincil denetimi birincil kontak sayfasini EZERDI. O
     # dosya adli kayit: 01 slotundaki kusurun ikincil gorsellerden geldigi,
@@ -5218,7 +5309,9 @@ Antikythera mekanizmasinin semasi icin de gecerli.
 """
 
 
-def uzak_acilis_kareleri(kareler: list[dict[str, Any]], bicim: VideoBicimi) -> list[int]:
+def uzak_acilis_kareleri(
+    kareler: list[dict[str, Any]], bicim: VideoBicimi
+) -> list[int]:
     """1. sahnenin GORUNTUSU uzak plansa [1], degilse bos liste.
 
     ⚠️ NEDEN VAR — `acilis_kadraji_kusuru` (#45) ayni isi DOSYA ADINDAN
@@ -5262,7 +5355,9 @@ def uzak_acilis_kareleri(kareler: list[dict[str, Any]], bicim: VideoBicimi) -> l
     return []
 
 
-def belge_kareleri(kareler: list[dict[str, Any]], plan: ContentPlan, sahne_sayisi: int) -> list[int]:
+def belge_kareleri(
+    kareler: list[dict[str, Any]], plan: ContentPlan, sahne_sayisi: int
+) -> list[int]:
     """Turu fotograf/artwork olmayan sahne numaralari — KOD karar verir.
 
     ⚠️ Karar burada, hakemde degil (DW-87). Hakeme "bu kare ne" diye OLGU
@@ -5372,7 +5467,7 @@ def review_source_materials(
             "a page that arranges SEVERAL pictures together with added titles, "
             "captions or museum credits, the way a lecture slide or an "
             "explanatory panel does, is a composite even when the pictures "
-            'inside it are photographs, '
+            "inside it are photographs, "
             # ⚠️ OLGU SORULUYOR, KARAR SORULMUYOR (DW-87). "Bu acilis iyi mi"
             # diye sorulsaydi model konudan konuya keyfi cevap verirdi; hangi
             # sahnede hangi kadrajin kabul edilebilir oldugu KOD kararidir
@@ -5387,7 +5482,9 @@ def review_source_materials(
     data = _vision_json(prompt, montage, bicim=bicim)
     gorsel_skor = int(data.get("visual_alignment_score", 0))
     kareler = data.get("frames")
-    kareler = [k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else []
+    kareler = (
+        [k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else []
+    )
     sorunlu = [
         int(number)
         for number in data.get("problem_scene_numbers", [])
@@ -5413,7 +5510,9 @@ def review_source_materials(
         visual_alignment_score=gorsel_skor,
         subtitle_readability_score=100,
         issues=[str(issue) for issue in data.get("issues", [])],
-        revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
+        revised_search_terms=[
+            str(term) for term in data.get("revised_search_terms", [])
+        ],
         problem_scene_numbers=sorunlu,
         kareler=kareler,
     )
@@ -5482,7 +5581,11 @@ def ikincil_gorselleri_denetle(
         return []
     try:
         montaj = create_source_montage(
-            cast(list[Path], ikincil), attempt, plan.topic, secilen=secilen, ek="-ikincil"
+            cast(list[Path], ikincil),
+            attempt,
+            plan.topic,
+            secilen=secilen,
+            ek="-ikincil",
         )
         inceleme = review_source_materials(plan, montaj, secilen=secilen, bicim=bicim)
     except Exception as hata:  # noqa: BLE001 - kapi bir iyilestirme, on kosul degil
@@ -5698,7 +5801,7 @@ def acilis_karesi(konu: str) -> str:
 # ⚠️ Ilk iki kalip GOZLENDI; kalanlar ayni sinifin bariz kardesleri ve
 # GOZLENMEDI — biri yanlis eleme yaparsa buradan cikarilmali.
 UZAK_KADRAJ_ISARETLERI = (
-    "remote view",      # olculdu
+    "remote view",  # olculdu
     "from a distance",  # olculdu
     "aerial",
     "panorama",
@@ -5831,6 +5934,7 @@ def render_zaman_asimi(bicim: "VideoBicimi | None" = None) -> int:
     if bicim is None or bicim.dikey:
         return RENDER_ZAMAN_ASIMI
     return UZUN_RENDER_ZAMAN_ASIMI
+
 
 KLIP_PAYI = 1.02
 """Klip suresine eklenen kucuk pay.
@@ -6039,7 +6143,9 @@ _parmak_izi = gorsel_olcum.parmak_izi
 ton_yayilimi = gorsel_olcum.ton_yayilimi
 
 
-def benzer_kareler(dosyalar: list[Path], esik: float = BENZERLIK_ESIGI) -> list[dict[str, Any]]:
+def benzer_kareler(
+    dosyalar: list[Path], esik: float = BENZERLIK_ESIGI
+) -> list[dict[str, Any]]:
     """Birbirine fazla benzeyen sahne ciftleri.
 
     ⚠️ Bu bir KAPI degil, bir OLCUM. Sahneyi reddetmiyor; benzerligi kayda
@@ -6103,9 +6209,7 @@ def _benzerligi_kaydet(
         # Ayni dosyanin ardisik yuvalarda tekrari — `kare_yerlesimi` sonrasinda
         # anlamli, oncesinde her zaman bos.
         ikizler = [
-            [i, i + 1]
-            for i in range(1, len(gecerli))
-            if gecerli[i - 1] == gecerli[i]
+            [i, i + 1] for i in range(1, len(gecerli)) if gecerli[i - 1] == gecerli[i]
         ]
         # ⚠️ Ikizler `benzer_kareler`den CIKARILIYOR. Ayni dosya algisal olarak
         # da ayni, yani cikarilmasalardi liste her koşumda `[A, A]` ciftleriyle
@@ -6201,7 +6305,10 @@ def generate_ai_scene_materials(
     scene_numbers: list[int] | None = None,
 ) -> list[Path]:
     client, _ = _openai_client()
-    model = str(config.app.get("openai_image_model", "gpt-image-1")).strip() or "gpt-image-1"
+    model = (
+        str(config.app.get("openai_image_model", "gpt-image-1")).strip()
+        or "gpt-image-1"
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     files: list[Path] = []
     selected_numbers = list(scene_numbers or range(1, len(plan.scenes) + 1))
@@ -6209,7 +6316,9 @@ def generate_ai_scene_materials(
     revised_by_scene: dict[int, str] = {}
     if revised_search_terms:
         if scene_numbers and len(revised_search_terms) == len(selected_numbers):
-            revised_by_scene = dict(zip(selected_numbers, revised_search_terms, strict=True))
+            revised_by_scene = dict(
+                zip(selected_numbers, revised_search_terms, strict=True)
+            )
         elif len(revised_search_terms) == len(plan.scenes):
             revised_by_scene = {
                 index: term for index, term in enumerate(revised_search_terms, 1)
@@ -6349,9 +6458,7 @@ def generate_ai_scene_materials(
                 )
             except BadRequestError as retry_exc:
                 retry_body = retry_exc.body if isinstance(retry_exc.body, dict) else {}
-                retry_code = str(
-                    retry_body.get("code", getattr(retry_exc, "code", ""))
-                )
+                retry_code = str(retry_body.get("code", getattr(retry_exc, "code", "")))
                 if (
                     retry_code != "moderation_blocked"
                     and "safety_violations" not in str(retry_exc)
@@ -6368,7 +6475,9 @@ def generate_ai_scene_materials(
             download.raise_for_status()
             image_bytes = download.content
         else:
-            raise RuntimeError(f"AI image generation returned no image for scene {index}")
+            raise RuntimeError(
+                f"AI image generation returned no image for scene {index}"
+            )
         destination = target_dir / f"scene-{index:02d}.png"
         with Image.open(io.BytesIO(image_bytes)) as image:
             vertical = ImageOps.fit(
@@ -6555,10 +6664,9 @@ def run_generator(
                 # Yedek acikken bu yol artik her kosumda calistigi icin
                 # sessiz bir carpisma noktasiydi. Arsiv YARDIMCI bir yol;
                 # basarisizligi AI'ya devretmeli, kosumu bitirmemeli.
-                if (
-                    len(replacements) == len(problem_scenes)
-                    and len(replacement_credits) == len(problem_scenes)
-                ):
+                if len(replacements) == len(problem_scenes) and len(
+                    replacement_credits
+                ) == len(problem_scenes):
                     arsiv_degisimi = (replacements, replacement_credits)
                 else:
                     arsiv_degisimi = None
@@ -6934,7 +7042,9 @@ def run_generator(
     )
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / f"{publication_slot_key()}-attempt-{attempt}.log"
-    log_path.write_text(result.stdout + "\n--- STDERR ---\n" + result.stderr, encoding="utf-8")
+    log_path.write_text(
+        result.stdout + "\n--- STDERR ---\n" + result.stderr, encoding="utf-8"
+    )
     if result.returncode:
         raise RuntimeError(f"video generation failed; see {log_path}")
     payload = parse_cli_result(result.stdout)
@@ -7161,7 +7271,7 @@ def review_video(
             '"person": "correct" when the human shown is the person the narration names, '
             '"wrong" when it is a DIFFERENT identifiable person, "unclear" when the '
             'figures are too small, too stylised or too obscured to tell, "none" when the '
-            'narration names no person, '
+            "narration names no person, "
             '"period": "correct" when the thing shown belongs to the era the narration '
             'describes, "wrong" when it belongs to a different era and is presented as '
             'this one, "unclear" when you cannot tell, '
@@ -7184,7 +7294,7 @@ def review_video(
             # Esik veri birikince konacak. Once olc, sonra kapi kur.
             '"lettering": <true when readable words appear INSIDE the picture — a sign, '
             "plaque, caption, book cover, stamp, map label or nameplate — not counting the "
-            'subtitle burned along the bottom, which is intended>, '
+            "subtitle burned along the bottom, which is intended>, "
             # ⚠️ Tur listesi kaynak kapisiyla AYNI olmali; ayrisirsa iki kapi
             # ayni goruntuye baska ad verir ve teshis imkansizlasir. `composite`
             # gerekcesi `FOTOGRAF_OLMAYAN_TURLER`de.
@@ -7192,7 +7302,7 @@ def review_video(
             '"composite" — what the frame actually is; a page that arranges '
             "SEVERAL pictures together with added titles, captions or museum "
             "credits (a lecture slide, an explanatory panel) is a composite even "
-            'when the pictures inside it are photographs}. '
+            "when the pictures inside it are photographs}. "
             "Answer what you can actually see. A recent photograph of the genuine "
             'surviving object is authentic_subject "yes" and period correct; a recent '
             'photograph of something else entirely is "no". When you genuinely cannot '
@@ -7210,9 +7320,13 @@ def review_video(
         visual_alignment_score=gorsel_skor,
         subtitle_readability_score=altyazi_skor,
         issues=[str(issue) for issue in data.get("issues", [])],
-        revised_search_terms=[str(term) for term in data.get("revised_search_terms", [])],
+        revised_search_terms=[
+            str(term) for term in data.get("revised_search_terms", [])
+        ],
         agir_kusurlar=agir,
-        kareler=[k for k in kareler if isinstance(k, dict)] if isinstance(kareler, list) else [],
+        kareler=[k for k in kareler if isinstance(k, dict)]
+        if isinstance(kareler, list)
+        else [],
     )
 
 
@@ -7306,7 +7420,10 @@ def save_state(state: dict[str, Any]) -> None:
     except OSError as hata:
         # ⚠️ ACIK KALIYOR: kilit alinamadi diye uretilmis ve YAYINLANMIS bir
         # videonun kaydi yazilamamasi, yarisin kendisinden daha kotu.
-        print(f"⚠️ durum kilidi alinamadi ({hata}); birlestirme yine de denenecek", flush=True)
+        print(
+            f"⚠️ durum kilidi alinamadi ({hata}); birlestirme yine de denenecek",
+            flush=True,
+        )
         if kilit is not None:
             kilit.close()
             kilit = None
@@ -7317,12 +7434,17 @@ def save_state(state: dict[str, Any]) -> None:
             except (OSError, json.JSONDecodeError) as hata:
                 # Okunamayan bir disk kopyasi yazmayi ENGELLEMEZ; elimizdeki
                 # sozluk bozuk dosyadan iyidir.
-                print(f"⚠️ durum dosyasi okunamadi ({hata}); birlestirme atlandi", flush=True)
+                print(
+                    f"⚠️ durum dosyasi okunamadi ({hata}); birlestirme atlandi",
+                    flush=True,
+                )
             else:
                 if isinstance(diskteki, dict):
                     birlesik = _durumu_birlestir(state, diskteki)
                     for alan in EKLEMELI_ALANLAR:
-                        kazanc = len(birlesik.get(alan) or []) - len(state.get(alan) or [])
+                        kazanc = len(birlesik.get(alan) or []) - len(
+                            state.get(alan) or []
+                        )
                         if kazanc:
                             print(
                                 f"ℹ️ durum birlestirildi: {alan} +{kazanc} kayit "
@@ -7334,7 +7456,9 @@ def save_state(state: dict[str, Any]) -> None:
         # surec ayni yola yazip birbirinin yarim ciktisini `replace`
         # edebilirdi — kilit alinamadigi durumda tek savunma bu.
         temporary = STATE_FILE.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         temporary.replace(STATE_FILE)
     finally:
         if kilit is not None:
@@ -7412,7 +7536,9 @@ def _acquire_lock() -> None:
     try:
         descriptor = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError as exc:
-        raise RuntimeError("another YouTube automation cycle is already running") from exc
+        raise RuntimeError(
+            "another YouTube automation cycle is already running"
+        ) from exc
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         stream.write(str(os.getpid()))
 
@@ -7641,7 +7767,9 @@ def run_cycle(
                         "visual_alignment_score": 0,
                         "issues": [str(hata)],
                         "agir_kusurlar": [],
-                        "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                        "rejected_at": datetime.now(
+                            ZoneInfo(TIMEZONE_NAME)
+                        ).isoformat(),
                     }
                 )
                 save_state(state)
@@ -7651,9 +7779,9 @@ def run_cycle(
                 "topic": "",
                 "reviews": reviews,
             }
-        selected: tuple[
-            str, Path, Path, QualityReview, list[dict[str, Any]]
-        ] | None = None
+        selected: tuple[str, Path, Path, QualityReview, list[dict[str, Any]]] | None = (
+            None
+        )
 
         # ⚠️ YURURLUKTEKI PLANIN REDDI KAYDA GECTI MI (2026-08-18).
         #
@@ -7747,7 +7875,9 @@ def run_cycle(
                         "issues": review.issues,
                         "agir_kusurlar": review.agir_kusurlar,
                         "sahneler": sahne_kaydi(plan, exc.credits),
-                        "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                        "rejected_at": datetime.now(
+                            ZoneInfo(TIMEZONE_NAME)
+                        ).isoformat(),
                     }
                 )
                 save_state(state)
@@ -7885,7 +8015,12 @@ def run_cycle(
             if not son_plan_kayitli and son_render is not None:
                 _video_reddini_kaydet(*son_render)
                 son_plan_kayitli = True
-            result = {"status": "rejected", "slot": slot, "topic": plan.topic, "reviews": reviews}
+            result = {
+                "status": "rejected",
+                "slot": slot,
+                "topic": plan.topic,
+                "reviews": reviews,
+            }
             LOG_DIR.mkdir(parents=True, exist_ok=True)
             (LOG_DIR / f"{slot}-rejected.json").write_text(
                 json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -8021,9 +8156,13 @@ def run_cycle(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate, review, and publish one YouTube Short")
+    parser = argparse.ArgumentParser(
+        description="Generate, review, and publish one YouTube Short"
+    )
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--privacy", choices=["public", "unlisted", "private"], default="public")
+    parser.add_argument(
+        "--privacy", choices=["public", "unlisted", "private"], default="public"
+    )
     parser.add_argument("--not-before", metavar="HH:MM")
     parser.add_argument(
         "--from-notion",
@@ -8115,7 +8254,9 @@ def main() -> None:
     if args.konu and args.from_notion:
         parser.error("--konu ile --from-notion birlikte kullanılamaz")
     if args.uzun and args.sahne_sayisi is not None:
-        parser.error("--uzun ile --sahne-sayisi birlikte kullanılamaz (deney Shorts koluna ait)")
+        parser.error(
+            "--uzun ile --sahne-sayisi birlikte kullanılamaz (deney Shorts koluna ait)"
+        )
     result = run_cycle(
         dry_run=args.dry_run,
         privacy=args.privacy,
