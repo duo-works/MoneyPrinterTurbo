@@ -189,11 +189,39 @@ def test_kapi_PLAN_dongusunde_calisiyor(monkeypatch):
     assert "sahne_sayisi=sahne_sayisi,konu=konu" in bosluksuz, "konu gecirilmiyor"
 
 
-def test_KUYRUK_kapisi_ayni_olcutu_kullaniyor():
-    """⚠️ Iki kapinin ayrisması sessiz slot yakar; ortak fonksiyon sart."""
-    kaynak = Path(ya.__file__).read_text()
+def test_KUYRUK_kapisi_ayni_olcutu_kullaniyor(monkeypatch):
+    """⚠️ Iki kapinin ayrisması sessiz slot yakar; ortak olcut sart.
 
-    assert "arsiv_videoyu_tasir(envanter, asgari_menu)" in kaynak
+    ⚠️ BU TEST 2026-08-19'da DIZE ARAMAYI BIRAKTI. Eski hali kaynak
+    metninde `arsiv_videoyu_tasir(envanter, asgari_menu)` ariyordu ve o
+    satir ortak `aday_kapilabilir_mi` fonksiyonuna TASININCA dustu — yani
+    olcutu DAHA COK teklestiren degisikligi "ayrisma" sandi. Kaynak metnine
+    bakan test, dogru refactor'i yanlis gosterir (ayni ders `ee886ab`).
+
+    Artik olculen sey davranis: kuyruk kapisi (`aday_kapilabilir_mi`) ile
+    plan kapisi (`_capa_arzi_kusuru`) ayni menude ayni karari vermeli.
+    Esik tam sinirinda ve bir altinda sinaniyor — iki kapi ayrisirsa
+    biri gecip digeri reddeder ve test duser.
+    """
+    sinir = ya.ASGARI_SAHNE_ARZI
+
+    for adet, bekleniyor in ((sinir, True), (sinir - 1, False)):
+        _menu(monkeypatch, adet)
+        kuyruk = ya.aday_kapilabilir_mi(
+            "Tikal", {}, bicim=ya.SHORTS_BICIMI
+        ).kapilabilir
+        plan_temiz = (
+            ya._capa_arzi_kusuru(
+                _plan("Tikal", sahne=sinir), bicim=ya.SHORTS_BICIMI,
+                sahne_sayisi=sinir,
+            )
+            == ""
+        )
+
+        assert kuyruk is bekleniyor, f"kuyruk kapisi {adet} dosyada {kuyruk}"
+        assert kuyruk == plan_temiz, (
+            f"{adet} dosyada kapilar ayristi: kuyruk {kuyruk}, plan {plan_temiz}"
+        )
 
 
 def test_UZUN_bicimde_de_sahne_basina_BIR_gorsel(monkeypatch):

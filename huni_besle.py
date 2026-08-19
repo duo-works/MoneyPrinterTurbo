@@ -32,10 +32,15 @@ import sys
 import notion_kuyrugu
 import wikimedia_materials
 from youtube_automation import (
-    KARE_YUVASI,
+    ASGARI_SAHNE_ARZI,
+    SHORTS_BICIMI,
     YTOTO_PATH,
+    aday_kapilabilir_mi,
+    arsiv_envanteri,
+    arsiv_videoyu_tasir,
     engellenen_capalar,
     is_duplicate_visual_anchor,
+    load_state,
 )
 
 HEDEF_DERINLIK = 6
@@ -81,12 +86,17 @@ sessiz kesme, "kuyruk kuru" ile "kuyrugu tarayamadim"i birbirine
 karistirirdi.
 """
 
-ASGARI_MENU = 6 * KARE_YUVASI
-"""Bir konunun uretilebilir sayilmasi icin gereken menu buyuklugu.
+ASGARI_MENU = ASGARI_SAHNE_ARZI
+"""Terfi esigi — URETIMIN kendi esigi, burada yeniden tanimlanmiyor.
 
-6 sahne x 2 kare yuvasi = 12 ayri dosya. Ayni olcut `EDITORIAL_ANCHOR_POOL`
-capalarinda da kullanildi; iki yerde ayri sayi tutmak, kuyrugun kabul
-ettigi konunun havuzun reddettigi konu olmasi demek olurdu.
+⚠️ ESKIDEN `6 * KARE_YUVASI` = 12 IDI ve dogru sayi oydu: "her sahneye IKI
+ayri dosya". Ama uretim 2026-08-18'de kapma esigini 6'ya indirdi (ikinci
+gorsel bir iyilestirme, on kosul degil) ve BURASI 12'de kaldi. Olculdu
+(2026-08-19): huni, uretimin kapacagi adayi terfi ettirmiyordu —
+`menu 4 < 12`, `menu 0-3 < 12`. Docstring "iki yerde ayri sayi tutmak"
+tehlikesini zaten yaziyordu; tehlike gerceklesti.
+
+Sayi artik `youtube_automation.ASGARI_SAHNE_ARZI`; gerekce orada.
 """
 
 
@@ -157,13 +167,20 @@ def uretilebilir_mi(baslik: str) -> tuple[bool, int]:
     """Konunun arsiv arzi yetiyor mu — uretimin KENDI menusuyle olculur.
 
     Kredi harcamaz, yalnizca Commons'a bakar.
+
+    ⚠️ URETIMIN OLCUMUYLE AYNI OLMAK ZORUNDA — olculdu (2026-08-19). Burasi
+    `wikimedia_materials.arsiv_menusu(baslik, sinir=40)` cagiriyordu; uretim
+    ise `arsiv_envanteri(baslik, bicim=...)`. Ikisi ayni sey DEGIL: envanter
+    kare oranina gore de eliyor ve onbellekli, yani ayni konu icin iki taraf
+    farkli sayi goruyordu (`Ernst Hanfstaengl` terfide 4, uretimde 8).
+    Sayilar farkliysa "terfi edilebilir" ile "kapilabilir" ayrisir.
     """
     try:
-        menu = wikimedia_materials.arsiv_menusu(baslik, sinir=40)
+        envanter = arsiv_envanteri(baslik, bicim=SHORTS_BICIMI)
     except Exception as hata:  # ag hatasi tek adayi atlatmali, koşumu degil
         print(f"  ⚠️ {baslik[:40]}: menu olculemedi ({str(hata)[:60]})", flush=True)
         return False, 0
-    return len(menu) >= ASGARI_MENU, len(menu)
+    return arsiv_videoyu_tasir(envanter, ASGARI_SAHNE_ARZI), len(envanter)
 
 
 def _kullanilmis_capalar() -> list[str]:
@@ -246,11 +263,46 @@ def takilanlari_kurtar(kuru: bool = False) -> list[str]:
 
 
 def besle(kuru: bool = False) -> dict:
-    """Kuyrugu hedef derinlige kadar doldurur; ozet doner."""
+    """Kuyrugu hedef derinlige kadar doldurur; ozet doner.
+
+    ⚠️ DERINLIK SATIR SAYMAZ, KAPILABILIR ADAY SAYAR — olculdu
+    (2026-08-19, `logs/hata-20260819-023251.log`):
+
+        `Seçildi` kuyruğu: 6/6 — eksik 0
+        terfi edilen: 0
+        ℹ️ aday atlandı (King Philip's War): ... 15.7 saat daha soğumada
+        ℹ️ aday atlandı (Talaat Pasha): durum 'Elendi', beklenen 'Seçildi'
+        ⛔ takilmis aday kurtarilMADI: Ernst Hanfstaengl (menu 4 < 12)
+        ℹ️ `Seçildi` kuyrugunda kapilabilir aday yok — yedek kip devrede
+
+    Kuyruk BOS DEGILDI, alti KAPILAMAZ adayla doluydu; `eksik <= 0` gorup
+    `Yeni` kuyruguna (100+ aday) hic bakmadik. Yani gosterge "durumu
+    `Secildi` olan satir" sayiyordu, uretimin KAPABILDIGI aday sayisini
+    degil — kuyruk kalici olarak kilitlendi ve hat her slotta yedek kipe
+    dustu.
+
+    ⚠️ HEDEF_DERINLIK DEGISMEDI. Sorun hedefte degil sayacta; hedefi
+    buyutmek zombileri alti yerine sekiz yapardi.
+
+    ⚠️ Kuyruk gecici olarak HEDEF_DERINLIK'i ASABILIR (kapilamaz adaylar
+    duruyorken kapilabilirler ekleniyor). Bilincli: sogumadaki aday saatler
+    icinde kendi kendine kapilabilir hale geliyor, `Elendi` gorunenler ise
+    Notion indeks gecikmesi (bkz. `run_cycle`) ve kendiliginden duzeliyor.
+    Alternatifi — kuyrugu kilitli birakmak — olculdu: 7 gunde 1 huni yayini.
+    """
     takilanlari_kurtar(kuru)
     mevcut = notion_kuyrugu.kuyrugu_oku(ytoto_path=YTOTO_PATH, limit=HEDEF_DERINLIK)
-    eksik = HEDEF_DERINLIK - len(mevcut)
-    print(f"`Seçildi` kuyruğu: {len(mevcut)}/{HEDEF_DERINLIK} — eksik {max(eksik, 0)}")
+    state = load_state()
+    kapilabilir = [
+        aday
+        for aday in mevcut
+        if aday_kapilabilir_mi(aday.baslik, state, bicim=SHORTS_BICIMI).kapilabilir
+    ]
+    eksik = HEDEF_DERINLIK - len(kapilabilir)
+    print(
+        f"`Seçildi` kuyruğu: {len(mevcut)}/{HEDEF_DERINLIK} — "
+        f"kapılabilir {len(kapilabilir)}, eksik {max(eksik, 0)}"
+    )
     if eksik <= 0:
         return {"terfi": [], "elenen": [], "eksik": 0}
 

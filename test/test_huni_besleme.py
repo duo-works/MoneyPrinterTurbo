@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import huni_besle  # noqa: E402
 import notion_kuyrugu  # noqa: E402
+import youtube_automation  # noqa: E402
 
 
 def _aday(baslik: str, kimlik: str = "k1") -> notion_kuyrugu.Aday:
@@ -57,11 +58,22 @@ def _hazirla(monkeypatch, *, mevcut, yeni, menuler, kullanilmis=(), takilan=()):
     )
     monkeypatch.setattr(huni_besle, "yeni_adaylar", lambda *_a, **_k: list(yeni))
     monkeypatch.setattr(huni_besle, "_kullanilmis_capalar", lambda: list(kullanilmis))
-    monkeypatch.setattr(
-        huni_besle.wikimedia_materials,
-        "arsiv_menusu",
-        lambda konu, sinir=40: [{"dosya": f"{konu}-{i}.jpg"} for i in range(menuler.get(konu, 0))],
-    )
+    # ⚠️ URETIMIN olcum yuzeyi taklit ediliyor, huninin eskisi degil:
+    # `uretilebilir_mi` ve `aday_kapilabilir_mi` ikisi de `arsiv_envanteri`
+    # cagiriyor. Eski sahte `wikimedia_materials.arsiv_menusu`yu yakaliyordu
+    # ve o kanal artik kullanilmiyor — sahteyi guncellememek, testin gercek
+    # yolu birakip hicbir sey olcmemesi demek olurdu.
+    # ⚠️ IKI YERE de konuyor ve bu bir kopya DEGIL: `uretilebilir_mi`
+    # huni_besle'nin ad alanindan cagiriyor, `aday_kapilabilir_mi` ise
+    # youtube_automation'da TANIMLI oldugu icin adi orada cozuyor. Yalnizca
+    # birini yamalamak testi canli Commons'a gonderiyor — olculdu, 55 sn.
+    def sahte_envanter(konu, **_k):
+        return [{"dosya": f"{konu}-{i}.jpg"} for i in range(menuler.get(konu, 0))]
+
+    monkeypatch.setattr(huni_besle, "arsiv_envanteri", sahte_envanter)
+    monkeypatch.setattr(youtube_automation, "arsiv_envanteri", sahte_envanter)
+    # Soguma state'ten okunuyor; bos state = hicbir aday sogumada degil.
+    monkeypatch.setattr(huni_besle, "load_state", lambda: {})
     secilenler: list[str] = []
 
     class _Sonuc:
@@ -107,10 +119,19 @@ def test_ARZ_YETMEZSE_terfi_YOK(monkeypatch):
     assert secilen == [], "uretilemeyen konu Notion'a yazilmamali"
 
 
-def test_esik_KARE_YUVASINA_bagli():
-    """Iki yerde ayri sayi tutmak, kuyrugun kabul ettigi konunun havuzun
-    reddettigi konu olmasi demek olurdu."""
-    assert huni_besle.ASGARI_MENU == 6 * huni_besle.KARE_YUVASI == 12
+def test_esik_URETIMIN_esigiyle_AYNI():
+    """⚠️ Bu test 2026-08-19'da DEGISTI ve sebebi tam olarak kendi eski
+    gerekcesiydi: "iki yerde ayri sayi tutmak, kuyrugun kabul ettigi konunun
+    havuzun reddettigi konu olmasi demek olurdu."
+
+    Oldu. Uretim 2026-08-18'de kapma esigini 12'den 6'ya indirdi, burasi
+    12'de kaldi ve huni uretimin kapacagi adayi terfi ettirmedi (`menu 4 <
+    12`). Test eski sayiyi pinledigi icin bu ayrismayi GORMEDI — sayiyi
+    degil, KAYNAGI pinlemek gerekiyordu.
+    """
+    import youtube_automation
+
+    assert huni_besle.ASGARI_MENU == youtube_automation.ASGARI_SAHNE_ARZI
 
 
 def test_uretilmis_konuya_benzer_aday_atlaniyor(monkeypatch):
@@ -127,11 +148,15 @@ def test_uretilmis_konuya_benzer_aday_atlaniyor(monkeypatch):
 
 
 def test_kuyruk_DOLUYSA_hic_dokunulmuyor(monkeypatch):
+    """⚠️ "Dolu" artik KAPILABILIR demek: mevcut adaylarin arsivi de olculuyor."""
     secilen = _hazirla(
         monkeypatch,
         mevcut=[_aday(f"k{i}", f"i{i}") for i in range(huni_besle.HEDEF_DERINLIK)],
         yeni=[_aday("Alhambra", "a1")],
-        menuler={"Alhambra": 40},
+        menuler={
+            "Alhambra": 40,
+            **{f"k{i}": 40 for i in range(huni_besle.HEDEF_DERINLIK)},
+        },
     )
 
     ozet = huni_besle.besle()
@@ -146,7 +171,7 @@ def test_yalnizca_EKSIK_kadar_terfi(monkeypatch):
         monkeypatch,
         mevcut=[_aday("var", "v1")],
         yeni=[_aday(f"Konu{i}", f"a{i}") for i in range(5)],
-        menuler={f"Konu{i}": 40 for i in range(5)},
+        menuler={**{f"Konu{i}": 40 for i in range(5)}, "var": 40},
     )
 
     huni_besle.besle()
@@ -175,7 +200,8 @@ def test_menu_hatasi_koşumu_oldurmuyor(monkeypatch):
     def patlat(*_a, **_k):
         raise RuntimeError("ag koptu")
 
-    monkeypatch.setattr(huni_besle.wikimedia_materials, "arsiv_menusu", patlat)
+    monkeypatch.setattr(huni_besle, "arsiv_envanteri", patlat)
+    monkeypatch.setattr(youtube_automation, "arsiv_envanteri", patlat)
 
     assert huni_besle.besle()["terfi"] == []
 
@@ -187,9 +213,11 @@ def test_terfi_hatasi_digerlerini_engellemiyor(monkeypatch):
         huni_besle, "yeni_adaylar", lambda *_a, **_k: [_aday("A", "a1"), _aday("B", "a2")]
     )
     monkeypatch.setattr(huni_besle, "_kullanilmis_capalar", lambda: [])
+    monkeypatch.setattr(huni_besle, "arsiv_envanteri", lambda k, **_kw: [{}] * 40)
     monkeypatch.setattr(
-        huni_besle.wikimedia_materials, "arsiv_menusu", lambda k, sinir=40: [{}] * 40
+        youtube_automation, "arsiv_envanteri", lambda k, **_kw: [{}] * 40
     )
+    monkeypatch.setattr(huni_besle, "load_state", lambda: {})
     monkeypatch.setattr(huni_besle.notion_kuyrugu, "_ytoto_yolu", lambda _p: "ytoto")
     gecen: list[str] = []
 
@@ -224,7 +252,7 @@ def test_TAKILAN_aday_kurtariliyor(monkeypatch):
         monkeypatch,
         mevcut=[_aday("Dolu", "d1")] * 6,
         yeni=[],
-        menuler={"Ernst Hanfstaengl": 20},
+        menuler={"Ernst Hanfstaengl": 20, "Dolu": 40},
         takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
     )
     birakilan: list[str] = []
@@ -244,15 +272,28 @@ def test_URETILEMEYEN_takilan_aday_KURTARILMIYOR(monkeypatch):
 
     Olculdu (2026-08-16 aksami): kosulsuz kurtarilan `Ernst Hanfstaengl`
     `Secildi`ye geri kondu ve 18:00 slotunun UC denemesini de yakti (biri tam
-    render). Konunun kendi menusu 8, kapi 12; uretim ise arsivi zengin olan
-    DEDESINI (`Franz Hanfstaengl`, menu 40, 19. yy fotografcisi) capa secti ve
-    hakem her karede baskasini gordu (Wagner, Rietschel, Ludwig II).
+    render). Uretim arsivi zengin olan DEDESINI (`Franz Hanfstaengl`, menu 40,
+    19. yy fotografcisi) capa secti ve hakem her karede baskasini gordu
+    (Wagner, Rietschel, Ludwig II).
+
+    ⚠️ SAYI 8'DEN 4'E CEKILDI (2026-08-19) ve bu bir test gevsetmesi DEGIL,
+    esigin gercekten degismesinin kaydi. Uretimin kapma esigi 2026-08-18'de
+    12'den 6'ya indi (`arsiv_videoyu_tasir`), yani menu 8 olan bir adayi
+    URETIM BUGUN ZATEN KAPIYOR — terfi kapisini 12'de tutmak o slotu
+    korumuyordu, yalnizca kuyrugu bos birakip hatti yedek kipe dusuruyordu.
+    4, ayni adayin CANLI olcumu (`logs/hata-20260819-023251.log`:
+    "menu 4 < 12"), yani hala iki kapinin da altinda.
+
+    ⚠️ Testin SAVUNDUGU sey degismedi: kapiyi gecemeyen aday kuyrugun basina
+    konmamali. Degisen yalnizca kapinin yeri, ve o karar bu commit'in degil
+    `arsiv_videoyu_tasir`in — bedeli orada acikca yaziyor ("6-11 dosyalik
+    KISI capalari da geciyor").
     """
     _hazirla(
         monkeypatch,
         mevcut=[_aday("Dolu", "d1")] * 6,
         yeni=[],
-        menuler={"Ernst Hanfstaengl": 8},
+        menuler={"Ernst Hanfstaengl": 4, "Dolu": 40},
         takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
     )
     birakilan: list[str] = []
@@ -273,7 +314,7 @@ def test_KURU_kipte_takilan_aday_birakilmiyor(monkeypatch):
         monkeypatch,
         mevcut=[_aday("Dolu", "d1")] * 6,
         yeni=[],
-        menuler={"Ernst Hanfstaengl": 20},
+        menuler={"Ernst Hanfstaengl": 20, "Dolu": 40},
         takilan=[_aday("Ernst Hanfstaengl", "takili-1")],
     )
     birakilan: list[str] = []
@@ -436,10 +477,111 @@ def test_olcum_TEMBEL_kalmali(monkeypatch):
         monkeypatch,
         mevcut=[_aday("Var", "v1")] * 3,
         yeni=yeni,
-        menuler={f"Iyi{i}": 20 for i in range(20)},
+        menuler={**{f"Iyi{i}": 20 for i in range(20)}, "Var": 40},
     )
 
     ozet = huni_besle.besle()
 
     assert len(ozet["terfi"]) == 3, "eksik 3, fazlasi terfi etmemeli"
     assert ozet["olcum"] == 3, "gereginden fazla Commons cagrisi yapilmamali"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Kuyruk KILIDI — 2026-08-19
+# ═══════════════════════════════════════════════════════════════════════
+
+
+def test_KAPILAMAZ_adaylarla_dolu_kuyruk_yine_de_TERFI_ediyor(monkeypatch):
+    """⚠️ Olculdu (2026-08-19, `logs/hata-20260819-023251.log`). Kuyruk
+    "6/6 dolu" gorunuyordu ve terfi 0'di; ama alti adayin ALTISI da
+    kapilamazdi (soguma / `Elendi` / menu 4 < 12). Uretim her slotta yedek
+    kipe dustu — son 7 gunun 17 yayininin 11'i yedek, 1'i huni.
+
+    Gosterge SATIR sayiyordu, uretimin KAPABILDIGI adayi degil.
+    """
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[_aday(f"zombi{i}", f"z{i}") for i in range(huni_besle.HEDEF_DERINLIK)],
+        yeni=[_aday("Alhambra", "a1")],
+        # zombiler menude YOK -> arsiv 0 -> kapilamaz
+        menuler={"Alhambra": 40},
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == ["Alhambra"], (
+        "kapilamaz adaylarla dolu kuyruk terfiyi engellememeli; "
+        f"terfi: {ozet['terfi']}"
+    )
+    assert secilen == ["a1"]
+
+
+def test_SOGUMADAKI_aday_kuyrugu_DOLU_saymiyor(monkeypatch):
+    """Soguma uretimin kapma kapisi; besleme de ayni kapiyi gormeli."""
+    from datetime import datetime, timedelta
+
+    import youtube_automation
+
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[_aday("Soguyan", "s1")],
+        yeni=[_aday("Alhambra", "a1")],
+        menuler={"Soguyan": 40, "Alhambra": 40},
+    )
+    monkeypatch.setattr(huni_besle, "HEDEF_DERINLIK", 1)
+    # Bir saat once reddedilmis -> 23 saat daha sogumada
+    an = datetime.now(youtube_automation.ZoneInfo(youtube_automation.TIMEZONE_NAME))
+    monkeypatch.setattr(
+        youtube_automation,
+        "adayin_son_reddi",
+        lambda baslik, _s: an - timedelta(hours=1) if baslik == "Soguyan" else None,
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["terfi"] == ["Alhambra"], (
+        "sogumadaki aday kuyrugu dolu saymamali; terfi: " f"{ozet['terfi']}"
+    )
+    assert secilen == ["a1"]
+
+
+def test_KAPILABILIR_aday_varsa_kuyruga_dokunulmuyor(monkeypatch):
+    """Kilidin karsi yonu: gercekten dolu kuyruk hala kisa devre yapmali.
+
+    Bu test olmadan "her zaman terfi et" de gecerdi ve kuyruk sinirsiz
+    buyurdu.
+    """
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[_aday(f"iyi{i}", f"g{i}") for i in range(huni_besle.HEDEF_DERINLIK)],
+        yeni=[_aday("Alhambra", "a1")],
+        menuler={
+            "Alhambra": 40,
+            **{f"iyi{i}": 40 for i in range(huni_besle.HEDEF_DERINLIK)},
+        },
+    )
+
+    ozet = huni_besle.besle()
+
+    assert ozet["eksik"] == 0
+    assert secilen == []
+
+
+def test_terfi_esigi_URETIMIN_esigiyle_ayni_sayiyi_kullaniyor(monkeypatch):
+    """⚠️ Sayi degil DAVRANIS pinleniyor: uretimin kapacagi bir aday
+    (`ASGARI_SAHNE_ARZI` kadar gorsel) terfi de EDEBILMELI.
+
+    Eski halde bu aday `menu 6 < 12` ile elenirdi ve kuyruk kurur, uretim
+    yedek kipe duserdi.
+    """
+    import youtube_automation
+
+    secilen = _hazirla(
+        monkeypatch,
+        mevcut=[],
+        yeni=[_aday("Tam Esik", "a1")],
+        menuler={"Tam Esik": youtube_automation.ASGARI_SAHNE_ARZI},
+    )
+
+    assert huni_besle.besle()["terfi"] == ["Tam Esik"]
+    assert secilen == ["a1"]

@@ -672,6 +672,28 @@ def engellenen_capalar(state: dict[str, Any] | None = None) -> list[str]:
     return engelli
 
 
+ASGARI_SAHNE_ARZI = 6
+"""Aday URETILEBILIR sayilmak icin kac AYRI birincil gorsel bulmali.
+
+⚠️ TEK KAYNAK OLMAK ZORUNDA — olculdu (2026-08-19). Bu sayi 2026-08-18'de
+KAPMA kapisinda 12'den 6'ya indi (gerekce `arsiv_videoyu_tasir`
+docstring'inde: ikinci gorsel bir IYILESTIRME, on kosul degil). Ama TERFI
+kapisi `huni_besle.ASGARI_MENU`da 12 olarak KALDI. Canli logdan sonucu:
+
+    ⛔ takilmis aday kurtarilMADI: Ernst Hanfstaengl (menu 4 < 12)
+    ℹ️ aday atlandi (...): menu 0-3 < 12
+
+Yani huni, uretimin seve seve kapacagi adayi terfi ETTIRMIYORDU. Kuyruk
+kapilamayan adaylarla doldu, `besle()` "6/6 dolu" gorup `Yeni`ye hic
+bakmadi ve hat her slotta yedek kipe dustu — son 7 gunun 17 yayininin
+11'i yedek, yalnizca 1'i huni.
+
+⚠️ Ayni kusur sinifi bu depoda ucuncu kez: kapi, TUKETICININ gordugunden
+BASKA bir seyi olcuyor (bkz. `alinti_kusuru` "Jock Willis"; DW-51 agir
+kusur kapisi). Sayi bu yuzden burada duruyor ve iki taraf da buradan
+okuyor.
+"""
+
 ADAY_SOGUMA_SAATI = 24
 """Reddedilen bir Notion adayinin kuyrukta yeniden gorunmesi icin gecmesi
 gereken sure.
@@ -787,6 +809,71 @@ def aday_sogumada_mi(
         son_red = son_red.replace(tzinfo=an.tzinfo)
     kalan = ADAY_SOGUMA_SAATI - (an - son_red).total_seconds() / 3600
     return max(0.0, kalan)
+
+
+@dataclass
+class KapmaKarari:
+    """`aday_kapilabilir_mi` sonucu — karar, insan icin gerekce, engel turu."""
+
+    kapilabilir: bool
+    gerekce: str = ""
+    engel: str = ""  # "" | "soguma" | "arsiv"
+
+
+def aday_kapilabilir_mi(
+    baslik: str, state: dict[str, Any], *, bicim: "VideoBicimi"
+) -> KapmaKarari:
+    """Uretim bu adayi SIMDI kapabilir mi — kuyrugun TEK kapma olcutu.
+
+    ⚠️ NEDEN AYRI FONKSIYON — olculdu (2026-08-19). Ayni soru iki yerde
+    soruluyor: uretim kuyruktan aday KAPARKEN, huni kuyrugun DERINLIGINI
+    olcerken. Iki taraf ayri kod tuttugu surece sessizce ayrisiyorlar ve
+    ayristilar da: terfi kapisi 12 esigiyle ve `arsiv_menusu` ile olcerken
+    kapma kapisi 6 esigiyle ve `arsiv_envanteri` ile olcuyordu. Sonuc,
+    huninin uretilebilir adayi terfi ettirmemesiydi.
+
+    ⚠️ SOGUMA KAPISI ONCE — bedavaya eleyen kapi, agdan okuyan kapinin
+    ONUNDE durmali. Asagidaki olcum `arsiv_envanteri` cagiriyor; sogumadaki
+    bir adayi once olcup sonra atlamak bos yere ag trafigi demek.
+
+    ⚠️ KAPMADAN ONCE OLC. Olculdu (2026-08-16, iki koşum arka arkaya):
+    `Ernst Hanfstaengl` `Secildi`de duruyordu ve uretim onu her slotta
+    kuyrugun basinda buldu; 18:00 ve 18:57 koşumlarinin ALTI denemesi de
+    yandi (ikisi tam render).
+
+        Ernst Hanfstaengl  menu  8   <- konu
+        Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy fotografcisi
+
+    Uretim arsivi zengin olan dedeyi capa secti, ama bir fotografcinin
+    kategorisi kendi resimleriyle degil CEKTIGI kisilerle dolu: hakem her
+    karede baskasini gordu (Wagner, Rietschel, Ludwig II) ve "anlatilan
+    kisi degil" yazdi.
+
+    ⚠️ Huni terfide olcuyor ama kuyruga BASKA yollardan da aday giriyor:
+    insan elle `Secildi` yapabiliyor, takilan aday kurtarilabiliyor. Terfi
+    kapisi tek basina yetmez — TUKETEN uc de olcmeli.
+
+    ⚠️ Menu kurulamazsa `arsiv_envanteri` BOS donuyor (kendi sozlesmesi) ve
+    aday kapilamaz sayiliyor. Bilincli: atlamanin bedeli bir yedek kip
+    videosu, kapmanin bedeli yanmis bir slot.
+    """
+    kalan_saat = aday_sogumada_mi(baslik, state)
+    if kalan_saat > 0:
+        return KapmaKarari(
+            False,
+            f"son red üstünden {ADAY_SOGUMA_SAATI - kalan_saat:.1f} saat geçti, "
+            f"{kalan_saat:.1f} saat daha soğumada",
+            "soguma",
+        )
+    envanter = arsiv_envanteri(baslik, bicim=bicim)
+    if not arsiv_videoyu_tasir(envanter, ASGARI_SAHNE_ARZI):
+        return KapmaKarari(
+            False,
+            f"arşiv menüsü {len(envanter)} < {ASGARI_SAHNE_ARZI} — her sahneye "
+            "ayrı görsel düşmüyor",
+            "arsiv",
+        )
+    return KapmaKarari(True)
 
 
 KANAL_SESI = """You are the editorial producer of an English global-history YouTube Shorts channel.
@@ -7361,67 +7448,19 @@ def run_cycle(
         # dememeli.
         sogumada: list[str] = []
         for sirasiyla in adaylar:
-            # ⚠️ SOGUMA KAPISI ONCE — bedavaya eleyen kapi, agdan okuyan
-            # kapinin ONUNDE durmali. Asagidaki menu olcumu `arsiv_envanteri`
-            # cagiriyor; sogumadaki bir adayi once olcup sonra atlamak bos
-            # yere ag trafigi demek. Ayni sira `huni_besle.besle` icinde de
-            # var (tekrar kapisi olcum tavanindan once).
-            kalan_saat = aday_sogumada_mi(sirasiyla.baslik, state)
-            if kalan_saat > 0:
+            # ⚠️ Olcut `aday_kapilabilir_mi`de — HUNI DE AYNISINI cagiriyor.
+            # Burada yeniden yazmak, 2026-08-19'da olculen ayrismayi geri
+            # getirirdi (terfi 12/`arsiv_menusu`, kapma 6/`arsiv_envanteri`).
+            karar = aday_kapilabilir_mi(sirasiyla.baslik, state, bicim=bicim)
+            if not karar.kapilabilir:
                 print(
-                    f"ℹ️ aday atlandı ({sirasiyla.baslik}): son red üstünden "
-                    f"{ADAY_SOGUMA_SAATI - kalan_saat:.1f} saat geçti, "
-                    f"{kalan_saat:.1f} saat daha soğumada",
+                    f"ℹ️ aday atlandı ({sirasiyla.baslik}): {karar.gerekce}",
                     flush=True,
                 )
-                sogumada.append(sirasiyla.baslik)
-                continue
-            # ⚠️ KAPMADAN ONCE OLC. Olculdu (2026-08-16, iki koşum arka arkaya):
-            # `Ernst Hanfstaengl` `Secildi`de duruyordu ve uretim onu her
-            # slotta kuyrugun basinda buldu; 18:00 ve 18:57 koşumlarinin
-            # ALTI denemesi de yandi (ikisi tam render).
-            #
-            #     Ernst Hanfstaengl  menu  8   <- konu, kapi 12: GECEMEZ
-            #     Franz Hanfstaengl  menu 40   <- DEDESI, 19. yy fotografcisi
-            #
-            # Uretim arsivi zengin olan dedeyi capa secti, ama bir
-            # fotografcinin kategorisi kendi resimleriyle degil CEKTIGI
-            # kisilerle dolu: hakem her karede baskasini gordu (Wagner,
-            # Rietschel, Ludwig II) ve "anlatilan kisi degil" yazdi.
-            #
-            # ⚠️ Huni terfide olcuyordu (`huni_besle.uretilebilir_mi`) ama
-            # kuyruga BASKA yollardan da aday giriyor: insan elle `Secildi`
-            # yapabiliyor, ve takilan aday kurtarilabiliyor. Terfi kapisi tek
-            # basina yetmiyor — tuketen uc de olcmeli.
-            #
-            # Esik huninin esigiyle ayni tanim (6 sahne x kare yuvasi) ve
-            # olcum uretimin KENDI envanteriyle yapiliyor; `arsiv_envanteri`
-            # onbellekli, yani bu cagri hattin ilerisinde yeniden kullaniliyor
-            # ve ek ag maliyeti getirmiyor.
-            #
-            # ⚠️ Menu kurulamazsa `arsiv_envanteri` BOS donuyor (kendi
-            # sozlesmesi) ve aday atlaniyor. Bu bilincli: yedek capa havuzu
-            # saglikli (50 uygun capa), yani atlamanin bedeli bir yedek kip
-            # videosu; kapmanin bedeli ise yanmis bir slot.
-            # ⚠️ OLCUT `arsiv_videoyu_tasir` (2026-08-18), eskiden
-            # `6 * bicim.kare_yuvasi` = 12 idi. Gerekce ve olcum tablosu o
-            # fonksiyonda; kisaca: 12 "her sahneye IKI gorsel" demekti ve
-            # #44'ten sonra ikinci gorsel bir iyilestirme, on kosul degil.
-            # Canli olculdu — kuyruktaki 6 adaydan biri (Ernst Hanfstaengl,
-            # menu 8) yalnizca bu yuzden atlaniyordu.
-            #
-            # ⚠️ Sayi TEK YERDEN geliyor ki bu kapi ile `_capa_arzi_kusuru`
-            # ayrismasin: ikisi ayrilirsa aday kuyruktan cekilir ve plan
-            # asamasinda reddedilir — slot yine yanar, ama bu kez sessizce.
-            asgari_menu = 6
-            envanter = arsiv_envanteri(sirasiyla.baslik, bicim=bicim)
-            if not arsiv_videoyu_tasir(envanter, asgari_menu):
-                print(
-                    f"ℹ️ aday atlandı ({sirasiyla.baslik}): arşiv menüsü "
-                    f"{len(envanter)} < {asgari_menu} — her sahneye ayrı "
-                    "görsel düşmüyor",
-                    flush=True,
-                )
+                # Soguma AYRICA tutuluyor: aday bulunamadiginda gerekce
+                # "kuyruk bos" demek yanlis olur — kuyruk dolu, bekliyor.
+                if karar.engel == "soguma":
+                    sogumada.append(sirasiyla.baslik)
                 continue
             try:
                 notion_kuyrugu.adayi_kap(sirasiyla, ytoto_path=YTOTO_PATH)
