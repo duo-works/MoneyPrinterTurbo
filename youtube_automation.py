@@ -1950,7 +1950,28 @@ def agir_kusurlari_ayikla(kareler: Any) -> list[str]:
     fotografiydi (Kon-Tiki salinin muzedeki hali). Istem bunu zaten acikca
     serbest birakiyor: "Modern colour photographs of a surviving place or
     object are welcome." Kusur, modern bir goruntunun konuyla ilgisiz
-    olmasi: `modern` VE `authentic_subject` degilse agir.
+    olmasi: `modern` VE `authentic_subject` acikca "no" ise agir.
+
+    ⚠️ ÜÇÜNCÜ ALAN DA ÜÇ DEĞERLİ OLDU (2026-08-19). Yukaridaki iki
+    duzeltme `person` ve `period`i uc degerli yapti ama `authentic_subject`
+    IKILI kaldi — ve ayni commit onu agir kusurun ikinci sarti yapti. Yani
+    kapatilan delik ucuncu alanda acik kaldi.
+
+    Olculdu (2026-08-19 02:41, Moai): video gorsel 98 aldi — kanalin
+    olculmus en yuksek skoru — ve yalnizca bu kapidan dustu. Agir kusur
+    isaretlenen DORT karenin dordu de ayni sekildeydi:
+
+        {"person": "none", "period": "unclear",
+         "authentic_subject": false, "modern": true}
+
+    `period: "unclear"` hakemin "goremiyorum" demesi. Ikili sorulan bir
+    alanda emin olamayan hakemin yazabilecegi tek sey `false` ve kod bunu
+    "dogrulanmis sahte konu" sayiyordu — Kon-Tiki'de `person` icin olan
+    yanlis okumanin BIREBIR aynisi.
+
+    Artik yalnizca acik "no" agir. "unclear" bir sey soylemiyor, dolayisiyla
+    bir sey kanitlamiyor. Kapinin gercek isi duruyor: Franklin vakasinin
+    modern tibbi cadiri "no" ve hala eleniyor.
     """
     if not isinstance(kareler, list):
         return []
@@ -1963,7 +1984,13 @@ def agir_kusurlari_ayikla(kareler: Any) -> list[str]:
             kusurlar.append(f"kare {numara}: anlatilan kisi degil")
         if str(kare.get("period", "")).strip().lower() == "wrong":
             kusurlar.append(f"kare {numara}: donem uyusmuyor")
-        if kare.get("modern") is True and kare.get("authentic_subject") is False:
+        # ⚠️ `str(...)` BILEREK: alan bugun "yes"/"no"/"unclear" geliyor ama
+        # eski kayitlar ve testler bool tasiyor ve `str(False).lower()`
+        # "false" veriyor. Iki bicim de ayni kapidan geciyor, ayri bir
+        # cevirici yok — cevirici olsaydi bir bicim sessizce kapinin
+        # disinda kalabilirdi.
+        ozgun = str(kare.get("authentic_subject", "")).strip().lower()
+        if kare.get("modern") is True and ozgun in {"no", "false"}:
             kusurlar.append(f"kare {numara}: konuyla ilgisiz modern goruntu")
     return kusurlar
 
@@ -7023,9 +7050,10 @@ def review_video(
             '"period": "correct" when the thing shown belongs to the era the narration '
             'describes, "wrong" when it belongs to a different era and is presented as '
             'this one, "unclear" when you cannot tell, '
-            '"authentic_subject": <true when the thing shown IS the real subject, its '
+            '"authentic_subject": "yes" when the thing shown IS the real subject, its '
             "surviving remains, or a genuine historical depiction of it, even if the "
-            'photograph itself was taken recently>, '
+            'photograph itself was taken recently, "no" when it is something else '
+            'entirely, "unclear" when you cannot tell, '
             '"modern": <true when the frame is a present-day photograph or footage>, '
             # ⚠️ Bu iki alan TELEMETRI, kapi degil (2026-08-14). Yazi
             # sorusu istemde ZATEN vardi ama cevap duzyazi `issues`a
@@ -7051,8 +7079,10 @@ def review_video(
             "credits (a lecture slide, an explanatory panel) is a composite even "
             'when the pictures inside it are photographs}. '
             "Answer what you can actually see. A recent photograph of the genuine "
-            "surviving object is authentic_subject true and period correct; a recent "
-            "photograph of something else entirely is not."
+            'surviving object is authentic_subject "yes" and period correct; a recent '
+            'photograph of something else entirely is "no". When you genuinely cannot '
+            'tell what the thing in the frame is, "unclear" is the honest answer and is '
+            "expected."
         ),
     }
     data = _vision_json(prompt, montage, bicim=bicim)
@@ -7662,8 +7692,10 @@ def run_cycle(
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
                         )
-                        # Yeni konu, yeni kayit borcu.
+                        # Yeni konu, yeni kayit borcu — ve onceki konunun
+                        # en iyi turu artik bu plana ait degil.
                         son_plan_kayitli = False
+                        son_render = None
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -7688,7 +7720,22 @@ def run_cycle(
                 video_path, task_id, len(plan.scenes) * bicim.kare_yuvasi, bicim=bicim
             )
             review = review_video(plan, montage, bicim=bicim)
-            son_render = (review, task_id, credits)
+            # ⚠️ EN IYI tur saklaniyor, en SON tur degil (olculdu 2026-08-19).
+            # Moai koşumu 98 aldi, onarim turlari 94 ve 80 verdi, kayda 80
+            # yazildi ve zamanlayici logu "en son skor 80" dedi. Darbogaz
+            # siralamasi bu sayilar uzerinden yapiliyor (`rejected[]` ve
+            # `zamanlayici.log`), yani en kotu turu yazmak yanlis isi one
+            # cikariyor: konu 98 uretebiliyorken "skor dusuk" gibi gorunuyor.
+            #
+            # ⚠️ YALNIZCA AYNI KONU ICINDE. `_video_reddini_kaydet` kapanistaki
+            # `plan`i okuyor; konu degisince buradaki en iyi tur BASKA bir
+            # konuya aitmis gibi yazilirdi. Iki yeniden planlama noktasinda da
+            # `son_render` sifirlaniyor.
+            if (
+                son_render is None
+                or review.visual_alignment_score > son_render[0].visual_alignment_score
+            ):
+                son_render = (review, task_id, credits)
             reviews.append(
                 {
                     "topic": plan.topic,
@@ -7714,8 +7761,10 @@ def run_cycle(
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
                         )
-                        # Yeni konu, yeni kayit borcu.
+                        # Yeni konu, yeni kayit borcu — ve onceki konunun
+                        # en iyi turu artik bu plana ait degil.
                         son_plan_kayitli = False
+                        son_render = None
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {

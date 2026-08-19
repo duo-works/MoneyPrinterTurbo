@@ -304,9 +304,25 @@ def test_slot_dustugunde_red_KAYDA_geciyor():
     assert "_video_reddini_kaydet(*son_render)" in KAYNAK
 
 
-def test_yeniden_planlama_kayit_borcunu_SIFIRLIYOR():
-    """Yoksa B konusu hic soguma gormezdi (kayit borcu A ile kapanmis sayilirdi)."""
-    assert KAYNAK.count("# Yeni konu, yeni kayit borcu.\n                        son_plan_kayitli = False") == 2
+def test_yeniden_planlama_IKI_DEGISKENI_de_sifirliyor():
+    """Yoksa B konusu hic soguma gormezdi (kayit borcu A ile kapanmis sayilirdi).
+
+    ⚠️ Ikinci degisken 2026-08-19'da eklendi: `son_render` artik EN IYI turu
+    sakliyor, en sonuncusunu degil. Sifirlanmazsa A konusunun yuksek skorlu
+    turu B konusunun kaydina yazilirdi.
+
+    ⚠️ Bu test YAPIYI pinliyor (iki yeniden planlama noktasinin IKISI de
+    sifirliyor mu); DAVRANISI asagidaki
+    `test_ONCEKI_konunun_yuksek_skoru_yeni_konuya_YAZILMIYOR` kosturuyor.
+    Yorum metni kasitli olarak disarida: bir yorumu duzenlemek testi
+    dusurmemeli.
+    """
+    assert (
+        KAYNAK.count(
+            "son_plan_kayitli = False\n                        son_render = None"
+        )
+        == 2
+    )
 
 
 def test_kayit_TEK_YERDE_uretiliyor():
@@ -402,3 +418,62 @@ def test_SON_DENEME_konuyu_birakirsa_kayit_IKI_KEZ_yazilmiyor(monkeypatch, tmp_p
 
     assert len(redler) == 1, f"tek kayit bekleniyordu, {len(redler)} bulundu"
     assert redler[0]["visual_alignment_score"] == 55
+
+
+def test_EN_IYI_tur_kaydediliyor_en_SONUNCUSU_degil(monkeypatch, tmp_path):
+    """⚠️ Olculdu (2026-08-19 02:41, Moai): koşum 98 aldi, onarim turlari 94
+    ve 80 verdi ve kayda 80 yazildi — `zamanlayici.log` da "en son skor 80"
+    dedi. Darbogaz siralamasi bu sayilar uzerinden yapiliyor, yani en kotu
+    turu yazmak konuyu oldugundan zayif gosteriyor.
+
+    ⚠️ `son_render` YAYIN SECMIYOR, yalnizca red kaydini besliyor; bu bir
+    teshis duzeltmesi, bir yayin duzeltmesi degil.
+    """
+    # ⚠️ Skorlar TEK BASINA yetmez: 98/85 yayin esigini gecer ve koşum
+    # birinci denemede yayinlanirdi. Moai'nin gercek sekli agir kusur
+    # tasiyordu — `should_publish` onu bu yuzden dusurdu, skor yuzunden
+    # degil — ve `should_abandon_topic` 98'i "yakilacak konu" saymadigi
+    # icin akis onarim daline gitti. Testin uc turu de o sekli tasiyor.
+    agir = ["kare 8: konuyla ilgisiz modern goruntu"]
+    redler = _kur(
+        monkeypatch,
+        tmp_path,
+        [_review(98, agir=agir), _review(94, agir=agir), _review(80, agir=agir)],
+    )
+
+    assert len(redler) == 1
+    assert redler[0]["visual_alignment_score"] == 98, (
+        "en iyi tur yazilmaliydi, yazilan: "
+        f"{redler[0]['visual_alignment_score']}"
+    )
+
+
+def test_ONCEKI_konunun_yuksek_skoru_yeni_konuya_YAZILMIYOR(monkeypatch, tmp_path):
+    """⚠️ "En iyiyi sakla" degisikliginin actigi RISK, kilit altinda.
+
+    Dizi:
+        deneme 1  konu-1, 74 + agir kusur -> konu YAKILIR, kayit VAR (74),
+                                             konu-2'ye gecilir
+        deneme 2  konu-2, 65 onarilabilir -> onarim, kayit yok
+        deneme 3  konu-2, 65 onarilabilir -> onarim, slot duser -> kayit
+
+    `son_render` konu degisiminde sifirlanmazsa konu-1'in 74'u konu-2'nin
+    kaydina yazilir: kayit dogru konu adini ama YANLIS skoru tasir ve
+    bu, kaydin varolus amaci olan soguma/darbogaz muhasebesini bozar.
+    """
+    redler = _kur(
+        monkeypatch,
+        tmp_path,
+        [
+            _review(74, agir=["kare 1: anlatilan kisi degil"]),
+            _review(65),
+            _review(65),
+        ],
+    )
+
+    assert len(redler) == 2, f"iki kayit bekleniyordu, {len(redler)}"
+    assert redler[0]["visual_alignment_score"] == 74
+    assert redler[1]["visual_alignment_score"] == 65, (
+        "onceki konunun skoru sizdi: " f"{redler[1]['visual_alignment_score']}"
+    )
+    assert redler[0]["topic"] != redler[1]["topic"]

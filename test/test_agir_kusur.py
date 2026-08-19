@@ -206,3 +206,116 @@ def test_KON_TIKI_kaydi_artik_yayinlanabilir():
 
     assert agir == []
     assert should_publish(QualityReview(True, 86, 91, agir_kusurlar=agir)) is True
+
+
+# ─────────────────────────────────────────────────────────────────────
+# `authentic_subject` uc degerli (2026-08-19). Gerekce
+# `agir_kusurlari_ayikla` docstring'inde; ozeti: `person` ve `period`
+# 25ede57'de uc degerli yapildi, bu alan IKILI kaldi ve ayni commit onu
+# agir kusurun ikinci sarti yapti.
+# ─────────────────────────────────────────────────────────────────────
+def test_MOAI_kaydi_artik_yayinlanabilir():
+    """⚠️ Gerileme kilidi — olculmus gercek vaka (2026-08-19 02:41).
+
+    Gorsel 98 (kanalin olculmus en yuksek skoru), altyazi 95. On iki karenin
+    ON BIRI tertemiz. Tek isaretli kare 8 ve hakemin AYNI incelemedeki kendi
+    duzyazisi sunu diyor:
+
+        "Frame 8: The montage includes a frame highly blurred to the point
+         of losing all visual detail."
+        "No other issues detected: all scenes use era-appropriate imagery of
+         Moai ... and DO NOT INTRODUCE MODERN/UNRELATED CONTENT."
+
+    Yani hakem "konuyla ilgisiz modern goruntu YOK" diye yaziyor, kod ise
+    ayni incelemeden tam olarak onu okuyordu. Kare bulanik oldugu icin
+    hakem ne oldugunu SECEMEDI (`period: "unclear"`) ve ikili sorulan
+    `authentic_subject`e mecburen `false` yazdi.
+
+    ⚠️ Bu testin savundugu sey "bulanik kare zararsizdir" DEGIL. Bulanikligi
+    olcen alan hakemde yok; skora giriyor ve skor 98. Bulanikligin kendi
+    kapisi gerekiyorsa ayrica olculup kurulur — baska bir kusurun adiyla
+    elenmez.
+    """
+    kareler = [
+        {"n": 1, "person": "none", "period": "correct", "authentic_subject": True, "modern": False},
+        {"n": 2, "person": "none", "period": "correct", "authentic_subject": True, "modern": False},
+        {"n": 3, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        {"n": 4, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        {"n": 5, "person": "none", "period": "correct", "authentic_subject": True, "modern": False},
+        {"n": 6, "person": "none", "period": "correct", "authentic_subject": True, "modern": False},
+        {"n": 7, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        # Bulanik kare: hakem donemi de ozgunlugu de SECEMEDI.
+        {"n": 8, "person": "none", "period": "unclear", "authentic_subject": "unclear", "modern": True},
+        {"n": 9, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        {"n": 10, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        {"n": 11, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+        {"n": 12, "person": "none", "period": "correct", "authentic_subject": True, "modern": True},
+    ]
+
+    agir = agir_kusurlari_ayikla(kareler)
+
+    assert agir == []
+    assert should_publish(QualityReview(True, 98, 95, agir_kusurlar=agir)) is True
+
+
+def test_secilemeyen_ozgunluk_agir_kusur_DEGIL():
+    """'unclear' bir sey SOYLEMIYOR, dolayisiyla bir sey kanitlamiyor."""
+    kare = {"n": 8, "modern": True, "authentic_subject": "unclear"}
+
+    assert agir_kusurlari_ayikla([kare]) == []
+
+
+def test_acik_HAYIR_hala_agir_kusur():
+    """⚠️ Kapinin gercek isi kaybolmadi: modern tibbi cadir, ulasim haritasi."""
+    kare = {"n": 4, "modern": True, "authentic_subject": "no"}
+
+    assert agir_kusurlari_ayikla([kare]) == ["kare 4: konuyla ilgisiz modern goruntu"]
+
+
+def test_ESKI_bool_kayitlari_hala_ayni_okunuyor():
+    """⚠️ Geriye uyum: `rejected[]` ve eski testler bool tasiyor.
+
+    Bir cevirici yazilsaydi bir bicim sessizce kapinin disinda kalabilirdi;
+    iki bicim de ayni normallestirmeden geciyor.
+    """
+    assert agir_kusurlari_ayikla([{"n": 1, "modern": True, "authentic_subject": False}]) == [
+        "kare 1: konuyla ilgisiz modern goruntu"
+    ]
+    assert agir_kusurlari_ayikla([{"n": 1, "modern": True, "authentic_subject": True}]) == []
+
+
+def test_istem_OZGUNLUK_icin_de_uc_secenek_sunuyor(monkeypatch):
+    """⚠️ Kapi modele GOSTERILENI olcmeli — istem ikili sorarsa kodun uc
+    degerli okumasi hicbir sey degistirmez, hakem yine 'no' yazar.
+
+    Istem KAYNAK METINDEN degil, hakeme giden gercek cagridan okunuyor
+    (`ee886ab` dersi: kaynakta dize aramak yolu yurutmuyor).
+    """
+    yakalanan = {}
+
+    def sahte(prompt, gorsel, **_):
+        yakalanan["istem"] = prompt["instructions"]
+        return {
+            "visual_alignment_score": 90,
+            "subtitle_readability_score": 90,
+            "issues": [],
+            "revised_search_terms": [],
+            "frames": [],
+        }
+
+    monkeypatch.setattr(ya, "_vision_json", sahte)
+    plan = ya.ContentPlan(
+        topic="t", visual_anchor="a", script="s", description="d", tags=[], title="b",
+        scenes=[{"narration": "n", "search_term": "a x"} for _ in range(6)],
+    )
+
+    ya.review_video(plan, Path("montaj.jpg"))
+
+    istem = yakalanan["istem"]
+    i = istem.index('"authentic_subject"')
+    alan = istem[i : istem.index('"modern"', i)]
+    assert '"yes"' in alan
+    assert '"no"' in alan
+    assert '"unclear"' in alan
+    # DW-87: alan hala OLGU soruyor, karar sormuyor.
+    assert "publishable" not in alan
