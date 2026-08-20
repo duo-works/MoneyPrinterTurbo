@@ -194,6 +194,48 @@ yukleyicisi bu bilgiyi hic gondermiyordu.
 """
 
 
+KAPAK_KOTA_MALIYETI = 50
+"""`thumbnails.set` kota maliyeti (`videos.insert` 1600'un yaninda).
+
+⚠️ Neden yazili: gunluk tavan 10.000 birim ve hat gunde en cok 6 yukleme
+yapiyor (6 x 1600 = 9.600). Kapak eklendiginde 6 x 50 = 300 daha gidiyor ve
+toplam **9.900** oluyor — tavanin 100 birim altinda. Yani kapak bedava
+degil, gunluk yukleme tavanini 6'da SABITLIYOR: yedinci yukleme kotayi
+zaten asardi. Tavan buyutulurse bu satir hesaba katilmali.
+"""
+
+
+def kapak_bas(youtube, video_id, kapak_yolu):
+    """Yuklenmis videoya kapak koyar. Basarisizlik YUKLEMEYI DUSURMEZ.
+
+    ⚠️ Yon asimetrik, o yuzden istisna kasitli yutuluyor: cagri geldiginde
+    video ZATEN yayinda. Kapak cagrisi patlarsa (kota, gecici 5xx, dosya
+    siniri) dogru davranis yayini geri almak degil kapaksiz birakmak —
+    YouTube o zaman kendi otomatik karesini secer, yani sonuc bugunku
+    duruma esit. Yukselen bir istisna ise `state.json`a yazilmadan once
+    koşumu oldurur ve YAYINLANMIS video kayitsiz kalirdi.
+
+    ⚠️ YouTube siniri 2 MB; `kapak.py` ~200 KB uretiyor, yani sinir pratikte
+    uzak. Yine de olculuyor cunku cagirana ham dosya gecirme yolu acik.
+    """
+    if not kapak_yolu or not os.path.exists(kapak_yolu):
+        return False
+    boyut = os.path.getsize(kapak_yolu)
+    if boyut > 2 * 1024 * 1024:
+        print(f"⚠️ kapak 2 MB sinirini asiyor ({boyut // 1024} KB), atlandi")
+        return False
+    try:
+        youtube.thumbnails().set(
+            videoId=video_id,
+            media_body=MediaFileUpload(kapak_yolu, mimetype="image/jpeg"),
+        ).execute()
+    except Exception as hata:  # noqa: BLE001 — gerekcesi docstring'de
+        print(f"⚠️ kapak konulamadi (video yayinda kaldi): {hata}")
+        return False
+    print(f"✅ kapak kondu: {os.path.basename(kapak_yolu)}")
+    return True
+
+
 def upload_video(
     video_path,
     title,
@@ -203,6 +245,7 @@ def upload_video(
     contains_synthetic_media=SENTETIK_BEYANI,
     category_id=EGITIM_KATEGORISI,
     language=VARSAYILAN_DIL,
+    kapak_yolu=None,
 ):
     if not os.path.exists(video_path):
         sys.exit(f"Video dosyasi bulunamadi: {video_path}")
@@ -246,6 +289,9 @@ def upload_video(
             print(f"Yukleniyor: %{int(status.progress() * 100)}")
 
     video_id = response["id"]
+    # Kapak, `videos.insert`ten SONRA: `thumbnails.set` var olan bir videoId
+    # istiyor, yani baska sira mumkun degil.
+    kapak_bas(youtube, video_id, kapak_yolu)
     url = f"https://youtube.com/shorts/{video_id}"
     print(f"Yukleme tamamlandi: {url}")
     return url
