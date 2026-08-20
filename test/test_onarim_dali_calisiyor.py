@@ -60,7 +60,9 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(ya, "LOCK_FILE", tmp_path / "automation.lock")
     monkeypatch.setattr(ya, "LOG_DIR", tmp_path / "logs")
     monkeypatch.setattr(
-        ya, "load_state", lambda: {"published": [], "rejected": [], "completed_slots": []}
+        ya,
+        "load_state",
+        lambda: {"published": [], "rejected": [], "completed_slots": []},
     )
     monkeypatch.setattr(ya, "save_state", lambda _s: None)
     monkeypatch.setattr(ya.notion_kuyrugu, "kuyrugu_oku", lambda **_k: [])
@@ -71,16 +73,28 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(
         ya,
         "run_generator",
-        lambda p, a, **_: ("gorev-1", video, tmp_path / "s.txt", [], 0),
+        lambda p, a, **_: (
+            "gorev-1",
+            video,
+            tmp_path / "s.txt",
+            [],
+            0,
+            tmp_path / "malzeme",
+        ),
     )
-    monkeypatch.setattr(ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg")
+    monkeypatch.setattr(
+        ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg"
+    )
     # Gorsel skor 80'in USTUNDE: `should_abandon_topic` False doner, yani
     # akis onarim daline girer. Agir kusur yayini engelliyor.
     monkeypatch.setattr(
         ya,
         "review_video",
         lambda *_a, **_k: ya.QualityReview(
-            False, 89, 88, ["Frame 6 shows the wrong object"],
+            False,
+            89,
+            88,
+            ["Frame 6 shows the wrong object"],
             agir_kusurlar=["kare 6: konuyla ilgisiz modern goruntu"],
         ),
     )
@@ -104,7 +118,9 @@ def _hat(monkeypatch, tmp_path):
     monkeypatch.setattr(
         ya,
         "_json_completion",
-        lambda s, u, **_: {"picks": [{"n": ya.kareden_sahneye(6), "source_file": next(secim)}]},
+        lambda s, u, **_: {
+            "picks": [{"n": ya.kareden_sahneye(6), "source_file": next(secim)}]
+        },
     )
     return plan
 
@@ -124,12 +140,12 @@ def test_onarim_dali_NameError_vermeden_calisiyor(monkeypatch, tmp_path, capsys)
     # onarim TEMIZ kareyi degistirip bozugu birakiyordu — canlida olculdu
     # (18:28 koşumu 78/85 aldi, tek kusuru "kare 10: anlatilan kisi degil").
     sahne = plan.scenes[ya.kareden_sahneye(6) - 1]
-    assert sahne["kaynak_dosya_2"].startswith(
-        "YENI-"
-    ), "bozuk IKINCIL karenin gorseli degismeliydi"
-    assert (
-        sahne["kaynak_dosya"] == "eski-3.jpg"
-    ), "ayni sahnenin TEMIZ birincil karesi dokunulmamali"
+    assert sahne["kaynak_dosya_2"].startswith("YENI-"), (
+        "bozuk IKINCIL karenin gorseli degismeliydi"
+    )
+    assert sahne["kaynak_dosya"] == "eski-3.jpg", (
+        "ayni sahnenin TEMIZ birincil karesi dokunulmamali"
+    )
     # Uc denemenin ucunde de onarim calisti: dal her turda yuruttuluyor.
     assert capsys.readouterr().out.count("kare onarımı") == 3
 

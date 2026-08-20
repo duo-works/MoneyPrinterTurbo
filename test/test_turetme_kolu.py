@@ -116,7 +116,7 @@ def _hat(monkeypatch, tmp_path, *, review: ya.QualityReview, kaynak_reddi: bool)
     else:
 
         def _uretici(_p, _a, **_k):
-            return ("gorev-1", video, tmp_path / "s.txt", [], 0)
+            return ("gorev-1", video, tmp_path / "s.txt", [], 0, tmp_path / "malzeme")
 
     monkeypatch.setattr(ya, "run_generator", _uretici)
     return sayac

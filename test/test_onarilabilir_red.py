@@ -155,7 +155,9 @@ def test_SAHNE_yaziliysa_kare_cevrimi_YAPILMIYOR():
 
 
 def test_yalnizca_KARE_yaziliysa_cevriliyor():
-    assert list(ya.sikayet_sahneleri(_review(72, issues=["Frames 9-10 are dark"]))) == [5]
+    assert list(ya.sikayet_sahneleri(_review(72, issues=["Frames 9-10 are dark"]))) == [
+        5
+    ]
 
 
 def test_SAHNESIZ_sikayet_DISARIDA_kaliyor():
@@ -174,7 +176,9 @@ def test_SAHNESIZ_sikayet_DISARIDA_kaliyor():
 
 
 def _menu(*adlar):
-    return [{"dosya": ad, "gosterdigi": f"{ad} gorseli", "tarih": "1900"} for ad in adlar]
+    return [
+        {"dosya": ad, "gosterdigi": f"{ad} gorseli", "tarih": "1900"} for ad in adlar
+    ]
 
 
 def _plan(sahne=6):
@@ -203,10 +207,14 @@ def test_AGIR_KUSUR_YOKKEN_de_onarim_yapiliyor(monkeypatch):
     plan = _plan()
     monkeypatch.setattr(ya, "arsiv_envanteri", lambda *_a, **_k: _menu("yeni-a.jpg"))
     monkeypatch.setattr(
-        ya, "_json_completion", lambda *_a, **_k: {"picks": [{"n": 2, "source_file": "yeni-a.jpg"}]}
+        ya,
+        "_json_completion",
+        lambda *_a, **_k: {"picks": [{"n": 2, "source_file": "yeni-a.jpg"}]},
     )
 
-    review = _review(72, issues=["Frames 3-4 (scene 2): the aerial view is green-washed"])
+    review = _review(
+        72, issues=["Frames 3-4 (scene 2): the aerial view is green-washed"]
+    )
 
     assert ya.kareyi_onar(plan, review, "Gobekli Tepe") == [2]
     assert plan.scenes[1]["kaynak_dosya"] == "yeni-a.jpg"
@@ -218,7 +226,9 @@ def test_onarim_TAVANLA_sinirli(monkeypatch):
     bastan secmek olurdu — ve bastan secim yazi-tura (8/8/10)."""
     plan = _plan()
     monkeypatch.setattr(
-        ya, "arsiv_envanteri", lambda *_a, **_k: _menu(*[f"yeni-{i}.jpg" for i in range(9)])
+        ya,
+        "arsiv_envanteri",
+        lambda *_a, **_k: _menu(*[f"yeni-{i}.jpg" for i in range(9)]),
     )
     gorulen = {}
 
@@ -244,7 +254,9 @@ def test_AGIR_kusurlar_tavanda_ONCELIKLI(monkeypatch):
     basina videoyu reddettiriyor, siradan sikayet yalnizca skoru dusuruyor."""
     plan = _plan()
     monkeypatch.setattr(
-        ya, "arsiv_envanteri", lambda *_a, **_k: _menu(*[f"yeni-{i}.jpg" for i in range(9)])
+        ya,
+        "arsiv_envanteri",
+        lambda *_a, **_k: _menu(*[f"yeni-{i}.jpg" for i in range(9)]),
     )
     gorulen = {}
 
@@ -261,7 +273,7 @@ def test_AGIR_kusurlar_tavanda_ONCELIKLI(monkeypatch):
         _review(
             72,
             issues=[f"Scene {s}: image does not match" for s in (1, 2, 3, 4, 5)],
-            agir=["kare 11: donem uyusmuyor"],   # sahne 6
+            agir=["kare 11: donem uyusmuyor"],  # sahne 6
         ),
         "Gobekli Tepe",
     )
@@ -285,7 +297,9 @@ def test_sikayet_METNI_de_modele_veriliyor(monkeypatch):
     monkeypatch.setattr(ya, "_json_completion", _sahte)
 
     ya.kareyi_onar(
-        plan, _review(72, issues=["Scene 2 (frames 3-4): the graffiti is not legible"]), "Gobekli Tepe"
+        plan,
+        _review(72, issues=["Scene 2 (frames 3-4): the graffiti is not legible"]),
+        "Gobekli Tepe",
     )
 
     assert "graffiti is not legible" in gorulen["govde"]
@@ -347,12 +361,21 @@ def _kur(monkeypatch, tmp_path, akis):
     monkeypatch.setattr(ya, "save_state", lambda *_a, **_k: None)
     monkeypatch.setattr(ya, "_acquire_lock", lambda: None)
     monkeypatch.setattr(ya, "LOG_DIR", tmp_path)  # uretim loglarina DOKUNMA
-    monkeypatch.setattr(ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg")
+    monkeypatch.setattr(
+        ya, "create_review_montage", lambda *_a, **_k: tmp_path / "m.jpg"
+    )
     monkeypatch.setattr(ya, "kareyi_onar", lambda *_a, **_k: [1])
     monkeypatch.setattr(
         ya,
         "run_generator",
-        lambda *_a, **_k: ("gorev", tmp_path / "v.mp4", tmp_path / "s.txt", [], 0),
+        lambda *_a, **_k: (
+            "gorev",
+            tmp_path / "v.mp4",
+            tmp_path / "s.txt",
+            [],
+            0,
+            tmp_path / "malzeme",
+        ),
     )
 
     sayac = {"n": 0}
@@ -392,10 +415,10 @@ def test_UC_DENEME_de_onarilirsa_slot_dusunce_TEK_kayit(monkeypatch, tmp_path):
 def test_KARISIK_dizi_ne_bosluk_ne_CIFTE_yakma(monkeypatch, tmp_path):
     """⚠️ Iki yonlu hata riski tasiyan dizi:
 
-        deneme 1  konu-1 onarildi                -> kayit YOK
-        deneme 2  konu-1 agir kusurla birakildi  -> kayit VAR, konu-2'ye gecildi
-        deneme 3  konu-2 onarildi, slot dustu    -> konu-2 yazilmali,
-                                                    konu-1 IKINCI KEZ yazilmamali
+    deneme 1  konu-1 onarildi                -> kayit YOK
+    deneme 2  konu-1 agir kusurla birakildi  -> kayit VAR, konu-2'ye gecildi
+    deneme 3  konu-2 onarildi, slot dustu    -> konu-2 yazilmali,
+                                                konu-1 IKINCI KEZ yazilmamali
     """
     redler = _kur(
         monkeypatch,
@@ -443,8 +466,7 @@ def test_EN_IYI_tur_kaydediliyor_en_SONUNCUSU_degil(monkeypatch, tmp_path):
 
     assert len(redler) == 1
     assert redler[0]["visual_alignment_score"] == 98, (
-        "en iyi tur yazilmaliydi, yazilan: "
-        f"{redler[0]['visual_alignment_score']}"
+        f"en iyi tur yazilmaliydi, yazilan: {redler[0]['visual_alignment_score']}"
     )
 
 
@@ -474,6 +496,6 @@ def test_ONCEKI_konunun_yuksek_skoru_yeni_konuya_YAZILMIYOR(monkeypatch, tmp_pat
     assert len(redler) == 2, f"iki kayit bekleniyordu, {len(redler)}"
     assert redler[0]["visual_alignment_score"] == 74
     assert redler[1]["visual_alignment_score"] == 65, (
-        "onceki konunun skoru sizdi: " f"{redler[1]['visual_alignment_score']}"
+        f"onceki konunun skoru sizdi: {redler[1]['visual_alignment_score']}"
     )
     assert redler[0]["topic"] != redler[1]["topic"]

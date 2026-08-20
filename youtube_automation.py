@@ -7145,7 +7145,16 @@ def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
 
 def run_generator(
     plan: ContentPlan, attempt: int, *, bicim: VideoBicimi = SHORTS_BICIMI
-) -> tuple[str, Path, Path, list[dict[str, Any]]]:
+) -> tuple[str, Path, Path, list[dict[str, Any]], int, Path]:
+    """Videoyu uretir; son oge INDIRILEN MALZEMENIN DIZINI.
+
+    ⚠️ `material_dir` neden disari cikiyor: temizlik "bu koşumun dosyalari
+    DURUYOR" diye calisiyor ama korunacak dizin adini KENDI kuruyordu ve
+    ad tutmuyordu. Gerekce `run_cycle` icindeki temizlik cagrisinda.
+
+    ⚠️ Tip notu eskiden dort ogeliydi, fonksiyon ise BES donuyordu; not
+    guncellenmemisti. Simdi alti oge ve not gercegi soyluyor.
+    """
     # ⚠️ Klasor adinda KONU da var (DW-119). Eskiden yalnizca
     # `publication_slot_key()`-`attempt` idi, yani YYYY-MM-DD-HH: ayni saat
     # icinde uretilen iki video AYNI klasoru paylasiyordu.
@@ -7677,7 +7686,7 @@ def run_generator(
     # `tam_dolan_sahne` telemetri icin doner: kac sahnede IKI AYRI arsiv
     # gorseli bulunabildi. Kayda yazilmazsa hangi videonun hangi duzende
     # uretildigi sonradan bilinemez.
-    return task_id, video_path, script_path, credits, tam_dolan_sahne
+    return task_id, video_path, script_path, credits, tam_dolan_sahne, material_dir
 
 
 HAKEM_ORNEK_TAVANI = 12
@@ -8497,6 +8506,7 @@ def run_cycle(
                     script_path,
                     credits,
                     tam_dolan_sahne,
+                    malzeme_dizini,
                 ) = run_generator(plan, attempt, bicim=bicim)
             except SourceMaterialRejected as exc:
                 review = exc.review
@@ -8612,7 +8622,14 @@ def run_cycle(
                 }
             )
             if should_publish(review):
-                selected = (task_id, video_path, script_path, review, credits)
+                selected = (
+                    task_id,
+                    video_path,
+                    script_path,
+                    review,
+                    credits,
+                    malzeme_dizini,
+                )
                 break
             if should_abandon_topic(review):
                 rejected_topic = plan.topic
@@ -8702,7 +8719,7 @@ def run_cycle(
             )
             return result
 
-        task_id, video_path, _, review, credits = selected
+        task_id, video_path, _, review, credits, malzeme_dizini = selected
         credits_text = format_commons_credits(credits)
         # ⚠️ Seri imzasi EN USTTE. Gerekcesi `SERI_IMZASI`nda: dagitim
         # calisiyor ama donusum calismiyor ve izleyicinin gordugu hicbir
@@ -8838,8 +8855,27 @@ def run_cycle(
         # Onceki kosumlarin artiklari — bu kosumunkiler DURUYOR (montaja ve
         # sahne gorsellerine cikan videoya bakarken ihtiyac var). Boylece
         # diskte her zaman en fazla tek kosumluk artik kaliyor.
+        #
+        # ⚠️ KORUNACAK AD, DIZININ GERCEK ADI OLMALI. Burada eskiden
+        # `f"{slot}-attempt-1"` yaziyordu ve UC noktada gercekten sapiyordu:
+        #
+        #     korunmak istenen : 2026-08-20-21-attempt-1
+        #     gercek dizin     : 2026-08-20-23-alhambra-nasrid-...-attempt-3
+        #                        └ indirme saati  └ DW-119 slug'i  └ gercek deneme
+        #
+        # `material_dir` adi `publication_slot_key()`-`konu_slug`-`attempt`
+        # ile kuruluyor; `slot` ise YAYIN slotu ve indirme saatinden farkli
+        # olabiliyor (olculdu: 21 vs 23). DW-119 konu slug'ini eklediginde
+        # bu dize guncellenmemis, yani koruma O GUNDEN BERI hicbir seyi
+        # korumuyordu: her koşum KENDI malzemesini siliyordu.
+        #
+        # Kanit diskte: yayinlanan uzun videonun klasorunde 25 kunye var,
+        # 0 kare. Yorum "duruyor" diyordu, dosyalar yoktu.
+        #
+        # ⚠️ Ayni imza kusuru: koruma, tuketicinin URETTIGINDEN baska bir ad
+        # soyluyor. Ad artik uretenden geliyor, yeniden kurulmuyor.
         try:
-            bosalan = temizlik.kosum_sonrasi_temizle(task_id, f"{slot}-attempt-1")
+            bosalan = temizlik.kosum_sonrasi_temizle(task_id, malzeme_dizini.name)
             record["temizlenen_bayt"] = bosalan
         except temizlik.TemizlikHatasi as hata:
             # Temizlik bir YAN IS. Basarisiz olmasi, uretilmis ve yayinlanmis
