@@ -144,14 +144,22 @@ def test_uzun_yonerge_sahne_anlatimlarini_ESIT_UZUNLUKTA_istiyor():
 # ayni model 1.353 kelime uretmisti, yani YAPABILIYOR ama tutarli degil.
 #
 # Sebep aritmetik: istem TOPLAM kelimeyi soyluyordu, sahne BASINA hicbir sey
-# soylemiyordu. Model Shorts uzunlugunda (~30 kelime) anlatimlar yazip 35
-# sahneye boluyor: 35 x 30 = 1.050, tabanin hemen altinda.
+# soylemiyordu. Model Shorts uzunlugunda (~30 kelime) anlatimlar yazip cok
+# sahneye boluyor ve toplam tabanin hemen altinda kaliyor.
+#
+# ⚠️ ORNEKLERIN SAYILARI 2026-08-20'de GUNCELLENDI ve bu testin eski hali
+# KUSURU SABITLIYORDU: "45 words per narration at 35 scenes" metnini birebir
+# bekliyordu, oysa 35 sahne artik dogrudan reddediliyor (aralik 24-28).
+# Yani test, modele yururlukte olmayan bir rejimi ogretmeyi KORUYORDU.
+# Genel kural artik `test_istemdeki_SAHNE_ORNEKLERI_araligin_ICINDE`de.
 
 
 def test_uzun_yonerge_SAHNE_BASINA_kelime_soyluyor():
     uzun = ya.editoryal_sistem_yonergesi(ya.UZUN_BICIMI)
 
-    assert "45 words per narration at 35 scenes" in uzun
+    assert "words per narration at" in uzun
+    # Aralik icinden en az bir somut ornek verilmis olmali.
+    assert "60 at 26 scenes" in uzun
 
 
 def test_uzun_yonerge_SHORTS_UZUNLUGUNDA_anlatimi_acikca_yasakliyor():
@@ -297,7 +305,11 @@ def test_onbellek_SINIRA_gore_ayrisiyor(monkeypatch):
         return [
             # ⚠️ Aciklama ICERIK tasimali: menu artik iceriksiz aciklamayi
             # eliyor. Bu testin konusu onbellek anahtari, aciklama degil.
-            {"title": f"File:D{i}.jpg", "aciklama": f"Tomb chamber wall {i}", "tarih": ""}
+            {
+                "title": f"File:D{i}.jpg",
+                "aciklama": f"Tomb chamber wall {i}",
+                "tarih": "",
+            }
             for i in range(sinir)
         ]
 
@@ -544,5 +556,73 @@ def test_bicim_DOGRULAMAYA_gecirilyor():
     # cagiriyor, cunku modele tek kusur degil HEPSI geri besleniyor (gerekce
     # o fonksiyonun docstring'inde). KORUNAN OZELLIK AYNI — bu test bicimin
     # dogrulamaya gecirildigini olcuyor, cagrilanin adini degil.
-    assert bosluksuz("plan_kusurlari(plan,sahne_sayisi,bicim=bicim") in bosluksuz(kaynak)
+    assert bosluksuz("plan_kusurlari(plan,sahne_sayisi,bicim=bicim") in bosluksuz(
+        kaynak
+    )
     assert bosluksuz("editoryal_sistem_yonergesi(bicim)") in bosluksuz(kaynak)
+
+
+def test_istemdeki_SAHNE_ORNEKLERI_araligin_ICINDE(monkeypatch):
+    """⚠️ MUTASYON: aritmetik ornekleri 35/45 sahneye geri almak bunu duser.
+
+    OLCULDU 2026-08-20. Uzun istem modele su tabloyu veriyordu:
+
+        "Roughly 45 words per narration at 35 scenes, 65 at 24 scenes,
+         36 at 45 scenes"
+        "a 1600 word script split into 35 scenes puts about 45 words in each"
+
+    Sahne araligi 24-39'dan once 24-26'ya sonra 24-28'e cekilmisti, ama bu
+    ORNEKLER guncellenmemisti: uc ornekten IKISI (35 ve 45 sahne) artik
+    dogrudan reddedilen bir rejime ait. Yani model, kendisini redde goturecek
+    sayilarla kalibre ediliyordu.
+
+    ⚠️ Test tek tek sayilari degil KURALI kilitliyor: istemde gecen her
+    "N scenes" ifadesi yururlukteki araligin icinde olmali. Aralik yeniden
+    degisirse bu test kendiliginden yakalar — ayni kusur ucuncu kez olmasin.
+    """
+    import re as _re
+
+    istem = ya.editoryal_sistem_yonergesi(bicim=ya.UZUN_BICIMI)
+    taban, tavan = ya.UZUN_BICIMI.sahne_araligi
+
+    gecenler = [int(n) for n in _re.findall(r"\b(\d+) scenes\b", istem)]
+
+    assert gecenler, "istemde hic sahne ornegi yok — desen mi degisti?"
+    disarda = [n for n in gecenler if not taban <= n <= tavan]
+    assert disarda == [], f"aralik disi sahne ornekleri: {disarda}"
+
+
+def test_uzun_istem_kelime_yonunu_TERS_soylemiyor(monkeypatch):
+    """⚠️ MUTASYON: `_yonerge_degistir` cagrisini kaldirmak bunu duser.
+
+    OLCULDU 2026-08-20: dort Alhambra koşumunda kelime tabani BES denemeyi
+    yakti (419 · 679 · 769 · 776 kelime, taban 900). Sozlesmedeki cumle
+    Shorts icin yazilmisti — orada model TASIYOR — ve modeli asagi cekiyor:
+
+        "a draft that lands near the upper bound is rejected outright"
+        "if the last scene pushes you past the middle, cut a clause
+         rather than adding a scene"
+
+    Uzun formatta hata TERS YONDE, yani ayni cumle modeli hatanin ustune
+    itiyordu.
+    """
+    uzun = ya.editoryal_sistem_yonergesi(bicim=ya.UZUN_BICIMI)
+
+    assert "cut a clause rather than adding a scene" not in uzun
+    assert "near the upper bound is rejected outright" not in uzun
+    assert "writing too FEW words" in uzun
+
+
+def test_SHORTS_kelime_talimati_DEGISMEDI(monkeypatch):
+    """⚠️ Zamanlanmis uretim hatti SHORTS kolunu kullaniyor ve orada model
+    TASIYOR (olculen redler 122-249, tavan 150). Asagi ceken cumle orada
+    DOGRU ve durmali; uzun formata ozel duzeltmenin oraya sizmasi gercek bir
+    gerileme olurdu.
+
+    ⚠️ MUTASYON: duzeltmeyi `EDITORYAL_YONERGE`in kendisine yazmak (yani her
+    kipe) bu testi duser.
+    """
+    kisa = ya.editoryal_sistem_yonergesi(bicim=ya.SHORTS_BICIMI)
+
+    assert "cut a clause rather than adding a scene" in kisa
+    assert "writing too FEW words" not in kisa

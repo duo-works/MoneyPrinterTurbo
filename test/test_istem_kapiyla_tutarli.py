@@ -143,9 +143,21 @@ def test_istem_ORTAYI_hedeflemeyi_soyluyor(bicim):
     siniri 60 sn, yani pay neredeyse bitti; ustelik tavan 120'den 150'ye
     cikarildiginda model de yukari kaydi (122-151'den 153-194'e). Aralik
     ayni kaliyor, degisen sey modele verilen HEDEF.
+
+    ⚠️ YON BICIME GORE DEGISIYOR (2026-08-20). "Ortayi hedefle" IKI kipte de
+    dogru, ama hatanin YONU zit:
+
+        shorts : model TASIYOR       (olculen redler 122-249, tavan 150)
+        uzun   : model EKSIK yaziyor (419 · 679 · 769 · 776, taban 900)
+
+    Shorts'un ", NOT ITS CEILING ... cut a clause rather than adding a scene"
+    eki uzun formatta modeli hatasinin USTUNE itiyordu ve dort koşumda bes
+    denemeyi yakti. Bu test ORTAK sarti tutuyor; yone ozgu cumleler kendi
+    kip testlerinde (`test_uzun_istem_kelime_yonunu_TERS_soylemiyor`,
+    `test_SHORTS_kelime_talimati_DEGISMEDI`).
     """
     yonerge = ya.editoryal_sistem_yonergesi(bicim)
-    assert "AIM FOR THE MIDDLE OF THAT RANGE, NOT ITS CEILING" in yonerge
+    assert "AIM FOR THE MIDDLE OF THAT RANGE" in yonerge
 
 
 def test_istem_resmedilemez_kuralini_SOMUT_ornekle_anlatiyor():

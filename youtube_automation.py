@@ -988,8 +988,8 @@ THIS IS A LONG FORM DOCUMENTARY, NOT A SHORT, and the difference is not length a
 Build the script in parts: an opening that poses the question, then three to five thematic sections that each answer a different part of it, then a closing that takes a position. Each section must move the story somewhere the previous one did not; a section that could swap places with another is a section that should be cut.
 NEVER ANNOUNCE THE STRUCTURE. Do not write "in this section", "first we will look at", "as we saw earlier", or any other signposting. The viewer feels a new section through the change of subject, not through being told about it.
 AIM FOR ABOUT 1600 SPOKEN WORDS, not the minimum. A script that lands just under the floor is rejected outright and the entire plan is thrown away, so write comfortably inside the range rather than close to its edge.
-DO THE ARITHMETIC BEFORE YOU WRITE, because the scene count decides the script length and getting this wrong is the most common way this plan is thrown away. Multiply the number of scenes you intend to write by the words you intend to put in each narration; if that product is under the floor the plan is rejected. Roughly 45 words per narration at 35 scenes, 65 at 24 scenes, 36 at 45 scenes. A narration of 25-30 words is a Short's scene and lands well under the target.
-THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. This means the narrations together ARE the full script, not a summary of it: their combined word count must equal the script's, so a 1600 word script split into 35 scenes puts about 45 words in each. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
+DO THE ARITHMETIC BEFORE YOU WRITE, because the scene count decides the script length and getting this wrong is the most common way this plan is thrown away. Multiply the number of scenes you intend to write by the words you intend to put in each narration; if that product is under the floor the plan is rejected. Roughly 65 words per narration at 24 scenes, 60 at 26 scenes, 57 at 28 scenes. A narration of 25-30 words is a Short's scene and lands well under the target.
+THE SCENE NARRATIONS ARE THE SCRIPT, SPLIT INTO PARTS. Read in order they must tell the same story, in the same words, as `script`. This means the narrations together ARE the full script, not a summary of it: their combined word count must equal the script's, so a 1600 word script split into 26 scenes puts about 60 words in each. Each one must be about the same length as the others, because every image is on screen for exactly the same number of seconds; a scene carrying twice the words of its neighbours leaves the wrong picture on screen for half of what it says.
 Length makes one failure far more expensive: inventing facts to fill time. When the source text runs out, write fewer scenes about what it does contain, never more scenes about what it does not."""
 """Uzun formata OZEL yonerge — Shorts sozlesmesinin ustune eklenir.
 
@@ -1083,6 +1083,32 @@ def editoryal_sistem_yonergesi(bicim: "VideoBicimi | None" = None) -> str:
         sozlesme,
         "Create 6-10 chronological scenes.",
         f"Create {sahne_en_az}-{sahne_en_cok} chronological scenes.",
+    )
+    # ⚠️ SHORTS'UN KELIME TALIMATI UZUN FORMATTA TERS YONE ITIYOR — olculdu
+    # 2026-08-20, dort Alhambra koşumunda kelime tabani BES denemeyi yakti
+    # (419 · 679 · 769 · 776 kelime, taban 900).
+    #
+    # Shorts'ta model TASIYOR (olculen redler 122-249, tavan 150) ve bu cumle
+    # onu asagi cekmek icin yazildi: "near the upper bound is rejected",
+    # "cut a clause rather than adding a scene". Uzun formatta hata TERS
+    # YONDE ve ayni cumle modeli hatanin ustune itiyor.
+    #
+    # ⚠️ Bu ders bu depoda IKINCI kez cikiyor. 2026-08-19'da ayni yon sorunu
+    # icin "cut before you answer" degistirilmisti — ama YALNIZCA
+    # `sahne_sayisi is not None` dalindaki BUTCE cumlesinde. Sozlesmenin
+    # kendisindeki bu cumle atlanmisti ve uzun formatta hala gorunuyordu.
+    # Bir ilkenin bir yerde uygulanip kardesinde uygulanmamasi bu deponun
+    # tekrar eden kusur sekli.
+    sozlesme = _yonerge_degistir(
+        sozlesme,
+        "AIM FOR THE MIDDLE OF THAT RANGE, NOT ITS CEILING: a draft that lands "
+        "near the upper bound is rejected outright, and rewriting it costs you an "
+        "attempt. Count the words before you answer; if the last scene pushes you "
+        "past the middle, cut a clause rather than adding a scene.",
+        "AIM FOR THE MIDDLE OF THAT RANGE. Count the words before you answer. "
+        "The measured failure in this format is writing too FEW words, not too "
+        "many: if your draft lands under the middle, make the thinnest narrations "
+        "fuller rather than dropping a scene.",
     )
     # ⚠️ Basliktaki `#Shorts` istemden DUSUYOR; kalirsa YouTube videoyu
     # Shorts sayar ve IZLENME SAATI YAZMAZ — uzun formatin butun amaci o
