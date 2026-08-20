@@ -49,6 +49,59 @@ def test_menu_dosya_aciklama_ve_tarih_tasiyor(monkeypatch):
     ]
 
 
+def _gravurlu_menu():
+    return [
+        _aday(
+            "File:Herculaneum fresco of a priestess.jpg",
+            "Wall painting of a priestess having her hair dressed",
+            "1st century CE",
+        ),
+        _aday(
+            "File:House of the Stags Cupids sawing 1773 Engraving by Lamborn.jpg",
+            "Small painting of Cupids sawing, engraved plate",
+            "1773",
+        ),
+    ]
+
+
+def test_UZUN_menude_1773_gravuru_ELENIYOR(monkeypatch):
+    """⚠️ HAT KENDI KENDISIYLE CELISIYORDU (olculdu 2026-08-19).
+
+    Herculaneum menusunun 44 gorselinin 14'u 1773 gravuruydu. Arsiv-once
+    kurali modele "menuden yaz" diyor, sonra model gravuru anlatinca
+    `resmedilemez_kusuru` reddediyor — yani hat resmedilemez icerigi
+    DAYATIP sonra onu reddediyordu.
+    """
+    monkeypatch.setattr(wm, "arsiv_menusu", lambda _k, **_kw: _gravurlu_menu())
+
+    menu = ya.arsiv_envanteri("Gravur Denemesi Uzun", bicim=ya.UZUN_BICIMI)
+
+    assert [g["dosya"] for g in menu] == ["Herculaneum fresco of a priestess.jpg"]
+
+
+def test_SHORTS_menusunde_gravur_ELENMIYOR(monkeypatch):
+    """⚠️ KAPI TESTI: kusur uzun formatta olculdu, Shorts kalibre edilmis."""
+    monkeypatch.setattr(wm, "arsiv_menusu", lambda _k, **_kw: _gravurlu_menu())
+
+    menu = ya.arsiv_envanteri("Gravur Denemesi Shorts", bicim=ya.SHORTS_BICIMI)
+
+    assert len(menu) == 2
+
+
+def test_kayit_kalibi_DAR_tutuluyor():
+    """⚠️ Gevsek anahtar zarar verirdi — ayni gecenin `\\bAI\\b` dersi.
+
+    Olculdu: `engrav|etching|lithograph|woodcut` Herculaneum'da 14/14'u
+    yakaliyor, `plate|print|disegn|incis` SIFIR ekliyor. Yani gevsek
+    anahtarin kazanci yok, kaybi var.
+    """
+    assert ya.kayit_gorseli_mi("Cupids 1773 Engraving by Lamborn.jpg", "")
+    # Roma gumus TABAGI bir kayit gorseli DEGIL; "ustaca icatlar" sutunu
+    # da matbaa/baski konularini tasiyor.
+    assert not ya.kayit_gorseli_mi("Roman silver plate from Mildenhall.jpg", "")
+    assert not ya.kayit_gorseli_mi("Gutenberg printing press replica.jpg", "")
+
+
 def test_menu_yoksa_bos_donuyor(monkeypatch):
     """Menusu kurulamayan konuda uretim DURMAMALI."""
     monkeypatch.setattr(wm, "arsiv_menusu", lambda _k, **_kw: [])

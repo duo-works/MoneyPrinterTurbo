@@ -93,7 +93,7 @@ def test_SHORTS_tavani_modelin_OLCULEN_ciktisini_kapsiyor():
 
 def test_uzun_bicim_2000_kelimeyi_KABUL_ediyor():
     """⚠️ Kapi kipe bagli olmasaydi her uzun senaryo reddedilirdi."""
-    ya.validate_content_plan(_uzun_plan(1500, 30), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 25), bicim=ya.UZUN_BICIMI)
 
 
 def test_uzun_bicimde_SHORTS_senaryosu_reddediliyor():
@@ -102,13 +102,20 @@ def test_uzun_bicimde_SHORTS_senaryosu_reddediliyor():
 
 
 def test_uzun_bicim_sahne_araligi():
-    # ⚠️ Tavan 45 -> 39 (2026-08-15): kelime tabani 900'e inince 45 sahne
+    # Tavan 45 -> 39 (2026-08-15): kelime tabani 900'e inince 45 sahne
     # 7,0 sn/kare veriyordu ve belgesel ritmi tabani 8 saniye.
+    # ⚠️ Tavan 39 -> 26 (2026-08-19), sebebi ritim DEGIL dönem kaymasi:
+    # 39 sahnede model malzemeyi tuketip kazi tarihine geciyor.
+    # ⚠️ Tavan 26 -> 28 (2026-08-20), sebebi modelin OLCULEN KIP'I: 16
+    # denemenin 7'si tam 27 sahne verdi, yani kapi en sik uretilen ciktiyi
+    # reddediyordu. Gerekce `UZUN_BICIMI.sahne_araligi` yorumunda.
     ya.validate_content_plan(_uzun_plan(1500, 24), bicim=ya.UZUN_BICIMI)
-    ya.validate_content_plan(_uzun_plan(1500, 39), bicim=ya.UZUN_BICIMI)
+    ya.validate_content_plan(_uzun_plan(1500, 28), bicim=ya.UZUN_BICIMI)
 
-    with pytest.raises(ValueError, match="24-39 scenes"):
+    with pytest.raises(ValueError, match="24-28 scenes"):
         ya.validate_content_plan(_uzun_plan(1500, 8), bicim=ya.UZUN_BICIMI)
+    with pytest.raises(ValueError, match="24-28 scenes"):
+        ya.validate_content_plan(_uzun_plan(1500, 39), bicim=ya.UZUN_BICIMI)
 
 
 def test_sahne_TAVANI_arsiv_arzindan():

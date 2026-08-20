@@ -41,7 +41,7 @@ def _plan(capa: str, sahne_terimi: str | None = None) -> ya.ContentPlan:
         script="Herculaneum was buried. " + "word " * 1497,
         scenes=[
             {"narration": f"sahne {i} anlatimi", "search_term": f"{terim} {i}"}
-            for i in range(1, 31)
+            for i in range(1, 26)
         ],
         description="aciklama",
         tags=["a", "b", "c"],

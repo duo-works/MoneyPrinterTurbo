@@ -1143,6 +1143,81 @@ def dosya_sayfasi(baslik: str) -> dict[str, Any] | None:
     return None
 
 
+KUCUK_RESIM_GENISLIGI = 400
+"""Menu kucuk resminin piksel genisligi — kontak sayfasi hucresiyle AYNI.
+
+`create_source_montage` hucreyi 400x300 ciziyor; daha buyuk indirmek bant
+genisligi harcayip ayni pikseli verirdi, daha kucugu hucrede buyutulurdu.
+"""
+
+KUCUK_RESIM_YIGIN = 50
+"""Tek `titles=` istegine sigan dosya sayisi — MediaWiki'nin kendi siniri."""
+
+
+def menu_kucuk_resimleri(dosyalar: list[str], hedef_dizin: Path) -> dict[str, Path]:
+    """Menu girdilerinin KUCUK resimlerini indirir: {dosya adi -> yol}.
+
+    Menuyu goru modeline gostermek icin (bkz. `menuyu_zenginlestir`). Tam
+    cozunurluklu dosya GEREKMIYOR: hucre zaten 400x300.
+
+    ⚠️ TOPLU ISTEK, dosya basina degil. 30 girdi tek `titles=` istegiyle
+    cozuluyor; tek tek sorulsaydi 30 istek olurdu.
+
+    ⚠️ Indirme `_get_with_retry` uzerinden: 429/5xx geri cekilmeyle yeniden
+    deneniyor. Olculdu (2026-08-20, olcum sondasi): duz `requests.get` ile
+    30 indirmenin 16'si 429 aldi, `_get_with_retry` ile 30/30 geldi.
+
+    ⚠️ GETIRILEMEYEN dosya haritada YER ALMAZ, istisna FIRLATMAZ. Cagiran
+    taraf onu goru sayfasina koymaz ve girdi aciklamasiz kalir — menuden
+    ELENMEZ. Aciklama bir iyilestirme, on kosul degil.
+    """
+    hedef_dizin.mkdir(parents=True, exist_ok=True)
+    adresler: dict[str, str] = {}
+    for bas in range(0, len(dosyalar), KUCUK_RESIM_YIGIN):
+        yigin = dosyalar[bas : bas + KUCUK_RESIM_YIGIN]
+        try:
+            yanit = _get_with_retry(
+                API_URL,
+                params={
+                    "action": "query",
+                    "titles": "|".join(
+                        f"File:{ad.removeprefix('File:').strip()}" for ad in yigin
+                    ),
+                    "prop": "imageinfo",
+                    "iiprop": "url|mime",
+                    "iiurlwidth": str(KUCUK_RESIM_GENISLIGI),
+                    "format": "json",
+                    "formatversion": "2",
+                },
+                timeout=30,
+            )
+            sayfalar = yanit.json().get("query", {}).get("pages", [])
+        except (requests.RequestException, ValueError):
+            continue
+        for sayfa in sayfalar:
+            if sayfa.get("missing"):
+                continue
+            bilgi = (sayfa.get("imageinfo") or [{}])[0]
+            if kucuk := bilgi.get("thumburl"):
+                ad = str(sayfa.get("title", "")).removeprefix("File:").strip()
+                if ad:
+                    adresler[ad] = str(kucuk)
+
+    yollar: dict[str, Path] = {}
+    for sira, ad in enumerate(dosyalar):
+        adres = adresler.get(ad.removeprefix("File:").strip())
+        if not adres:
+            continue
+        hedef = hedef_dizin / f"menu-{sira:03d}.jpg"
+        try:
+            yanit = _get_with_retry(adres, timeout=60)
+            hedef.write_bytes(yanit.content)
+        except (requests.RequestException, ValueError, OSError):
+            continue
+        yollar[ad] = hedef
+    return yollar
+
+
 MENU_KATEGORI_SINIRI = 200
 """Menu kurarken kategoriden okunacak `imageinfo`'lu dosya sayisi.
 

@@ -11,6 +11,7 @@ import random
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import unicodedata
 import zlib
@@ -1546,7 +1547,7 @@ UZUN_BICIMI = VideoBicimi(
     # Alhambra 32, Egyptian pyramids 23 kullanilabilir gorsel. 45'in
     # ustunu istemek, arzin veremedigi videoyu istemek olurdu.
     #
-    # ⚠️ TAVAN 45'TEN 39'A INDI (2026-08-15), sebep RITIM. Kelime tabani
+    # TAVAN 45'TEN 39'A INDI (2026-08-15), sebep RITIM. Kelime tabani
     # 900'e inince en kotu durum su oluyordu:
     #
     #     900 kelime / 170 = 317 sn ses ; 317 / 45 sahne = 7,0 sn/kare
@@ -1558,8 +1559,60 @@ UZUN_BICIMI = VideoBicimi(
     #
     #     317 sn / 8 sn = 39 sahne
     #
-    # Ust uc degismedi: 2.200 kelime / 24 sahne = 32 sn/kare.
-    sahne_araligi=(24, 39),
+    # ⚠️ TAVAN 39'DAN 26'YA INDI (2026-08-19) ve sebebi RITIM DEGIL, HIKAYE
+    # ARZI. Ritim 39'da zaten geciyordu; videoyu dusuren sey senaryoydu.
+    #
+    # Olculdu (Herculaneum, sahne sayisi SABITLENMEMIS plan sondasi): model
+    # tavana dayandi (39/39) ve son ALTI sahne arsivin donemini terk etti —
+    # Winckelmann 1762, Maiuri 1927-42, PHI 2001, Getty, "kazilar durdu".
+    # Arsiv 1. yuzyila ait, yani o alti sahne RESMEDILEMEZ. 16 Agu'da tam
+    # bu yuzden hakemden 72 alinip reddedilmisti.
+    #
+    # Mekanizma: model 1. yuzyil kasabasi icin 39 sahnelik malzemeyi ~33.
+    # sahnede tuketiyor ve kronolojiye devam edip kazi tarihine geciyor.
+    # Yani sahne sayisi dönem kaymasinin SEBEBI, kurbani degil. Shorts'ta
+    # (6-8 sahne) kusur hic gorunmedi cunku orada malzeme hic bitmiyor.
+    #
+    # ⚠️ Bu bir ESIK INDIRMESI DEGIL, SIKILASTIRMA — ritim IYILESIYOR:
+    #
+    #     900  kelime -> 317 sn ; 317 / 26 = 12,2 sn/kare  (taban 8)  ✓
+    #     2200 kelime -> 776 sn ; 776 / 24 = 32,4 sn/kare  (tavan 45) ✓
+    #
+    # `test_sahne_basina_sure_belgesel_ritmi` DEGISMEDEN geciyor.
+    #
+    # ⚠️ TAVAN 26'DAN 28'E CIKTI (2026-08-20) ve sebebi ucuncu bir sey:
+    # MODELIN OLCULEN KIP'I. Yukaridaki iki gerekce (ritim, hikaye arzi)
+    # tavanin NEREYE KADAR cikabilecegini soyluyor; bu ucuncusu NEREYE
+    # OTURMASI gerektigini.
+    #
+    # Olculdu (tavan 26 yururlukteyken gozlenen 16 uzun plan denemesi):
+    #
+    #     25 sahne : ##       (2)
+    #     26 sahne : #####    (5)
+    #     27 sahne : #######  (7)   <- kip, tavanin BIR USTU
+    #     28 sahne : #        (1)
+    #     29 sahne : #        (1)
+    #
+    #     sayisal kapiyi gecen (tavan 26):  4/16
+    #     sayisal kapiyi gecen (tavan 28): 11/16
+    #
+    # Tavan 26, dagilimin tepe noktasinin bir sahne altinda duruyordu; yani
+    # kapi en sik uretilen ciktiyi reddediyordu. Butce cumlesi modele 59
+    # kelime/sahne diyor, gecen planlarin gerceklesen ortalamasi 56 ve
+    # 1550/28 = 55 — 28 modelin ZATEN yazdigi yogunlugun ustune oturuyor.
+    # 26 ise ondan daha yogun yazmasini istiyordu ve model bunu ya sahne
+    # ekleyerek (tavan ustu red) ya kelime dusurerek (taban alti red)
+    # karsiliyordu. Iki kisit birbirine karsi deneme yakiyordu.
+    #
+    # ⚠️ 26'nin GEREKCESI DUSTUGU ICIN cikilabiliyor: kayma artik hicbir
+    # redde gorunmuyor (20 Agu hakem kaydi, sekiz kusurun SIFIRI donem).
+    # Kaymayi asil kapatan iki mudahale — yay kapsami cumlesi ve gravur
+    # filtresi — yerinde duruyor; 26 onlarin yaninda gereginden dar kalmisti.
+    #
+    #     900 kelime -> 317 sn ; 317 / 28 = 11,3 sn/kare  (taban 8) ✓
+    #
+    # yani ritim hala rahat ustunde ve taban 24'un 32,4 sn hesabi degismiyor.
+    sahne_araligi=(24, 28),
     # ⚠️ Uzun formatta sahne basina TEK kare. Shorts'ta iki yuva vardi
     # cunku 5 saniyelik bir kare altyazidan yavas kaliyordu; 15 saniyelik
     # bir belgesel karesinde ayni sorun yok ve ikiye bolmek gereken gorsel
@@ -2379,13 +2432,19 @@ def kareyi_onar(
     bozuk = (agir + siradan)[:AZAMI_ONARIM]
     if not bozuk:
         return []
+    onarim_konusu = menu_konusu.strip() or plan.visual_anchor
     menu = arsiv_envanteri(
-        menu_konusu.strip() or plan.visual_anchor,
+        onarim_konusu,
         sinir=envanter_siniri(bicim),
         bicim=bicim,
     )
     if not menu:
         return []
+    # ⚠️ ONARIM DA ZENGIN MENUYU GORMELI. Bu menu modele BASILIYOR (asagida
+    # istemde) ve istemin gordugu liste ile plan asamasinin gordugu liste
+    # ayrisirsa model iki farkli menu arasinda salinir — `alinti_kusuru`nun
+    # "Jock Willis" dersi. Onbellek sicak oldugu icin bedeli sifir cagri.
+    menu = menuyu_zenginlestir(menu, onarim_konusu, bicim=bicim)
     # ⚠️ IKINCIL DOSYALAR DA "kullanilmis" sayiliyor. Yalnizca `kaynak_dosya`
     # toplansaydi onarim, sahnenin ikinci yuvasinda ZATEN duran bir dosyayi
     # "bos" sanip secebilirdi; sonuc ayni videoda ayni goruntunun iki kez
@@ -3642,6 +3701,42 @@ def aciklama_iceriksiz_mi(aciklama: str) -> bool:
     return len(sade) < ASGARI_ACIKLAMA or bool(ICERIKSIZ_ACIKLAMA.search(sade))
 
 
+KAYIT_GORSELI_KALIPLARI = ("engrav", "etching", "lithograph", "woodcut")
+"""Gorselin KONUYU degil, konunun KAYDINI gosterdigini ele veren kelimeler.
+
+⚠️ NEDEN VAR — HAT KENDI KENDISIYLE CELISIYORDU (olculdu 2026-08-19).
+Herculaneum menusunun 44 gorselinin **14'u** (ucte biri) 1773 GRAVURU;
+dosya adlarinda `1773 Engraving sculpted by Peter Spendelowe Lamborn`
+yaziyor. Bu uclu birbirini kilitliyordu:
+
+  1. Arsiv-once kurali: "menuden yaz, her sahne bir dosya alintila"
+  2. Menunun ucte biri 18. yuzyil gravuru
+  3. Model o gravuru anlatinca `resmedilemez_kusuru` reddediyor
+
+1773 gravuru hakkinda durust yazmanin iki yolu var ve IKISI DE kapiya
+takiliyor: "bu gravur X gosteriyor" (resmedilemez) ya da "1773'te Lamborn
+bunu kazidi" (dönem kaymasi). Yani model kazi tarihine TERCIHEN kaymiyor —
+MENU onu 18. yuzyila itiyor.
+
+⚠️ LISTE DAR TUTULDU, olculerek. `engrav|etching|lithograph|woodcut`
+Herculaneum'da 14/14'u yakaliyor; `plate|print|disegn|incis` SIFIR ekliyor.
+Gevsek anahtar eklemek zarar verirdi: `plate` bir Roma gumus tabagini,
+`print` "ustaca icatlar" sutununu yakalardi. Ayni gecenin `\\bAI\\b`
+dersi — kelime siniri olmayan kalip kelime ICINDE eslesiyor.
+
+⚠️ ARZ OLCULDU, kirilmiyor: 54 capanin 4'u gravur tasiyor (Herculaneum
+-14, Gobekli Tepe -2, Brooklyn Bridge -2, Ephesus -1) ve HICBIRI 24
+sahne tabaninin altina dusmuyor — taban ustundeki capa sayisi 37 -> 37,
+tam 26 sahne tasiyan 35 -> 35.
+"""
+
+
+def kayit_gorseli_mi(dosya: str, gosterdigi: str) -> bool:
+    """Girdi konunun kendisini degil, onun 18. yy kaydini mi gosteriyor."""
+    metin = f"{dosya} {gosterdigi}".casefold()
+    return any(kalip in metin for kalip in KAYIT_GORSELI_KALIPLARI)
+
+
 def arsiv_envanteri(
     konu: str,
     *,
@@ -3704,6 +3799,25 @@ def arsiv_envanteri(
         # seyreltmesinde ayni ders olculmustu.
         if aciklama_iceriksiz_mi(gosterdigi):
             continue
+        # ⚠️ KAYIT GORSELLERI YALNIZCA UZUN FORMATTA ELENIYOR. Gerekce
+        # `KAYIT_GORSELI_KALIPLARI`da; kusur uzun formatta olculdu ve
+        # Shorts hatti olcurek kalibre edilmis durumda, menusunu
+        # degistirmek icin bir sebep yok.
+        #
+        # ⚠️ ELEME BURADA, `arsiv_envanteri`nin ICINDE olmali: ustteki
+        # `aciklama_iceriksiz_mi` yorumunun anlattigi ders birebir gecerli.
+        # `on_menu` on kontrolu (`sahne_tavani`/`sahne_hedefi` oradan
+        # geliyor) ve `_kaynak_ve_menu_blogu`nun modele gosterdigi liste
+        # AYRI `arsiv_envanteri` cagrilari; birini suzup otekini birakmak,
+        # kapinin modele gosterilenden BASKA bir listeyi olcmesi olurdu.
+        # Onbellek anahtari `kare_orani(bicim)` iceriyor, yani uzun ve
+        # Shorts menuleri zaten ayri onbellekleniyor.
+        # ⚠️ `bicim or SHORTS_BICIMI` — `kare_orani`nin AYNI sozlesmesi:
+        # bicim verilmemesi Shorts demek. Duz `bicim.dikey` yazmak, bicimsiz
+        # cagrilari (testler ve eski cagri yerleri) AttributeError ile
+        # oldururdu.
+        if not (bicim or SHORTS_BICIMI).dikey and kayit_gorseli_mi(dosya, gosterdigi):
+            continue
         menu.append(
             {
                 "dosya": dosya,
@@ -3713,6 +3827,222 @@ def arsiv_envanteri(
         )
     _ENVANTER_ONBELLEGI[anahtar] = menu
     return menu
+
+
+MENU_GORUSU_DOSYASI = ROOT / "storage" / "youtube_automation" / "menu_gorusu.json"
+MENU_GORUSU_SURUMU = 2
+"""Menu goru onbelleginin sema surumu — istem degisirse ARTIRILIR.
+
+Anahtar dosya BASLIGI (konu degil): ayni Commons dosyasi birden cok capada
+gecebiliyor ve gordugu sey capaya gore degismiyor.
+
+⚠️ 1 -> 2 (2026-08-20): istem ortami adlandirmayi BIRAKTI (gerekce
+`_goru_sayfasi_istemi`). Surum artirilmasaydi eski aciklamalardaki
+"A printed plate shows..." dili onbellekten gelmeye devam eder ve
+duzeltme hicbir sey degistirmezdi.
+"""
+
+
+def _menu_goru_onbellegi() -> dict[str, dict[str, str]]:
+    try:
+        veri = json.loads(MENU_GORUSU_DOSYASI.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(veri, dict) or veri.get("surum") != MENU_GORUSU_SURUMU:
+        return {}
+    girdiler = veri.get("girdiler")
+    return girdiler if isinstance(girdiler, dict) else {}
+
+
+def _menu_gorusunu_yaz(onbellek: dict[str, dict[str, str]]) -> None:
+    MENU_GORUSU_DOSYASI.parent.mkdir(parents=True, exist_ok=True)
+    # ⚠️ Gecici dosya ADI SURECE OZEL — `_write_state`in birebir gerekcesi:
+    # zamanlayici 3 saatte bir atesliyor ve elle koşumla cakisabilir.
+    gecici = MENU_GORUSU_DOSYASI.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        gecici.write_text(
+            json.dumps(
+                {"surum": MENU_GORUSU_SURUMU, "girdiler": onbellek},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        gecici.replace(MENU_GORUSU_DOSYASI)
+    except OSError:
+        gecici.unlink(missing_ok=True)
+
+
+def _goru_sayfasi_istemi(numaralar: list[int]) -> dict[str, Any]:
+    """Menu sayfasini goru modeline soran istem.
+
+    ⚠️ ORTAM ADLANDIRILMIYOR, `tur` ALANINA YAZILIYOR. Ilk surum "if the
+    image is a drawing, engraving or printed plate rather than a photograph,
+    say so" diyordu ve OLCULDU (2026-08-20, ilk canli koşum): model o dili
+    `goruntu`ya yaziyor ("A printed plate shows...", "A technical drawing
+    shows..."), plan modeli aciklamayi anlatima KOPYALIYOR ve
+    `resmedilemez_kusuru` plani reddediyor. Kusur 2'den 9'a cikti ve
+    yedisi dogrudan bu dilden geldi: 'plate shows', 'drawing shows',
+    'engraving shows', 'illustrations show'.
+
+    Yani istem, cozmeye calistigi kusuru BESLIYORDU: kapinin yasakladigi
+    cumle kalibini menuye koymak, modele o kalibi ornek olarak sunmak.
+    Ortam bilgisi kaybolmuyor — `tur` alaninda duruyor ve orasi anlatima
+    girmiyor.
+    """
+    return {
+        "instructions": (
+            "For each numbered image on this contact sheet, describe what the "
+            "picture LITERALLY shows: the concrete object, structure, or scene "
+            "visible in the frame. Do not repeat or paraphrase any filename. "
+            # ⚠️ ORTAMI ANLATMA YASAGI — gerekce docstring'de.
+            "Describe the SUBJECT, never the medium: write 'a colonnaded "
+            "courtyard with a tiled roof', never 'a drawing of a colonnaded "
+            "courtyard' or 'a printed plate showing a courtyard'. Do not use the "
+            "words photograph, drawing, engraving, plate, illustration or image "
+            "in the description at all; record the medium in the 'tur' field "
+            "instead. "
+            "The number printed on each image is its entry number; always report "
+            "that number, never the position on the sheet."
+        ),
+        "entries": [{"n": numara} for numara in numaralar],
+        "schema": {
+            "captions": [
+                {
+                    "n": "int",
+                    "goruntu": "one sentence, concrete",
+                    # ⚠️ `artwork` ELDEN EKLENIYOR: `FOTOGRAF_OLMAYAN_TURLER`
+                    # onu BILEREK disarida birakiyor (gravur/tablo bu kanalin
+                    # gorsel dilinin merkezinde, sahne degistirmeyi
+                    # gerektirmiyor) ama goru modelinin secebilecegi bir tur
+                    # olarak durmali — olcum sondasinda 30 girdinin 18'i
+                    # artwork cikti. Iki liste ayni dili konusuyor, `photo`
+                    # ve `artwork` yalnizca "degistirme gerektirmeyen"
+                    # tarafi temsil ediyor.
+                    "tur": "|".join(
+                        sorted(FOTOGRAF_OLMAYAN_TURLER | {"photo", "artwork"})
+                    ),
+                }
+            ]
+        },
+    }
+
+
+def menuyu_zenginlestir(
+    menu: list[dict[str, str]],
+    konu: str,
+    *,
+    bicim: "VideoBicimi | None" = None,
+) -> list[dict[str, str]]:
+    """Menu girdilerine `goruntu` ekler: karenin GERCEKTEN gosterdigi sey.
+
+    ⚠️ OLCULMUS KUSUR (2026-08-20, kaynak hakemi 65/70). Model dosyayi
+    `gosterdigi` alanina bakarak seciyor ama o alan cogu zaman ne
+    gosterdigini SOYLEMIYOR — Herculaneum menusunde 19/30 girdinin aciklamasi
+    dosya adinin AYNISI, dordu ("Herculaneum 002/003/004/007") ayni 140
+    karakterlik yer metnini paylasiyor, ve biri YALAN soyluyor: dosya adi
+    "View of Casa d'Argo" diyor, kare mimari bir cephe cizimi. Model kor
+    seciyor, anlatimi tahmine yaziyor, hakem uyusmazligi goruyor.
+
+    `ICERIKSIZ_ACIKLAMA` docstring'i bu isi zaten adlandirmisti: "O sinifi
+    kapatan tek yol render ONCESI goru kontrolu — ayri is." Tek duzeltme:
+    kontrol PLAN oncesi olmali; render oncesi kapi (`review_source_materials`)
+    zaten var ve dogru olcuyor.
+
+    ⚠️ HICBIR GIRDI ELENMIYOR, HICBIR SAYI DEGISMIYOR. Donen liste girdi
+    listesiyle AYNI uzunlukta, AYNI sirada, AYNI `dosya` degerleriyle —
+    yalnizca bir alan ekleniyor. Bu, deponun imza kusurunun ("kapi,
+    tuketicinin gordugunden baska bir seyi olcuyor") yapisal panzehiri:
+    `on_menu`nun saydigi kume ile modele gosterilen kume ayrisamaz.
+    Aciklamasi gelmeyen girdi de listede KALIR.
+
+    ⚠️ SHORTS KAPSAM DISI. Shorts hatti olculerek kalibre ve yayin yapiyor;
+    ayrica menuyu SAYAN yollar (huni terfisi, kapma kapisi) bu fonksiyonu
+    hic cagirmiyor — cagirsalardi huni her koşumda 54 capa x ~1466 girdi
+    icin goru faturasi cikarirdi.
+
+    ⚠️ Olcum sondasi (2026-08-20, Herculaneum): 30 girdi, 3 sayfa, 32
+    saniye, 30/30 somut aciklama. Ayni kunyeyi paylasan dort girdi dort
+    AYRI sey olarak tarif edildi (sokak / ic mekan / kolonad / hava
+    goruntusu).
+    """
+    if not menu or (bicim or SHORTS_BICIMI).dikey:
+        return menu
+    try:
+        return _menuyu_zenginlestir(menu, konu, bicim=bicim)
+    except Exception as hata:  # noqa: BLE001
+        # ⚠️ Aciklama bir IYILESTIRME, on kosul degil — `arsiv_envanteri`nin
+        # `return []` doktrininin aynisi. Goru dusunce plan asamasi eski
+        # menuyle calismaya devam etmeli.
+        print(
+            f"ℹ️ menü görüsü alınamadı, menü olduğu gibi kullanılıyor: {hata}",
+            flush=True,
+        )
+        return menu
+
+
+def _menuyu_zenginlestir(
+    menu: list[dict[str, str]],
+    konu: str,
+    *,
+    bicim: "VideoBicimi | None" = None,
+) -> list[dict[str, str]]:
+    onbellek = _menu_goru_onbellegi()
+    eksik = [g["dosya"] for g in menu if g["dosya"] not in onbellek]
+    yeni_cagri = 0
+    if eksik:
+        with tempfile.TemporaryDirectory(prefix="menu-goru-") as gecici:
+            yollar = wikimedia_materials.menu_kucuk_resimleri(eksik, Path(gecici))
+            # ⚠️ Kucuk resmi inmeyen girdi sayfaya KONMUYOR ama menude kaliyor.
+            cizilebilir = [ad for ad in eksik if ad in yollar]
+            dosyalar = [yollar[ad] for ad in cizilebilir]
+            for bas in range(0, len(cizilebilir), HAKEM_ORNEK_TAVANI):
+                dilim = cizilebilir[bas : bas + HAKEM_ORNEK_TAVANI]
+                # ⚠️ TAM liste veriliyor, dilim DEGIL. `create_source_montage`
+                # `secilen`i HEM hucre etiketi HEM `material_files` indeksi
+                # olarak kullaniyor (`path = material_files[numara - 1]`).
+                # Dilimlenmis listeye 13-24 numaralari verilirse indeks tasar;
+                # olcum sondasinda tam bu oldu ve bir sayfanin 12 aciklamasinin
+                # 12'si de bosa gitti.
+                numaralar = list(range(bas + 1, bas + len(dilim) + 1))
+                sayfa = create_source_montage(
+                    dosyalar,
+                    0,
+                    konu,
+                    secilen=numaralar,
+                    ek=f"-menu-goru-{bas // HAKEM_ORNEK_TAVANI + 1}",
+                )
+                veri = _vision_json(_goru_sayfasi_istemi(numaralar), sayfa, bicim=bicim)
+                yeni_cagri += 1
+                for kayit in veri.get("captions", []):
+                    if not isinstance(kayit, dict):
+                        continue
+                    try:
+                        numara = int(kayit["n"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if not 1 <= numara <= len(cizilebilir):
+                        continue
+                    goruntu = str(kayit.get("goruntu") or "").strip()
+                    if not goruntu:
+                        continue
+                    onbellek[cizilebilir[numara - 1]] = {
+                        "goruntu": goruntu[:ACIKLAMA_SINIRI],
+                        "tur": str(kayit.get("tur") or "").strip()[:20],
+                    }
+        if yeni_cagri:
+            _menu_gorusunu_yaz(onbellek)
+    print(
+        f"ℹ️ menü görüsü: {yeni_cagri} çağrı · "
+        f"{len(menu) - len(eksik)}/{len(menu)} önbellekten",
+        flush=True,
+    )
+    return [
+        {**girdi, "goruntu": kayit["goruntu"]}
+        if (kayit := onbellek.get(girdi["dosya"]))
+        else dict(girdi)
+        for girdi in menu
+    ]
 
 
 def sahne_kaydi(
@@ -3922,6 +4252,10 @@ def _kaynak_ve_menu_blogu(
     # modele NE ANLATACAGINI soyluyor; bu liste NEYI GOSTEREBILECEGINI.
     # Ikisi ayri bilgi ve ikisi de eksikse model tahmin ediyor.
     if envanter := arsiv_envanteri(konu, sinir=envanter_sinir, bicim=bicim):
+        # ⚠️ MODELE GOSTERILEN LISTE BURASI, yani zenginlestirme buraya
+        # giriyor: kunye cogu zaman ne gosterdigini soylemiyor ve model kor
+        # seciyor (gerekce `menuyu_zenginlestir`de).
+        envanter = menuyu_zenginlestir(envanter, konu, bicim=bicim)
         # Sahne sayisi verilmemisse (model bicimin araliginda secer) en
         # KOTU ihtimale gore karar veriliyor: aralikin USTU icin yeterli
         # degilse ikinci gorsel istenmiyor. Iyimser davranip sonra
@@ -4110,14 +4444,40 @@ def _menu_talimati(
         "one entry, copy its 'dosya' value EXACTLY into the scene's source_file field, "
         "and write narration that tells the story of the THING in that picture. A "
         "different entry for every scene. "
+        # ⚠️ `goruntu` ALANI ISTEMDE ADLANDIRILMALI, yoksa model onun ne
+        # oldugunu bilmez ve `gosterdigi`ye bakmaya devam eder — veriyi
+        # ekleyip istemi susturmak, iki tarafin ayri dil konusmasi olurdu.
+        #
+        # ⚠️ CELISKIDE `goruntu` KAZANIR ve bu olculmus: Herculaneum
+        # menusunde bir girdinin adi "View of Casa d'Argo" diyor, kare ise
+        # mimari bir cephe cizimi; 19/30 girdinin `gosterdigi`si dosya
+        # adinin aynisi; dordu ayni jenerik yer metnini paylasiyor.
+        # `gosterdigi` arsivin kunyesi, `goruntu` karenin kendisi.
+        + (
+            "Some entries also carry a 'goruntu' field. That is a description of what "
+            "the picture actually looks like, written by a model that opened the "
+            "picture itself; 'gosterdigi' is only the archive's caption and it is "
+            "sometimes generic, sometimes simply wrong. When the two disagree, trust "
+            "'goruntu'. Write the scene's narration for what 'goruntu' describes. "
+            if any(girdi.get("goruntu") for girdi in menu)
+            else ""
+        )
         # ⚠️ SAHNE TAVANINI MENU BELIRLIYOR ve model bunu BILMELI. Uzun kipte
         # sozlesme 24-45 sahne diyor; 32 dosyalik bir arsivde 40 sahne
         # istenirse her sahne ayri dosya alintilayamaz, `alinti_kusuru`
         # plani reddeder ve bes deneme yanar. Tek cumle, cogu yeniden
         # denemeyi bastan siliyor.
+        # ⚠️ TAVAN, MENU BOYU DEGIL ETKIN TAVAN (2026-08-19). Eskiden cumle
+        # "holds 44 usable images, so this video can have at most 44 scenes:
+        # write between 24 and 26" diyordu — kendi kendisiyle CELISIYOR ve
+        # modeli yukari cagiriyordu. Menu boyu artik nadiren baglayici:
+        # bicim tavani 39'dan 26'ya inince (dönem kaymasi) neredeyse her
+        # konuda tavani BICIM belirliyor, menu degil.
         + (
-            f"This archive holds {len(menu)} usable images, so this video can have at "
-            f"most {len(menu)} scenes: write between {bicim.sahne_araligi[0]} and "
+            f"This archive holds {len(menu)} usable images and every scene must cite a "
+            "different one, so this video can have at most "
+            f"{min(bicim.sahne_araligi[1], len(menu))} scenes: write between "
+            f"{bicim.sahne_araligi[0]} and "
             f"{min(bicim.sahne_araligi[1], len(menu))} scenes and no more. "
             if not bicim.dikey
             else ""
@@ -4250,12 +4610,18 @@ def alinti_kusuru(
     bes sahneyi birden uydurma sayip plani reddetti. Kapinin modele
     gosterilenden BASKA bir listeye bakmasi, kapiyi cozdugu kusurun
     kaynagina cevirir.
+
+    ⚠️ AYNI DERSIN IKINCI YUZU (2026-08-20): kusur mesaji menuyu BASIYOR,
+    yani bu liste de modele GOSTERILIYOR. Istem zengin menuyu, red mesaji
+    kunye menusunu gosterirse model iki liste arasinda salinir —
+    zenginlestirme bu yuzden burada da uygulaniyor. Onbellek sicak
+    oldugundan bedeli sifir cagri.
     """
-    menu = arsiv_envanteri(
-        menu_konusu.strip() or plan.visual_anchor, sinir=sinir, bicim=bicim
-    )
+    kapi_konusu = menu_konusu.strip() or plan.visual_anchor
+    menu = arsiv_envanteri(kapi_konusu, sinir=sinir, bicim=bicim)
     if not menu:
         return ""
+    menu = menuyu_zenginlestir(menu, kapi_konusu, bicim=bicim)
     if len(menu) < len(plan.scenes):
         # ⚠️ GERI BILDIRIM BICIME GORE (2026-08-15). Eski metin her iki kipte
         # de "capayi baska bir seye bagla" diyordu ve uzun formatta bu, capa
@@ -4390,6 +4756,9 @@ def generate_content_plan(
     # "baska bir seye capa at" diyor. Bes deneme yanar, koşum hic video
     # uretmeden duser. Burada maliyet sifir.
     sahne_tavani: int | None = None
+    # Ikisi BIRLIKTE doluyor (yalnizca `not bicim.dikey` dalinda), yani
+    # `sahne_tavani is not None` gorulen her yerde `sahne_hedefi` de dolu.
+    sahne_hedefi: int | None = None
     if not bicim.dikey:
         on_menu = arsiv_envanteri(konu or "", sinir=envanter_sinir, bicim=bicim)
         if len(on_menu) < bicim.sahne_araligi[0]:
@@ -4426,6 +4795,22 @@ def generate_content_plan(
         # anlatiya uymayan bir gorseli bile atlayamaz. Tavan KAPI, hedef
         # TAVSIYE.
         sahne_tavani = min(bicim.sahne_araligi[1], len(on_menu))
+        # ⚠️ `ARZ_PAYI` YALNIZCA ARZ KISITLIYKEN DUSULUYOR (2026-08-19).
+        #
+        # Payin gerekcesi yukarida yazili ve MENU TUKENMESI: her sahne ayri
+        # dosya alintiladigi icin tavana dayanan plan, uymayan bir gorseli
+        # bile atlayamaz. Ama tavan artik cogu zaman BICIMDEN geliyor
+        # (menu 44, tavan 26) — orada tukenecek menu YOK ve payi yine de
+        # dusmek hedefi TABANIN KENDISINE yapistirirdi:
+        #
+        #     eski: max(24, 26 - 3) = 24   -> asagi yonde sifir pay
+        #
+        # Yani model 24-26 araliginda 24'u hedefleyip bir sahne asagi
+        # sapinca dogrudan redde giderdi. Pay, yalnizca menu tavani
+        # belirledigi zaman anlamli.
+        sahne_hedefi = max(
+            bicim.sahne_araligi[0], min(sahne_tavani, len(on_menu) - ARZ_PAYI)
+        )
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = engellenen_capalar(state)
@@ -4460,6 +4845,36 @@ def generate_content_plan(
             "If the subject is broad, narrow it to one concrete named site, artifact, or invention "
             "that belongs to it."
         )
+        # ⚠️ YAY KAPSAMI — YALNIZCA UZUN FORMAT (2026-08-19).
+        #
+        # Olculdu, iki koşumda: model anlatiyi konunun kendi doneminden
+        # cikarip KAZI TARIHINE goturuyor ve arsiv onu resmedemiyor
+        # (16 Agu'da hakem 72 verip reddetti).
+        #
+        # ⚠️ Sahne sayisini 26'ya indirmek bunu YARIYA indirdi ama COZMEDI:
+        # 39 sahnede ~20 sahne kazi/modern icerikti, 26 sahnede 11. Yani
+        # "hikaye arzi bitiyor" tek sebep DEGILMIS — ikinci ve bagimsiz
+        # sebep ACI SECIMI: model basligi "Why the Better-Preserved City
+        # Stayed Hidden" secti, yani kurulusu geregi bir YENIDEN KESIF
+        # hikayesi, ve modern sahneler artik sonda degil ORTADA (8-19).
+        #
+        # ⚠️ Cumle SONU degil ACIYI ve BASLIGI kisitliyor; yalnizca "hikaye
+        # kendi doneminde bitsin" demek bu plani engellemezdi, cunku plan
+        # sonundan degil PREMISINDEN kaziya bagliydi.
+        #
+        # ⚠️ `not bicim.dikey` KAPISI ZORUNLU: bu dal (`if konu:`) Shorts
+        # huni kipini de besliyor ve Shorts istemi olcurek kalibre edildi.
+        # Kapisiz eklemek, calisan hatti sessizce degistirmek olurdu.
+        if not bicim.dikey:
+            user += (
+                "\nThis video is about the subject in its own time, not about how it "
+                "reached us. Do not choose an angle, a title, or scenes about its "
+                "rediscovery, excavation, decipherment, restoration or conservation, "
+                "and do not close with what researchers are doing now: that is a "
+                "different video, and this archive cannot picture it. If the story "
+                "feels thin, go DEEPER into the people, objects, buildings and events "
+                "of its own era rather than forward in time."
+            )
         # ⚠️ KAYNAK METIN — olculdu (2026-08-09, DW-114). Bu blok olmadan model
         # yalnizca konunun ADINI goruyordu ve az bilinen konularda ictigi suyu
         # uyduruyordu: "Franziska Scanagatta" icin senaryo ve etiketler
@@ -4549,13 +4964,45 @@ def generate_content_plan(
         # ⚠️ TAVAN kapi, HEDEF tavsiye. Tavana dayanan bir plan menudeki her
         # dosyayi kullanmak zorunda kalir ve anlatiya uymayan bir gorseli
         # bile atlayamaz; birkac yedek secim ozgurlugu birakiyor.
-        hedef = max(bicim.sahne_araligi[0], sahne_tavani - ARZ_PAYI)
+        hedef = sahne_hedefi or sahne_tavani
+        kelime_en_az, kelime_en_cok = bicim.kelime_araligi
+        # Orta nokta hedef; tavan degil (tavana dayanan taslak reddediliyor).
+        butce = ((kelime_en_az + kelime_en_cok) // 2) // hedef
         user += (
             f"\nThis archive can support at most {sahne_tavani} scenes, so write "
             f"between {bicim.sahne_araligi[0]} and {sahne_tavani} scenes and never "
             f"more. Aim for about {hedef}: every scene must cite a different file, so "
             "a plan that uses the whole menu leaves you no room to skip an image that "
             "does not fit what the narration says."
+            # ⚠️ SAHNE BASINA KELIME BU DALDA HIC SOYLENMIYORDU (2026-08-19).
+            #
+            # Bütçe cümlesi yalnizca `sahne_sayisi is not None` dalinda
+            # yaziliyordu; uzun formatta o deger HEP None (CLI `--uzun` ile
+            # `--sahne-sayisi`yi yasakliyor), yani uzun format istemi sahne
+            # sayisini soyleyip sahne basina kelime hakkinda TEK KELIME
+            # etmiyordu. Olculdu: model dogal yogunlugunda (~24-31
+            # kelime/sahne) yazip 900 kelime tabanini tutturmak icin sahne
+            # sayisini tavana dayadi (39/39) — ve tavana dayanmak dönem
+            # kaymasinin olculen sebebi (bkz. `UZUN_BICIMI.sahne_araligi`).
+            #
+            # ⚠️ IFADE Shorts dalindan KOPYALANMADI; iki yeri BILEREK farkli:
+            #
+            #  * "roughly one sentence of N words" DEGIL. Olculdu (sonda,
+            #    sahne_sayisi=24, butce 64): butce cumlesi ISTEMDE VARDI ve
+            #    yine bagmadi — model "bir cumle"yi tutturup kelimeyi
+            #    dusurdu (508 · 567 · 668). Iki kisit celisince model kolay
+            #    olani seciyor, o yuzden cumle sayisi serbest birakildi.
+            #  * "cut before you answer" DEGIL. O cumle Shorts icin dogru,
+            #    cunku orada model TASIYOR (olculdu: 153-212, tavan 150).
+            #    Uzun formatta hata TERS yonde — taban 900, model 508 —
+            #    yani kopyalanan talimat modeli duzeltmesi gereken yonun
+            #    TERSINE iterdi.
+            f" The finished script must total {kelime_en_az}-{kelime_en_cok} words. "
+            f"Across {hedef} scenes that is about {butce} words per scene, which is "
+            "two or three full sentences, not one. Treat it as a target to reach, not "
+            "a ceiling to stay under. Write the scenes, add up the words, and if the "
+            f"total is under {kelime_en_az}, go back and say more about the scenes you "
+            "already have rather than adding scenes."
         )
 
     # Gecmis KAPANISLAR da veriliyor — sebebi `_kapanis_tekrari`de: "geri

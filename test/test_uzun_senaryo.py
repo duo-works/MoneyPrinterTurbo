@@ -326,27 +326,122 @@ def test_SHORTS_kipinde_ikinci_gorsel_KORUNUYOR():
 
 
 def test_uzun_talimat_sahne_TAVANINI_menuden_soyluyor():
-    """⚠️ Model menu boyutunu bilmezse 32 dosyalik arsivde 40 sahne yazar,
-    `alinti_kusuru` plani reddeder ve bes deneme yanar."""
-    talimat = ya._menu_talimati(_menu(32), 45, bicim=ya.UZUN_BICIMI)
+    """⚠️ Model menu boyutunu bilmezse 25 dosyalik arsivde 40 sahne yazar,
+    `alinti_kusuru` plani reddeder ve bes deneme yanar.
 
-    assert "32 usable images" in talimat
-    assert "between 24 and 32 scenes" in talimat
+    ⚠️ Menu 32 -> 25 (2026-08-19): bicim tavani 26'ya inince 32'lik menu
+    ARTIK BAGLAYICI DEGIL ve test, menu tavanini degil bicim tavanini
+    olcuyor olurdu. Menunun baglayici oldugu tek aralik artik 24-25.
+    """
+    talimat = ya._menu_talimati(_menu(25), 45, bicim=ya.UZUN_BICIMI)
+
+    assert "25 usable images" in talimat
+    assert "between 24 and 25 scenes" in talimat
 
 
 def test_menu_tavani_sahne_ARALIGINI_asmiyor():
     """Menu bol olsa bile tavan bicimin ust siniri."""
-    # ⚠️ Tavan 45 -> 39 (2026-08-15, belgesel ritmi: 900 kelimede 45 sahne
-    # 7,0 sn/kare verir, taban 8 sn).
-    talimat = ya._menu_talimati(_menu(60), 39, bicim=ya.UZUN_BICIMI)
+    # ⚠️ Tavan 39 -> 26 (2026-08-19, dönem kaymasi: 39 sahnede senaryo
+    # arsivin donemini terk ediyor), 26 -> 28 (2026-08-20, modelin olculen
+    # kip'i 27). Bkz. `UZUN_BICIMI.sahne_araligi`.
+    talimat = ya._menu_talimati(_menu(60), 28, bicim=ya.UZUN_BICIMI)
 
-    assert "between 24 and 39 scenes" in talimat
+    assert "between 24 and 28 scenes" in talimat
+
+
+def test_uzun_talimatta_tavan_MENU_BOYU_degil():
+    """⚠️ Cumle eskiden kendi kendisiyle celisiyordu (2026-08-19).
+
+    Menu 60 iken "can have at most 60 scenes: write between 24 and 28"
+    diyordu — ilk yarisi modeli 60'a cagirirken ikinci yarisi 28 diyordu.
+    Tavan artik ETKIN tavan, yani menu boyu ile bicim tavaninin kucugu.
+    """
+    talimat = ya._menu_talimati(_menu(60), 28, bicim=ya.UZUN_BICIMI)
+
+    assert "60 usable images" in talimat
+    assert "at most 28 scenes" in talimat
+    assert "at most 60 scenes" not in talimat
+
+
+def test_SABITLENMEMIS_uzun_istem_sahne_basina_KELIME_soyluyor(monkeypatch):
+    """⚠️ OLCULMUS KUSUR (2026-08-19): bu cumle uzun formatta HIC yoktu.
+
+    Butce yalnizca `sahne_sayisi is not None` dalinda yaziliyordu ve uzun
+    formatta o deger HEP None (CLI `--uzun` ile `--sahne-sayisi`yi
+    yasakliyor). Sonucu olculdu: model dogal yogunlugunda yazip 900 kelime
+    tabanini tutturmak icin sahne sayisini TAVANA dayadi (39/39) — ve
+    tavana dayanmak dönem kaymasinin sebebi.
+    """
+    yakalanan = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)
+    user = yakalanan["user"]
+
+    assert "words per scene" in user
+    # ⚠️ Iki ifade de BILEREK Shorts dalindan farkli; gerekcesi kodda.
+    assert "two or three full sentences, not one" in user
+    assert "one sentence of" not in user
+    assert "cut before you answer" not in user
+
+
+def test_uzun_butce_ORTA_NOKTADAN_hesaplaniyor(monkeypatch):
+    """Menu 44 -> tavan 28, hedef 28, butce (900+2200)//2//28 = 55.
+
+    ⚠️ 55, modelin OLCULEN yogunlugunun (gecen planlarda 56 kelime/sahne)
+    tam ustunde — tavan 26 iken istenen 59'du ve model onu tutturmak icin
+    ya sahne ekliyor ya kelime dusuruyordu. Bkz. `sahne_araligi` yorumu.
+    """
+    yakalanan = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)
+
+    assert "about 55 words per scene" in yakalanan["user"]
+
+
+def test_ARZ_PAYI_yalnizca_ARZ_kisitlarken_dusuluyor(monkeypatch):
+    """⚠️ OLCULMUS TUZAK (2026-08-19): pay her zaman dusuluyordu.
+
+    Tavan bicimden geliyorsa tukenecek menu YOK; payi yine de dusmek
+    hedefi TABANA yapistirir (26 tavanda hedef 24 oluyordu) ve model bir
+    sahne asagi sapinca dogrudan redde gider.
+    """
+    # Menu bol: tavani BICIM belirliyor -> pay dusulmez, hedef = tavan.
+    bol = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)["user"]
+    assert "Aim for about 28" in bol
+
+    # Menu kit: tavani ARZ belirliyor -> pay dusulur (25 - 3 = 22 -> taban 24).
+    kit = _istemi_yakala(monkeypatch, _menu(25), bicim=ya.UZUN_BICIMI)["user"]
+    assert "Aim for about 24" in kit
+
+
+def test_uzun_istemde_YAY_KAPSAMI_cumlesi_var(monkeypatch):
+    """⚠️ Dönem kaymasinin IKINCI sebebi: aci secimi (2026-08-19).
+
+    Sahne sayisini 26'ya indirmek kaymayi yariya indirdi ama cozmedi —
+    model basligi "Why the Better-Preserved City Stayed Hidden" secti,
+    yani kurulusu geregi bir yeniden kesif hikayesi. O yuzden cumle sonu
+    degil ACIYI ve BASLIGI kisitliyor.
+    """
+    user = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)["user"]
+
+    assert "in its own time" in user
+    assert "rediscovery, excavation, decipherment" in user
+    # ⚠️ Mesaj NE YAPILACAGINI da soylemeli, yoksa dongu kirilmiyor.
+    assert "go DEEPER" in user
+
+
+def test_SHORTS_isteminde_yay_kapsami_cumlesi_YOK(monkeypatch):
+    """⚠️ KAPI TESTI: `if konu:` dali Shorts huni kipini DE besliyor.
+
+    Shorts istemi olcurek kalibre edildi; yay kapsami cumlesini kapisiz
+    eklemek calisan hatti sessizce degistirmek olurdu.
+    """
+    user = _istemi_yakala(monkeypatch, _menu(12))["user"]
+
+    assert "in its own time" not in user
+    assert "rediscovery, excavation, decipherment" not in user
 
 
 def test_SHORTS_talimatinda_tavan_cumlesi_YOK():
     talimat = ya._menu_talimati(_menu(40), 8)
 
-    assert "usable images, so this video can have at most" not in talimat
+    assert "so this video can have at most" not in talimat
 
 
 # --- Baslik kapisi ---------------------------------------------------------
@@ -362,7 +457,7 @@ def test_uzun_kipte_SHORTS_ETIKETLI_baslik_REDDEDILIYOR():
         script="Herculaneum was buried. " + "word " * 1400,
         scenes=[
             {"narration": f"sahne {i}", "search_term": f"Herculaneum detay {i}"}
-            for i in range(30)
+            for i in range(25)
         ],
         description="aciklama",
         tags=["a", "b", "c"],

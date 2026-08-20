@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import youtube_automation as ya  # noqa: E402
 
 
-def _plan(capa: str, sahne: int = 30) -> ya.ContentPlan:
+def _plan(capa: str, sahne: int = 25) -> ya.ContentPlan:
     return ya.ContentPlan(
         topic="Herculaneum",
         visual_anchor=capa,
@@ -221,24 +221,29 @@ def _tavan_plani(sahne: int) -> ya.ContentPlan:
 
 
 def test_TAVANIN_ALTINDAKI_sahne_sayilari_geciyor():
-    """Onuncu koşumun iki reddi de bu testle kapaniyor."""
-    for sahne in (34, 36, 38):
+    """Onuncu koşumun iki reddi de bu testle kapaniyor.
+
+    ⚠️ Sayilar 34/36/38 -> 24/25 (2026-08-19): bicim tavani 26'ya inince
+    eski uclu ARZ tavanini degil bicim tavanini olcuyor olurdu. Testin
+    olctugu degismez ayni: arz tavani TAM SAYI degil ARALIK.
+    """
+    for sahne in (24, 25):
         ya.validate_content_plan(
-            _tavan_plani(sahne), bicim=ya.UZUN_BICIMI, sahne_tavani=38
+            _tavan_plani(sahne), bicim=ya.UZUN_BICIMI, sahne_tavani=25
         )
 
 
 def test_TAVANIN_USTU_reddediliyor():
-    """Arsiv 38 dosya veriyorsa 41 sahnelik plan alinti kapisinda duserdi."""
-    with pytest.raises(ValueError, match="24-38 scenes"):
+    """Arsiv 25 dosya veriyorsa 26 sahnelik plan alinti kapisinda duserdi."""
+    with pytest.raises(ValueError, match="24-25 scenes"):
         ya.validate_content_plan(
-            _tavan_plani(39), bicim=ya.UZUN_BICIMI, sahne_tavani=38
+            _tavan_plani(26), bicim=ya.UZUN_BICIMI, sahne_tavani=25
         )
 
 
 def test_tavan_BICIMIN_ust_sinirini_asamiyor():
-    """Menu bol olsa bile ritim tavani (39) baglayici kalmali."""
-    with pytest.raises(ValueError, match="24-39 scenes"):
+    """Menu bol olsa bile bicim tavani (28) baglayici kalmali."""
+    with pytest.raises(ValueError, match="24-28 scenes"):
         ya.validate_content_plan(
             _tavan_plani(45), bicim=ya.UZUN_BICIMI, sahne_tavani=60
         )
