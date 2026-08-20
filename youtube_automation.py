@@ -4132,7 +4132,7 @@ def sahne_kaydi(
 
 
 TURETME_BASLIK_SISTEMI = (
-    "You write YouTube Shorts titles. Return JSON only: {\"title\": \"...\"}."
+    'You write YouTube Shorts titles. Return JSON only: {"title": "..."}.'
 )
 
 
@@ -8315,6 +8315,25 @@ def run_cycle(
                 f"{len(plan.scenes)} sahne · {len(plan.script.split())} kelime",
                 flush=True,
             )
+        # ⚠️ TURETME KOLUNDA YENIDEN PLANLAMA YOK. Asagidaki iki kurtarma
+        # yolu da ayni seyi yapiyor: "bu konu tutmadi, BASKA bir konu sec".
+        # Turetmede baska konu YOKTUR — plan yayinlanmis TEK bir uzun
+        # videodan kuruluyor ve konu orada secilmis, uretilmis, yayinlanmis.
+        #
+        # ⚠️ OLCULDU 2026-08-21, canli koşum. Turetilmis Alhambra Shorts'u
+        # render edildi (6 sahne, 113 kelime, 39 sn), sonra nihai hakemin
+        # goru cagrisi bos cevap dondurdu, `should_abandon_topic` atesledi
+        # ve hat Alhambra turetmesini birakip SACSAYHUAMAN plani uretmeye
+        # gitti. Yani `--turet` sessizce TURETILMEMIS bir video
+        # yayinlayacakti: kullanicinin istedigi sey ile uretilen sey
+        # ayrisiyordu ve hicbir yerde "turetme dustu" yazmiyordu.
+        #
+        # Bu, bu deponun imza kusurunun bir baska hali: kurtarma yolu,
+        # planin NEREDEN geldigini bilmeden davraniyor. Koşum artik
+        # gorunur bicimde reddediliyor; pencere `turetildi` yazilmadigi
+        # icin kullanilmis sayilmiyor, sonraki `--turet` ayni pencereyi
+        # yeniden deniyor.
+        yeniden_planlanabilir = turet is None
         for aday_bicim in denenecek:
             try:
                 plan = generate_content_plan(
@@ -8495,6 +8514,13 @@ def run_cycle(
                 )
                 save_state(state)
                 son_plan_kayitli = True
+                if not yeniden_planlanabilir:
+                    print(
+                        "ℹ️ türetme reddedildi: yeniden planlama yok "
+                        "(türetmenin konusu yayınlanmış uzun videodan geliyor)",
+                        flush=True,
+                    )
+                    break
                 if attempt < 3:
                     try:
                         plan = generate_content_plan(
@@ -8564,6 +8590,13 @@ def run_cycle(
                 exclusions.extend([rejected_topic, plan.visual_anchor])
                 _video_reddini_kaydet(review, task_id, credits)
                 son_plan_kayitli = True
+                if not yeniden_planlanabilir:
+                    print(
+                        "ℹ️ türetme reddedildi: yeniden planlama yok "
+                        "(türetmenin konusu yayınlanmış uzun videodan geliyor)",
+                        flush=True,
+                    )
+                    break
                 if attempt < 3:
                     try:
                         plan = generate_content_plan(
