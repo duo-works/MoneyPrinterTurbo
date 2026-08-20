@@ -1542,6 +1542,35 @@ SHORTS_BICIMI = VideoBicimi(
     dikey=True,
 )
 
+TURETME_BICIMI = VideoBicimi(
+    ad="shorts",
+    kelime_araligi=SHORTS_BICIMI.kelime_araligi,
+    sahne_araligi=SHORTS_BICIMI.sahne_araligi,
+    # ⚠️ SAHNE BASINA TEK KARE — yalnizca TURETMEDE (kanal sahibinin karari,
+    # 2026-08-21). Sirali Shorts kolu `SHORTS_BICIMI` ile `KARE_YUVASI = 2`
+    # kullanmaya DEVAM EDIYOR; oradaki iki kare gorsel-altyazi ritmi icin
+    # secilmisti (2026-08-14 sesli notu) ve o gerekce yerinde duruyor.
+    #
+    # Turetmede iki yuva KAYNAGIN TUTAMAYACAGI BIR SOZ: uzun format sahne
+    # basina tek gorsel uretiyor (`UZUN_BICIMI.kare_yuvasi = 1`), yani
+    # kayitta ikinci dosya YOK. Iki yuva istenince `kare_yerlesimi` ayni
+    # gorseli iki kez gosteriyor ve hakem bunu TEKRAR diye sayiyor.
+    #
+    # OLCULDU 2026-08-21, iki turetme koşumu, ikisi de 72 (esik 75).
+    # Hakemin gordugu 12 hucrelik montajda yalnizca BES ayri gorsel vardi:
+    #
+    #     hucre  1-2   panorama
+    #     hucre  3     bahce
+    #     hucre  4-7   gece avlu      <- uc ayri sahnede
+    #     hucre  8-10  yagli boya tablo
+    #     hucre 11-12  oymali sutunlar
+    #
+    # Tek yuva ile 6 sahne = 6 hucre = ALTI AYRI gorsel; tekrar kusurunun
+    # bu kaynagi yapisal olarak kapaniyor.
+    kare_yuvasi=1,
+    dikey=True,
+)
+
 UZUN_BICIMI = VideoBicimi(
     ad="uzun",
     # ⚠️ Olculdu (2026-08-15), gercek edge-tts yolunda uc uzunlukta:
@@ -8306,7 +8335,7 @@ def run_cycle(
             # kendi kaynagini reddederdi (bkz. plan notu: seri, tekrar
             # savunmasina carpiyor).
             kaynak_kayit, pencere = turet
-            bicim = SHORTS_BICIMI
+            bicim = TURETME_BICIMI
             denenecek = []
             plan = turetilmis_plani_kur(kaynak_kayit, pencere)
             kaynak = "turetme"

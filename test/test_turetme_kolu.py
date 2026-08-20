@@ -181,3 +181,37 @@ def test_SIRALI_kol_yeniden_planlamayi_SURDURUYOR(monkeypatch, tmp_path):
 
     assert sayac[0] == 0  # taklit degistirildi, eski sayac artmamali
     assert cagri[0] > 1, "sirali kolda ilk plan + en az bir yeniden planlama beklenir"
+
+
+def test_turet_dali_TURETME_BICIMINI_gercekten_kullaniyor(monkeypatch, tmp_path):
+    """⚠️ MUTASYON: `bicim = TURETME_BICIMI` -> `SHORTS_BICIMI` bunu duser.
+
+    ⚠️ NEDEN AYRI BIR BAGLANTI TESTI: sabitin DEGERINI olcen test
+    (`test_TURETME_BICIMI_sahne_basina_TEK_kare`) hattin onu KULLANDIGINI
+    soylemiyor. Mutasyon calistirildi ve tam da bu bosluktan kacti: sabit
+    dogru, `run_cycle` yine `SHORTS_BICIMI` gecirirken butun testler
+    yesildi. Bu deponun imza kusurunun test tarafindaki hali — kapiyi
+    kurdum ama tuketiciye baglandigini olcmedim.
+
+    Test bicimi `create_review_montage` cagrisindan YAKALIYOR, cunku
+    render ve hakem yolunun gordugu nesne o.
+    """
+    gorulen: dict = {}
+
+    def _montaj(_video, _gorev, kare_sayisi, *, bicim):
+        gorulen["bicim"] = bicim
+        gorulen["kare_sayisi"] = kare_sayisi
+        return tmp_path / "m.jpg"
+
+    _hat(monkeypatch, tmp_path, review=_TERK_REVIEW, kaynak_reddi=False)
+    monkeypatch.setattr(ya, "create_review_montage", _montaj)
+
+    ya.run_cycle(dry_run=True, turet=(_uzun_kayit(), 0))
+
+    assert gorulen["bicim"].kare_yuvasi == 1, (
+        "turetme kolu iki yuvali bicimi kullandi — kaynak uzun video sahne "
+        "basina TEK gorsel tasiyor, ikinci yuva ayni kareyi tekrar eder"
+    )
+    assert gorulen["bicim"] is ya.TURETME_BICIMI
+    # 6 sahne x 1 yuva = 6 kare (iki yuvada 12 olurdu).
+    assert gorulen["kare_sayisi"] == 6

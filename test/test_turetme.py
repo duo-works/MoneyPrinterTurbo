@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import turetme  # noqa: E402
-from youtube_automation import SHORTS_BICIMI  # noqa: E402
+from youtube_automation import SHORTS_BICIMI, TURETME_BICIMI  # noqa: E402
 
 
 def _sahne(no: int) -> dict:
@@ -379,3 +379,121 @@ def test_turetilen_plan_SHORTS_PLAN_KAPILARINI_geciyor(uzun_kayit):
         kusurlar = ya.plan_kusurlari(plan, bicim=ya.SHORTS_BICIMI, konu=plan.topic)
 
         assert kusurlar == [], f"pencere {sira}: {kusurlar}"
+
+
+# ==========================================================================
+# TESLIM EDILEN vs ISTENEN — olculdu 2026-08-21
+# ==========================================================================
+
+
+def _ayrisan_sahne(no: int, *, gelen: str | None) -> dict:
+    sahne = _sahne(no)
+    sahne["kaynak_dosya"] = f"ISTENEN {no}.jpg"
+    if gelen is None:
+        sahne.pop("gelen", None)
+    else:
+        sahne["gelen"] = gelen
+    return sahne
+
+
+def test_turetme_TESLIM_EDILENI_okuyor_dilegi_DEGIL(uzun_kayit):
+    """⚠️ MUTASYON: `teslim_edilen` yerine `kaynak_dosya` okumak bunu duser.
+
+    OLCULDU 2026-08-21, dokuz yayinin 103 sahnesi:
+
+        ayni 49 · FARKLI 54  ->  istenen dosyanin teslim orani %48
+
+    `kaynak_dosya` planin menuden ISTEDIGI dosya; `gelen` indiriciden
+    donen, videoya giren ve hakemin puanladigi dosya. Turetme ilkini
+    okudugu surece hakemin ONAYLADIGI videoyu degil modelin dilegini
+    yeniden uretiyordu — ve her koşum arsivden yeniden zar attigi icin iki
+    turetme koşumu FARKLI goruntu veriyordu.
+
+    ⚠️ Bu olcum onceki bir iddiayi CURUTUYOR: "%50 kacma yalnizca SHORTS
+    yayinlarinda olculdu, uzun formatta 26/26 teslim" yanlisti
+    (Herculaneum 12/28, Alhambra 12/25).
+    """
+    uzun_kayit["sahneler"] = [
+        _ayrisan_sahne(n, gelen=f"File:TESLIM {n}.jpg") for n in range(1, 29)
+    ]
+
+    sahneler = turetme.turetilmis_sahneler(uzun_kayit, 0)
+
+    alinan = [s["kaynak_dosya"] for s in sahneler]
+    assert alinan == [f"TESLIM {n}.jpg" for n in range(1, 7)], (
+        "turetme planin DILEGINI okudu; hakemin onayladigi video "
+        "`gelen` alanindaki dosyalardan olusuyor"
+    )
+    assert not any(a.startswith("ISTENEN") for a in alinan)
+
+
+def test_File_oneki_ATILIYOR(uzun_kayit):
+    """⚠️ MUTASYON: oneki atmayi kaldirmak bunu duser.
+
+    `gelen` her zaman "File:" onekli (olculdu: 103/103 kayit, alt cizgi 0);
+    `kaynak_dosya` ve menudeki `dosya` ise ciplak ad. Onek atilmazsa
+    turetilen plan hicbir menu girdisiyle eslesmezdi.
+    """
+    uzun_kayit["sahneler"] = [
+        _ayrisan_sahne(n, gelen=f"File:Acequia Real {n}.JPG") for n in range(1, 29)
+    ]
+
+    sahneler = turetme.turetilmis_sahneler(uzun_kayit, 0)
+
+    assert all(not s["kaynak_dosya"].lower().startswith("file:") for s in sahneler)
+    assert sahneler[0]["kaynak_dosya"] == "Acequia Real 1.JPG"
+
+
+@pytest.mark.parametrize("gelen", [None, "", "   "])
+def test_gelen_YOKSA_dilege_dusuyor(uzun_kayit, gelen):
+    """Eski kayitlar `gelen` tasimayabilir; dilek hicbir seyden iyidir.
+
+    ⚠️ Yedek yol SESSIZ olmali ama BOS olmamali: bos dosya adi sahneyi
+    alintisiz birakir ve `alinti_kusuru` onu tek gorsel kaynagi olarak
+    aramaya birakir.
+    """
+    uzun_kayit["sahneler"] = [_ayrisan_sahne(n, gelen=gelen) for n in range(1, 29)]
+
+    sahneler = turetme.turetilmis_sahneler(uzun_kayit, 0)
+
+    assert [s["kaynak_dosya"] for s in sahneler] == [
+        f"ISTENEN {n}.jpg" for n in range(1, 7)
+    ]
+
+
+# ==========================================================================
+# KARE DUZENI — turetmede tek yuva
+# ==========================================================================
+
+
+def test_TURETME_BICIMI_sahne_basina_TEK_kare():
+    """⚠️ MUTASYON: `kare_yuvasi=1` -> `KARE_YUVASI` bunu duser.
+
+    Uzun format sahne basina TEK gorsel uretiyor
+    (`UZUN_BICIMI.kare_yuvasi = 1`), yani kayitta ikinci dosya YOK. Iki
+    yuva istenince `kare_yerlesimi` ayni gorseli iki kez gosteriyor ve
+    hakem bunu TEKRAR diye sayiyor.
+
+    OLCULDU 2026-08-21: iki turetme koşumu, ikisi de 72 (esik 75).
+    Hakemin gordugu 12 hucrelik montajda yalnizca BES ayri gorsel vardi
+    (gece avlu uc ayri sahnede, tablo uc hucrede).
+    """
+    assert TURETME_BICIMI.kare_yuvasi == 1
+    assert TURETME_BICIMI.dikey is True
+    # Sayisal sozlesmenin geri kalani Shorts ile AYNI kalmali: degisen sey
+    # yalnizca kare duzeni.
+    assert TURETME_BICIMI.kelime_araligi == SHORTS_BICIMI.kelime_araligi
+    assert TURETME_BICIMI.sahne_araligi == SHORTS_BICIMI.sahne_araligi
+    # `ad` de ayni: yayin kaydi, kapilar ve `turetilebilir_yayinlar`
+    # filtresi bu dizeyi okuyor.
+    assert TURETME_BICIMI.ad == SHORTS_BICIMI.ad
+
+
+def test_SIRALI_Shorts_kolu_IKI_kare_KALIYOR():
+    """⚠️ MUTASYON: `SHORTS_BICIMI.kare_yuvasi`yi 1 yapmak bunu duser.
+
+    Zamanlanmis uretim hatti bu bicimi kullaniyor ve oradaki iki kare
+    gorsel-altyazi ritmi icin secilmisti (2026-08-14, kanal sahibinin
+    sesli notu). Turetmeye ozel karar oraya SIZMAMALI.
+    """
+    assert SHORTS_BICIMI.kare_yuvasi == 2

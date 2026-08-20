@@ -118,6 +118,39 @@ def plani_kurulabilir_mi(kayit: dict[str, Any]) -> bool:
     return bool(pencere_sayisi(len(kayit.get("sahneler") or [])))
 
 
+_DOSYA_ONEKI = "file:"
+
+
+def teslim_edilen(sahne: dict[str, Any]) -> str:
+    """Sahnede GERCEKTEN render edilen arsiv dosyasinin adi.
+
+    ⚠️ `kaynak_dosya` bir DILEK, `gelen` ise gercek. Ilki planin (yani
+    modelin) menuden istedigi dosya; ikincisi indiriciden donen, videoya
+    giren ve hakemin puanladigi dosya. Ikisi yari yariya ayrisiyor —
+    olculdu 2026-08-21, dokuz yayinin 103 sahnesi:
+
+        ayni 49 · FARKLI 54  ->  istenen dosyanin teslim orani %48
+
+    ⚠️ Bu olcum onceki bir iddiayi CURUTUYOR: "%50 kacma yalnizca SHORTS
+    yayinlarinda olculdu, uzun formatta 26/26 teslim" yanlisti.
+    Herculaneum 12/28, Alhambra 12/25 — ayni oran.
+
+    Turetme `kaynak_dosya`yi okudugu surece hakemin ONAYLADIGI videoyu
+    degil modelin dilegini yeniden uretiyordu, ve her koşum arsivden
+    yeniden zar attigi icin iki turetme koşumu FARKLI goruntu veriyordu.
+    Bu, bu deponun imza kusuru: tuketicinin gordugunden baskasini okumak.
+
+    `gelen` her zaman "File:" onekli (olculdu: 103/103, alt cizgi 0), o
+    yuzden onek atiliyor — `kaynak_dosya` ile ayni bicime iniyor. `gelen`
+    bos ya da eksikse `kaynak_dosya`ya dusuluyor: eski kayitlar bu alani
+    tasimayabilir ve dilek, hicbir seyden iyidir.
+    """
+    ad = str(sahne.get("gelen", "") or "").strip()
+    if ad[: len(_DOSYA_ONEKI)].lower() == _DOSYA_ONEKI:
+        ad = ad[len(_DOSYA_ONEKI) :].strip()
+    return ad or str(sahne.get("kaynak_dosya", "") or "").strip()
+
+
 def turetilmis_sahneler(
     kayit: dict[str, Any], sira: int, *, pencere: int = TURETME_SAHNE_SAYISI
 ) -> list[dict[str, str]]:
@@ -143,7 +176,7 @@ def turetilmis_sahneler(
         {
             "narration": ilk_cumle(sahne.get("anlatim", "")),
             "search_term": str(sahne.get("terim", "")),
-            "kaynak_dosya": str(sahne.get("kaynak_dosya", "")),
+            "kaynak_dosya": teslim_edilen(sahne),
             "kaynak_dosya_2": "",
         }
         for sahne in dilim
