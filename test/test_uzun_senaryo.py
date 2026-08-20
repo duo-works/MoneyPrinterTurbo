@@ -383,31 +383,72 @@ def test_SABITLENMEMIS_uzun_istem_sahne_basina_KELIME_soyluyor(monkeypatch):
 
 
 def test_uzun_butce_ORTA_NOKTADAN_hesaplaniyor(monkeypatch):
-    """Menu 44 -> tavan 28, hedef 28, butce (900+2200)//2//28 = 55.
+    """Menu 44 -> tavan 28, hedef 26, butce (900+2200)//2//26 = 59.
 
-    ⚠️ 55, modelin OLCULEN yogunlugunun (gecen planlarda 56 kelime/sahne)
-    tam ustunde — tavan 26 iken istenen 59'du ve model onu tutturmak icin
-    ya sahne ekliyor ya kelime dusuruyordu. Bkz. `sahne_araligi` yorumu.
+    ⚠️ Butce HEDEFTEN turuyor, tavandan degil — hedef 28'den 26'ya inince
+    (bkz. `SAHNE_HEDEF_PAYI`) butce 55'ten 59'a cikiyor. 26 x 59 = 1.534,
+    yani orta nokta 1.550'ye oturuyor: ikisi birlikte tutarli.
+
+    ⚠️ 59, tavan 26 iken "cok yogun" diye not edilmisti cunku modelin cikisi
+    27 sahneye tasiyor ve 27 O ZAMAN tavanin USTUNDEYDI. Tavan 28 olunca ayni
+    davranis KAPI ICINDE kaliyor — sayi degismedi, etrafindaki aralik degisti.
     """
     yakalanan = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)
 
-    assert "about 55 words per scene" in yakalanan["user"]
+    assert "about 59 words per scene" in yakalanan["user"]
+
+
+def test_hedef_TAVANIN_ALTINDA_soyleniyor(monkeypatch):
+    """⚠️ OLCULDU 2026-08-20 (Alhambra koşumu, bes denemenin ucu burada yandi).
+
+    Hedef tavana ESITKEN istem "Aim for about 28" diyordu ve model tavani
+    ASIYORDU:
+
+        tavan 26 iken redler : 27 (x3)                    -> tavan +1
+        tavan 28 iken redler : 29 (x4) · 30 (x2) · 34 (x1) -> tavan +1..+6
+
+    Model dogal yogunlukta yazmiyor, SOYLENEN HEDEFE kilitlenip 1-2 asiyor.
+    Bu yuzden tavani buyutmek cozmez — 26 -> 28 yapildiginda kip de birlikte
+    kaydi. Cozum hedefi tavanin ALTINDA soylemek; aralik (24, 28) duruyor.
+
+    ⚠️ MUTASYON: `SAHNE_HEDEF_PAYI` cikarilirsa hedef yine 28 olur ve bu
+    test duser.
+    """
+    bol = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)["user"]
+
+    # Tavan hala KAPI olarak soyleniyor...
+    assert "and never more" in bol
+    assert f"at most {ya.UZUN_BICIMI.sahne_araligi[1]} scenes" in bol
+    # ...ama HEDEF onun altinda.
+    assert "Aim for about 26" in bol
 
 
 def test_ARZ_PAYI_yalnizca_ARZ_kisitlarken_dusuluyor(monkeypatch):
-    """⚠️ OLCULMUS TUZAK (2026-08-19): pay her zaman dusuluyordu.
+    """⚠️ OLCULMUS TUZAK (2026-08-19): `ARZ_PAYI` her zaman dusuluyordu.
 
-    Tavan bicimden geliyorsa tukenecek menu YOK; payi yine de dusmek
-    hedefi TABANA yapistirir (26 tavanda hedef 24 oluyordu) ve model bir
-    sahne asagi sapinca dogrudan redde gider.
+    ⚠️ Iki pay AYRI SEY: `ARZ_PAYI` (3) menu tukenmesini onluyor,
+    `SAHNE_HEDEF_PAYI` (2) modelin hedefi asmasini.
+
+    ⚠️ AYRISTIKLARI NOKTA DAR ve test onu SECMEK zorunda — ilk yazimda menu
+    25 kullanilmisti ve mutasyon KACTI: orada taban (24) iki payi da
+    maskeliyor, yani test ARZ_PAYI'nin varligini hic olcmuyordu. Menu 28 tek
+    ayirt edici deger:
+
+        menu 28 -> tavan 28, min(28-2, 28-3) = 25   <- ARZ_PAYI baglayici
+        ARZ_PAYI olmasa : min(26, 28)        = 26   <- fark GORUNUR
     """
-    # Menu bol: tavani BICIM belirliyor -> pay dusulmez, hedef = tavan.
-    bol = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)["user"]
-    assert "Aim for about 28" in bol
+    # Menu 28: iki pay da devrede, BAGLAYICI olan ARZ_PAYI.
+    ayirt_edici = _istemi_yakala(monkeypatch, _menu(28), bicim=ya.UZUN_BICIMI)["user"]
+    assert "Aim for about 25" in ayirt_edici
 
-    # Menu kit: tavani ARZ belirliyor -> pay dusulur (25 - 3 = 22 -> taban 24).
+    # Menu cok kit: taban devreye giriyor, hedef tabanin altina inmiyor.
     kit = _istemi_yakala(monkeypatch, _menu(25), bicim=ya.UZUN_BICIMI)["user"]
     assert "Aim for about 24" in kit
+
+    # Menu bol: tavani BICIM belirliyor -> SAHNE_HEDEF_PAYI baglayici
+    # (min(28-2, 44-3) = 26).
+    bol = _istemi_yakala(monkeypatch, _menu(44), bicim=ya.UZUN_BICIMI)["user"]
+    assert "Aim for about 26" in bol
 
 
 def test_uzun_istemde_YAY_KAPSAMI_cumlesi_var(monkeypatch):

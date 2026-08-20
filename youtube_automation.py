@@ -3630,6 +3630,29 @@ Herculaneum 37, Alhambra 32, Egyptian pyramids 23. Yani sinir cogu konuda
 baglayici bile degil; asil sinir arsivin kendisi.
 """
 
+SAHNE_HEDEF_PAYI = 2
+"""Hedef sahne sayisi, BICIM tavaninin kac altinda soyleniyor.
+
+⚠️ `ARZ_PAYI` ILE AYNI SEY DEGIL ve ayirmak 2026-08-20'de olculdu. `ARZ_PAYI`
+MENU TUKENMESINI onluyor ("her sahne ayri dosya istiyor, birkac yedek kalsin").
+Bu sabit bambaska bir seyi onluyor: **modelin soylenen hedefe kilitlenip onu
+asmasini**.
+
+    tavan 26 iken redler : 27 (x3)                    -> tavan +1
+    tavan 28 iken redler : 29 (x4) · 30 (x2) · 34 (x1) -> tavan +1..+6
+
+Model dogal bir yogunlukta yazmiyor; HEDEFI hedefliyor ve 1-2 asiyor. Hedef
+tavana esitse her asma dogrudan red demek. Tavani buyutmek bunu COZMEZ —
+26'dan 28'e cikarildiginda kip de birlikte yukari kaydi.
+
+⚠️ Kapi gevsetmesi DEGIL: aralik (24, 28) aynen duruyor, yalnizca modele
+soylenen TAVSIYE asagi iniyor. Ayni mantik kelime butcesinde zaten var
+("Orta nokta hedef; tavan degil").
+
+2 secildi cunku olculen asma 1-2 sahne. Buyutmek videoyu kisaltir ve tabana
+(24) yaklastirir; kucultmek asmayi tavanin ustunde birakir.
+"""
+
 ARZ_PAYI = 3
 """Sahne sayisi belirlenirken menuden birakilan yedek dosya sayisi.
 
@@ -4879,8 +4902,30 @@ def generate_content_plan(
         # Yani model 24-26 araliginda 24'u hedefleyip bir sahne asagi
         # sapinca dogrudan redde giderdi. Pay, yalnizca menu tavani
         # belirledigi zaman anlamli.
+        #
+        # ⚠️ AMA BICIM KISITLIYKEN DE BIR PAY GEREKIYOR — olculdu 2026-08-20,
+        # ve o gunku duzeltme yariyi eksik birakmisti. Bicim kisitli halde
+        # hedef TAVANIN KENDISI oluyordu ("Aim for about 28") ve model
+        # tavani ASIYORDU:
+        #
+        #     tavan 26 iken redler : 27 (x3)                    -> tavan +1
+        #     tavan 28 iken redler : 29 (x4) · 30 (x2) · 34 (x1) -> tavan +1..+6
+        #
+        # Yani model DOGAL bir yogunlukta yazmiyor, SOYLENEN HEDEFE kilitlenip
+        # 1-2 asiyor. Tavani 26'dan 28'e cikarmak kip'in yerini degistirdi,
+        # MESAFESINI degil — 20 Ağu Alhambra koşumu bes denemenin ucunu tam
+        # burada yakti (30, 29, 29).
+        #
+        # ⚠️ Bu bir kapi gevsetmesi DEGIL: aralik 24-28 aynen duruyor, yalnizca
+        # TAVSIYE asagi iniyor. Ayni gerekce bu blokta kelime butcesi icin
+        # zaten uygulanmis ("Orta nokta hedef; tavan degil"); sahne hedefine
+        # uygulanmamisti.
+        #
+        # Tarihsel dagilim tahmini dogruluyor: hedef 26 iken cikti 25-27'de
+        # topluyordu (14/16) ve tavan 28 ile o 14'un 14'u GECERDI.
         sahne_hedefi = max(
-            bicim.sahne_araligi[0], min(sahne_tavani, len(on_menu) - ARZ_PAYI)
+            bicim.sahne_araligi[0],
+            min(sahne_tavani - SAHNE_HEDEF_PAYI, len(on_menu) - ARZ_PAYI),
         )
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
