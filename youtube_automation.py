@@ -5,6 +5,7 @@ import base64
 import fcntl
 import io
 import json
+import shutil
 import math
 import os
 import random
@@ -7143,8 +7144,132 @@ def _generate_ai_or_reject(*args: Any, **kwargs: Any) -> list[Path]:
         ) from exc
 
 
+TURETME_KAYNAGI = ROOT / "storage" / "youtube_automation" / "turetme_kaynagi"
+"""Yayinlanmis UZUN videonun sahne kareleri — turetme bunlari YENIDEN KULLANIR.
+
+⚠️ NEDEN VAR — olculdu 2026-08-21. Turetme kareyi dosya ADIYLA yeniden
+cozuyordu ve teslim yolu adin yarisini tutmuyor: yayinlanmis dokuz videonun
+103 sahnesinde istenen dosyanin teslim orani **%48** (ayni 49, FARKLI 54).
+Sonuc, turetilen Shorts'un hakemin ONAYLADIGI karelerle degil her koşumda
+yeniden atilan bir zarla uretilmesiydi. Olculen ornek: Nasrid su altyapisi
+anlatimina hacli bir CAN KULESI geldi, skor 45.
+
+Zincir: uzun videonun kareleri arasinda yakin-ikiz cift var -> turetme
+ikisini de cagiriyor -> `_tekrar_mi` (`ARSIV_TEKRAR_ESIGI`) ikincisini
+dusuruyor -> sahne arama yedegine dusuyor -> alakasiz gorsel.
+
+Kareyi yeniden COZMEK yerine DOSYAYI yeniden KULLANMAK zincirin tamamini
+kaldiriyor: indirme yok, parmak izi elemesi yok, arama yedegi yok.
+
+⚠️ Bu dizin `temizlik.ara_dosyalar`in dokundugu dort kokun HICBIRININ
+altinda degil (`local_videos`, `tasks`, `commons_materials`, `reviews`),
+yani ara dosya temizligi buraya yapisal olarak ULASAMAZ. Budama aciktan,
+`_turetme_kaynagini_buda` ile yapiliyor.
+"""
+
+TURETME_KAYNAGI_TAVANI = 3
+"""Kac uzun videonun kareleri saklaniyor.
+
+Olculdu: sahne basina ~250 KB, 25 sahnelik video ~6 MB, uc video ~20 MB —
+`commons_materials`in 383 MB'ina gore onemsiz. Tavan yine de var, cunku
+sinirsiz buyuyen hicbir dizin "gecici" degildir.
+"""
+
+
+def turetme_kaynagini_yaz(
+    plan: "ContentPlan", malzeme_dizini: Path, credits: list[dict[str, Any]]
+) -> str:
+    """Uzun videonun karelerini turetme deposuna kopyalar; dizin adini doner.
+
+    Kopyalanan sey HAM ARSIV INDIRMESI (`scene-NN.jpg`), formata uydurulmus
+    kare degil: kaynak yatay, turetme dikey ve uydurma islemi turetme
+    kosumunda yeniden yapiliyor. Ham dosya her iki formati da besliyor.
+
+    ⚠️ EKSIK donebilir ve bu bir hata degil: kopyalanamayan kare sessizce
+    atlanir, `turetme` tarafi eksigi gorup yedek yola duser. Depolama bir
+    IYILESTIRME; basarisizligi yayinlanmis bir videoyu bozmamali.
+    """
+    ad = konu_slug(plan.topic)
+    hedef = TURETME_KAYNAGI / ad
+    shutil.rmtree(hedef, ignore_errors=True)
+    hedef.mkdir(parents=True, exist_ok=True)
+    kopyalanan = 0
+    for sira in range(1, len(plan.scenes) + 1):
+        kaynak = malzeme_dizini / f"scene-{sira:02d}.jpg"
+        if not kaynak.exists():
+            continue
+        try:
+            shutil.copy2(kaynak, hedef / f"sahne-{sira:02d}.jpg")
+        except OSError:
+            continue
+        kopyalanan += 1
+    (hedef / "kaynak.json").write_text(
+        json.dumps(credits, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(
+        f"ℹ️ türetme kaynağı: {kopyalanan}/{len(plan.scenes)} kare saklandı ({ad})",
+        flush=True,
+    )
+    _turetme_kaynagini_buda()
+    return ad
+
+
+def _turetme_kaynagini_buda(tavan: int | None = None) -> list[str]:
+    """En yeni `tavan` dizin disindakileri siler; silinenlerin adlarini doner.
+
+    ⚠️ Varsayilan `None`, `TURETME_KAYNAGI_TAVANI` DEGIL. Varsayilan
+    argumanlar TANIM aninda baglanir, yani sabit imza icine yazilsaydi
+    sonraki her degisiklik (ve testlerdeki her monkeypatch) sessizce
+    yoksayilirdi — fonksiyon hep import anindaki sayiyi kullanirdi.
+    """
+    if tavan is None:
+        tavan = TURETME_KAYNAGI_TAVANI
+    if not TURETME_KAYNAGI.is_dir():
+        return []
+    dizinler = sorted(
+        (d for d in TURETME_KAYNAGI.iterdir() if d.is_dir()),
+        key=lambda d: d.stat().st_mtime,
+        reverse=True,
+    )
+    silinen: list[str] = []
+    for eski in dizinler[tavan:]:
+        shutil.rmtree(eski, ignore_errors=True)
+        silinen.append(eski.name)
+    return silinen
+
+
+def _hazir_kareleri_yerlestir(
+    hazir: list[tuple[Path, dict[str, Any]]], material_dir: Path
+) -> tuple[list[Path], list[dict[str, Any]]]:
+    """Saklanmis kareleri koşumun kendi malzeme dizinine kopyalar.
+
+    ⚠️ NEDEN KOPYA, NEDEN YERINDE KULLANIM DEGIL: hattin geri kalani
+    (`_benzerligi_kaydet`, kontak sayfasi, dikeye uydurma, temizlik) koşumun
+    KENDI `material_dir`ini varsayiyor. Kareyi disarida birakmak, o
+    varsayimi tasiyan her yerde sessiz bir ayrik durum yaratirdi — ve
+    yerinde islenen dosya budama sirasinda ayagimizin altindan cekilebilirdi.
+    """
+    material_dir.mkdir(parents=True, exist_ok=True)
+    dosyalar: list[Path] = []
+    kunyeler: list[dict[str, Any]] = []
+    for sira, (kaynak, kunye) in enumerate(hazir, 1):
+        hedef = material_dir / f"scene-{sira:02d}.jpg"
+        shutil.copy2(kaynak, hedef)
+        dosyalar.append(hedef)
+        kunyeler.append({**kunye, "scene": sira})
+    (material_dir / "credits.json").write_text(
+        json.dumps(kunyeler, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(f"ℹ️ türetme: {len(dosyalar)} kare saklanan kaynaktan alındı", flush=True)
+    return dosyalar, kunyeler
+
+
 def run_generator(
-    plan: ContentPlan, attempt: int, *, bicim: VideoBicimi = SHORTS_BICIMI
+    plan: ContentPlan,
+    attempt: int,
+    *,
+    bicim: VideoBicimi = SHORTS_BICIMI,
+    hazir_kareler: list[tuple[Path, dict[str, Any]]] | None = None,
 ) -> tuple[str, Path, Path, list[dict[str, Any]], int, Path]:
     """Videoyu uretir; son oge INDIRILEN MALZEMENIN DIZINI.
 
@@ -7177,32 +7302,42 @@ def run_generator(
         / f"{publication_slot_key()}-{konu_slug(plan.topic)}-attempt-{attempt}"
     )
     try:
-        # Havuz BIR KEZ cozuluyor: hem birincil gecis hem ikinci gorsel
-        # gecisi ayni kategoriye bakiyor, iki kez sorgulamak bosuna istek.
-        kategori_havuzu = wikimedia_materials.kategori_havuzunu_coz(
-            plan.visual_anchor, plan.topic
-        )
-        material_files, credits = download_scene_materials(
-            plan.topic,
-            plan.scenes,
-            material_dir,
-            visual_anchor=plan.visual_anchor,
-            # AI yedegi acikken tek eksik sahne yuzunden butun arsivi atmak
-            # yanlis: bulunan gercek fotograflar korunur, yalnizca delikler
-            # AI ile doldurulur (DW-97).
-            kismi=AI_VISUAL_FALLBACK_ENABLED,
-            kategori_havuzu=kategori_havuzu,
-            # ⚠️ Arsiv suzgeci ve SIRALAMASI kareye gore. Verilmezse yatay
-            # bir belgesel icin portre gorseller ustte gelir (bkz.
-            # `wikimedia_materials.UZUN_ORANI`).
-            hedef_oran=kare_orani(bicim),
-            # ⚠️ Uzun formatta capa BASLIKTA aranir. Gerekce ve olcum
-            # `wikimedia_materials._puanli_adaylar` icinde: aciklamada gecen
-            # capa, gorselin onu gosterdigi anlamina gelmiyor (adas kasaba,
-            # modern kopya, gecerken anma). Shorts'ta dar capa KASITLI ve
-            # cogu zaman baslikta gecmez — bu yuzden orada kapali.
-            capa_baslikta=not bicim.dikey,
-        )
+        if hazir_kareler is not None:
+            # ⚠️ INDIRME YOK. Kareler yayinlanmis uzun videodan geliyor ve o
+            # video iki hakemden gecmis. Yeniden indirmek onlari
+            # `_alinti_adayi` + `_tekrar_mi` + arama yedegi zincirinden bir
+            # daha gecirirdi; olculdu ki o zincir dosyanin YARISINI
+            # degistiriyor (%48 teslim). Gerekce `TURETME_KAYNAGI`de.
+            material_files, credits = _hazir_kareleri_yerlestir(
+                hazir_kareler, material_dir
+            )
+        else:
+            # Havuz BIR KEZ cozuluyor: hem birincil gecis hem ikinci gorsel
+            # gecisi ayni kategoriye bakiyor, iki kez sorgulamak bosuna istek.
+            kategori_havuzu = wikimedia_materials.kategori_havuzunu_coz(
+                plan.visual_anchor, plan.topic
+            )
+            material_files, credits = download_scene_materials(
+                plan.topic,
+                plan.scenes,
+                material_dir,
+                visual_anchor=plan.visual_anchor,
+                # AI yedegi acikken tek eksik sahne yuzunden butun arsivi
+                # atmak yanlis: bulunan gercek fotograflar korunur, yalnizca
+                # delikler AI ile doldurulur (DW-97).
+                kismi=AI_VISUAL_FALLBACK_ENABLED,
+                kategori_havuzu=kategori_havuzu,
+                # ⚠️ Arsiv suzgeci ve SIRALAMASI kareye gore. Verilmezse
+                # yatay bir belgesel icin portre gorseller ustte gelir (bkz.
+                # `wikimedia_materials.UZUN_ORANI`).
+                hedef_oran=kare_orani(bicim),
+                # ⚠️ Uzun formatta capa BASLIKTA aranir. Gerekce ve olcum
+                # `wikimedia_materials._puanli_adaylar` icinde: aciklamada
+                # gecen capa, gorselin onu gosterdigi anlamina gelmiyor (adas
+                # kasaba, modern kopya, gecerken anma). Shorts'ta dar capa
+                # KASITLI ve cogu zaman baslikta gecmez — orada kapali.
+                capa_baslikta=not bicim.dikey,
+            )
     except MaterialsUnavailableError as exc:
         if not AI_VISUAL_FALLBACK_ENABLED:
             raise SourceMaterialRejected(
@@ -8336,6 +8471,7 @@ def run_cycle(
             bicim = SHORTS_BICIMI
         denecek_uzun = not bicim.dikey
         denenecek = [bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]
+        hazir_kareler: list[tuple[Path, dict[str, Any]]] | None = None
         if turet is not None:
             # ⚠️ Turetme kolu plan URETMIYOR — dolayisiyla `generate_content_plan`
             # icindeki capa/konu/tekrar kapilarina da hic ugramiyor. Bu bilincli:
@@ -8348,6 +8484,20 @@ def run_cycle(
             denenecek = []
             plan = turetilmis_plani_kur(kaynak_kayit, pencere)
             kaynak = "turetme"
+            hazir_kareler = turetme.hazir_kareler(
+                kaynak_kayit, pencere, TURETME_KAYNAGI
+            )
+            if hazir_kareler is None:
+                # ⚠️ SESSIZ OLMASIN. Yedek yol kareyi ADIYLA yeniden cozer
+                # ve olculdu ki o yol dosyanin yarisini degistiriyor (%48).
+                # Yani cikan video, kaynak uzun videodan GORSEL OLARAK
+                # farkli olacak; bu bir kusur degil ama bilinmeden
+                # gecilmemeli.
+                print(
+                    "⚠️ türetme kaynağı yok, kareler adıyla yeniden çözülecek "
+                    "(ölçülen teslim oranı %48 — görüntü kaynaktan sapabilir)",
+                    flush=True,
+                )
             print(
                 f"ℹ️ turetme: {kaynak_kayit.get('topic')} · pencere {pencere} · "
                 f"{len(plan.scenes)} sahne · {len(plan.script.split())} kelime",
@@ -8507,7 +8657,9 @@ def run_cycle(
                     credits,
                     tam_dolan_sahne,
                     malzeme_dizini,
-                ) = run_generator(plan, attempt, bicim=bicim)
+                ) = run_generator(
+                    plan, attempt, bicim=bicim, hazir_kareler=hazir_kareler
+                )
             except SourceMaterialRejected as exc:
                 review = exc.review
                 rejected_topic = plan.topic
@@ -8720,6 +8872,16 @@ def run_cycle(
             return result
 
         task_id, video_path, _, review, credits, malzeme_dizini = selected
+        # ⚠️ KARELERI SAKLA — yalnizca UZUN format, cunku turetmenin kaynagi
+        # o. Gerekce `TURETME_KAYNAGI`de: turetme kareyi adiyla yeniden
+        # cozdugu surece hakemin onayladigi videoyu degil bir zari yeniden
+        # uretiyor. Saklama bir IYILESTIRME — dusmesi yayini bozmamali.
+        turetme_kaynagi = ""
+        if not bicim.dikey:
+            try:
+                turetme_kaynagi = turetme_kaynagini_yaz(plan, malzeme_dizini, credits)
+            except OSError as hata:
+                print(f"⚠️ türetme kaynağı saklanamadı: {hata}", flush=True)
         credits_text = format_commons_credits(credits)
         # ⚠️ Seri imzasi EN USTTE. Gerekcesi `SERI_IMZASI`nda: dagitim
         # calisiyor ama donusum calismiyor ve izleyicinin gordugu hicbir
@@ -8769,6 +8931,10 @@ def run_cycle(
             # yasandi ve kollar geriye donuk ayirt edilemedi.
             "bicim": bicim.ad,
             "kare_duzeni": bicim.kare_yuvasi,
+            # ⚠️ TURETMENIN KARELERI NEREDE. Bos ise turetme kareyi adiyla
+            # yeniden cozer ve olculen teslim orani %48 — yani cikan Shorts
+            # kaynak videodan gorsel olarak sapar.
+            "turetme_kaynagi": turetme_kaynagi,
             "iki_gorselli_sahne": tam_dolan_sahne,
             # ⚠️ SAHNE -> DOSYA ESLEMESI. `sahne_kaydi` zaten vardi ama
             # yalnizca RED kaydina yaziliyordu; yayinlanan videolarda sahne

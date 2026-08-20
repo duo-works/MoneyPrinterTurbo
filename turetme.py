@@ -35,7 +35,9 @@ kapisi (`_tekrar_mi`) onu zaten reddederdi; daha onemlisi izleyici gorurdu.
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any
 
 TURETME_SAHNE_SAYISI = 6
@@ -181,6 +183,59 @@ def turetilmis_sahneler(
         }
         for sahne in dilim
     ]
+
+
+KAYNAK_KUNYESI = "kaynak.json"
+"""Saklanmis karelerin yanindaki kunye dosyasi (`turetme_kaynagini_yaz` yazar)."""
+
+
+def hazir_kareler(
+    kayit: dict[str, Any],
+    sira: int,
+    kok: Path | str,
+    *,
+    pencere: int = TURETME_SAHNE_SAYISI,
+) -> list[tuple[Path, dict[str, Any]]] | None:
+    """Pencerenin karelerini SAKLANMIS dosyalardan verir; yoksa None.
+
+    ⚠️ NEDEN DOSYA, NEDEN AD DEGIL — olculdu 2026-08-21. Turetme kareyi
+    dosya ADIYLA yeniden cozuyordu ve teslim yolu adin yarisini tutmuyor:
+    dokuz yayinin 103 sahnesinde istenen dosyanin teslim orani %48. Yani
+    turetilen Shorts, hakemin ONAYLADIGI karelerle degil her koşumda
+    yeniden atilan bir zarla uretiliyordu (olculen ornek: Nasrid su
+    altyapisi anlatimina hacli bir can kulesi, skor 45).
+
+    ⚠️ TEK KARE BILE EKSIKSE None DONER. Yarim yeniden kullanim en kotu
+    secenek olurdu: bazi kareler yayinlanmis videodan, bazilari yeniden
+    atilan zardan gelir ve hangisinin nereden geldigi ciktida GORUNMEZ.
+    Ya hepsi saklanmis kaynaktan gelir, ya cagiran taraf eski yola duser.
+    """
+    ad = str(kayit.get("turetme_kaynagi", "") or "").strip()
+    if not ad:
+        return None
+    dizin = Path(kok) / ad
+    if not dizin.is_dir():
+        return None
+
+    kunyeler: dict[int, dict[str, Any]] = {}
+    kunye_yolu = dizin / KAYNAK_KUNYESI
+    if kunye_yolu.exists():
+        try:
+            for kunye in json.loads(kunye_yolu.read_text(encoding="utf-8")):
+                kunyeler[int(kunye.get("scene", 0))] = kunye
+        except (OSError, ValueError, TypeError):
+            # Kunye okunamazsa kareler yine kullanilabilir; atif duser ama
+            # video dogru olur. Kunyesizlik yeniden kullanimi engellememeli.
+            kunyeler = {}
+
+    bas = int(sira) * pencere
+    cikti: list[tuple[Path, dict[str, Any]]] = []
+    for no in range(bas + 1, bas + pencere + 1):
+        dosya = dizin / f"sahne-{no:02d}.jpg"
+        if not dosya.exists():
+            return None
+        cikti.append((dosya, kunyeler.get(no, {})))
+    return cikti
 
 
 def turetilmis_plan_alanlari(

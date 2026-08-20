@@ -34,8 +34,20 @@ def test_run_cycle_bicim_aliyor():
 
 
 def test_bicim_URETICIYE_geciyor():
-    """⚠️ Gecmezse video 9:16 render edilir ve YouTube onu Shorts sayar."""
-    assert "run_generator(plan, attempt, bicim=bicim)" in _run_cycle_govdesi()
+    """⚠️ Gecmezse video 9:16 render edilir ve YouTube onu Shorts sayar.
+
+    ⚠️ Kosul CAGRININ ICINDE araniyor, birebir satirda DEGIL. Eski hali
+    `"run_generator(plan, attempt, bicim=bicim)"` dizesini ariyordu ve
+    cagriya ikinci bir arguman eklenince (`hazir_kareler`) davranis hic
+    bozulmadigi halde dustu — yani test "bicim geciyor mu"yu degil "satir
+    aynen boyle mi yazilmis"i olcuyordu.
+    """
+    govde = _bosluksuz(_run_cycle_govdesi())
+
+    assert "run_generator(" in govde
+    bas = govde.index("run_generator(")
+    cagri = govde[bas : govde.index(")", bas) + 1]
+    assert "bicim=bicim" in cagri, f"bicim ureticiye gecmiyor: {cagri}"
 
 
 def test_bicim_HAKEME_geciyor():
@@ -156,7 +168,7 @@ def test_DUSURULEN_ikincilin_kredisi_EKLENMIYOR():
     kredi = govde.index("credits = list(credits) + [")
 
     assert denetim < kredi, "denetim kredi uzatmasindan once calismali"
-    assert "if int(kredi.get(\"scene\", 0)) not in dusen_kume" in govde
+    assert 'if int(kredi.get("scene", 0)) not in dusen_kume' in govde
 
 
 # --- Telemetri -------------------------------------------------------------
