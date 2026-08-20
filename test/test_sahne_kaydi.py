@@ -48,6 +48,12 @@ def test_kayit_istenen_ve_geleni_yan_yana_koyuyor():
         "sahne": 1,
         "terim": "Cutty Sark full sails",
         "kaynak_dosya": "Cutty-sark.png",
+        # ⚠️ 2026-08-20'de eklendi. Bu alan olmadan yayinlanmis bir plandan
+        # `ContentPlan` yeniden kurulamiyor, yani turetme (`turetme.py`)
+        # sahne basina tek kare tasiyan FARKLI bir video uretirdi ve fark
+        # sessiz olurdu. Burada bos: `_plan()` sahneleri ikinci dosya
+        # tasimiyor ve bos ikincil bir kusur DEGIL.
+        "kaynak_dosya_2": "",
         "gelen": "File:Cutty-sark.png",
         "anlatim": "gemi tam yelken",
     }

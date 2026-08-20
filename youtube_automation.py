@@ -37,8 +37,10 @@ import requests
 from app.config import config
 import gorsel_olcum
 import notion_kuyrugu
+import kapak as kapak_modulu
 import tekrar_olcusu
 import temizlik
+import turetme
 import wikimedia_materials
 from wikimedia_materials import MaterialsUnavailableError, download_scene_materials
 from youtube_upload import upload_video
@@ -4067,11 +4069,80 @@ def sahne_kaydi(
             "sahne": sira,
             "terim": str(sahne.get("search_term", "")),
             "kaynak_dosya": str(sahne.get("kaynak_dosya", "")),
+            # ⚠️ IKINCI KARE — 2026-08-20'de eklendi cunku eksikligi
+            # TURETMEYI bozuyordu. Bu alan olmadan yayinlanmis bir plandan
+            # `ContentPlan` yeniden kurulamiyor: kurulan plan sahne basina
+            # tek kare tasir, yani turetilen Shorts orijinalden FARKLI
+            # gorunur ve fark sessizdir (kod calisir, video baskadir).
+            "kaynak_dosya_2": str(sahne.get("kaynak_dosya_2", "")),
             "gelen": gelen_by_scene.get(sira, ""),
             "anlatim": str(sahne.get("narration", "")),
         }
         for sira, sahne in enumerate(plan.scenes, 1)
     ]
+
+
+TURETME_BASLIK_SISTEMI = (
+    "You write YouTube Shorts titles. Return JSON only: {\"title\": \"...\"}."
+)
+
+
+def _turetilmis_baslik(alanlar: dict[str, Any], onceki: list[str]) -> str:
+    """Turetilen Shorts icin baslik — TEK kucuk cikarim cagrisi.
+
+    ⚠️ NEDEN CIKARIM. Determinist bir kural denendi ("ilk cumleyi ilk yan
+    cumle sinirinda kes") ve dort pencerede OLCULDU: yalnizca biri
+    kullanilabilir baslik verdi (44 karakter), ucu 114-150 karakterlik
+    cumleler cikardi. 1/4. Yani planin kendisi bedava kuruluyor
+    (`turetme.turetilmis_plan_alanlari`) ama baslik icin bir cagri
+    gerekiyor; "sifir cikarim" hedefi PLAN icin tutuyor, metadata icin
+    tutmuyor. Bu duzeltme oturumun kendi planina yapildi.
+
+    ⚠️ Cagri DUSERSE koşum olmez: `kapak_modulu.yaziyi_kisalt` ile
+    determinist baslik kurulur. Zayif bir baslik, yayinlanmamis bir
+    videodan iyidir — ve o yol zaten olculdu, 1/4'u iyi.
+    """
+    girdi = {
+        "topic": alanlar["topic"],
+        "narration": alanlar["script"],
+        # ⚠️ Bicim TEKRARI onlensin diye son basliklar veriliyor —
+        # `_baslik_bicimi_tekrari` ile ayni gerekce. Turetilen Shorts'lar
+        # ayni uzun videodan geldigi icin bu risk BURADA daha yuksek:
+        # ayni konu, ayni gun, ust uste iki baslik.
+        "recent_titles": onceki,
+    }
+    talimat = (
+        "Write ONE YouTube Shorts title for the narration above. Rules: "
+        "under 65 characters; read like a search query a viewer would type, "
+        "usually a direct question; put the searchable proper noun in the "
+        "first three words; end with #Shorts. Do NOT reuse the question word "
+        "or sentence shape of any title in recent_titles."
+    )
+    try:
+        veri = _json_completion(
+            TURETME_BASLIK_SISTEMI,
+            json.dumps({**girdi, "instructions": talimat}, ensure_ascii=False),
+        )
+        baslik = tiresiz_baslik(str(veri.get("title", "")).strip())
+        if baslik:
+            return baslik if "#Shorts" in baslik else f"{baslik} #Shorts"
+    except Exception as hata:  # noqa: BLE001 — gerekcesi docstring'de
+        print(f"ℹ️ turetilmis baslik cikarimi dustu, determinist yola dusuluyor: {hata}")
+    kisa = kapak_modulu.yaziyi_kisalt(turetme.ilk_cumle(alanlar["script"]), en_cok=52)
+    return f"{kisa} #Shorts"
+
+
+def turetilmis_plani_kur(
+    kayit: dict[str, Any], sira: int, *, onceki_basliklar: list[str] | None = None
+) -> ContentPlan:
+    """Yayinlanmis UZUN kayittan dikey `ContentPlan` kurar.
+
+    Plan tarafi sifir cikarim (`turetme`), yalnizca baslik bir cagri
+    harciyor. Ayrintili gerekce `turetme` modul basliginda.
+    """
+    alanlar = turetme.turetilmis_plan_alanlari(kayit, sira)
+    onceki = _son_basliklar() if onceki_basliklar is None else onceki_basliklar
+    return ContentPlan(title=_turetilmis_baslik(alanlar, onceki), **alanlar)
 
 
 def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
@@ -8000,7 +8071,14 @@ def run_cycle(
     sahne_sayisi: int | None = None,
     bicim: VideoBicimi = SHORTS_BICIMI,
     konu_override: str | None = None,
+    turet: tuple[dict[str, Any], int] | None = None,
 ) -> dict[str, Any]:
+    """`turet` verilirse plan URETILMEZ, yayinlanmis uzun kayittan kurulur.
+
+    ⚠️ `turet` her seyi ONCELER: konu secimi, kuyruk, yedek kip ve capa
+    kapilari devre disi kalir cunku konu ZATEN secilmis ve yayinlanmis
+    durumda. Bkz. `turetme` modul basligi.
+    """
     slot = publication_slot_key()
     state = load_state()
     if slot in state.get("completed_slots", []):
@@ -8149,6 +8227,23 @@ def run_cycle(
             bicim = SHORTS_BICIMI
         denecek_uzun = not bicim.dikey
         denenecek = [bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]
+        if turet is not None:
+            # ⚠️ Turetme kolu plan URETMIYOR — dolayisiyla `generate_content_plan`
+            # icindeki capa/konu/tekrar kapilarina da hic ugramiyor. Bu bilincli:
+            # o kapilarin isi YENI bir konu secmek ve konu burada zaten secilmis,
+            # uretilmis ve yayinlanmis. Kapilari calistirmak "ayni capa" diye
+            # kendi kaynagini reddederdi (bkz. plan notu: seri, tekrar
+            # savunmasina carpiyor).
+            kaynak_kayit, pencere = turet
+            bicim = SHORTS_BICIMI
+            denenecek = []
+            plan = turetilmis_plani_kur(kaynak_kayit, pencere)
+            kaynak = "turetme"
+            print(
+                f"ℹ️ turetme: {kaynak_kayit.get('topic')} · pencere {pencere} · "
+                f"{len(plan.scenes)} sahne · {len(plan.script.split())} kelime",
+                flush=True,
+            )
         for aday_bicim in denenecek:
             try:
                 plan = generate_content_plan(
@@ -8559,6 +8654,36 @@ def run_cycle(
             # oturumda agir kusur kapisinda tam tersi yapildi ve o alan
             # kayitlarda hic olmadan "olculdu" denmisti.
             "script": plan.script,
+            # ⚠️ ASAGIDAKI UC ALAN TURETME ICIN (2026-08-20). Olculdu: bunlar
+            # olmadan `state.json`dan `ContentPlan` yeniden KURULAMIYOR, yani
+            # "uzun videodan Shorts turet" yolu her turetmede yeni bir plan
+            # cikarimi yapmak zorunda kalirdi — turetmenin butun ucuzlugu
+            # oradan geliyor.
+            #
+            # ⚠️ `description` HAM plan aciklamasi, yukarida YouTube'a giden
+            # `description` degiskeni DEGIL: o degisken seri imzasi + kunye
+            # eklenip kirpilmis hali. Turetilen video kendi kunyesini kendi
+            # uretecegi icin ham metin lazim; kirpilmisi kaydetmek bir
+            # sonraki videoya BASKASININ kunyesini tasirdi.
+            "description": plan.description,
+            "tags": plan.tags,
+            # Arka plan muzigi secimi (`RUH_HALLERI`). Yazilmazsa turetilen
+            # Shorts havuz genelinden muzik secer ve uzun videoyla ayni
+            # tonu tutturamaz.
+            "ruh_hali": plan.ruh_hali,
+            # ⚠️ HANGI uzun videonun HANGI penceresinden turedi. Yazilmazsa
+            # `turetme.sonraki_pencere` kullanilmis pencereyi goremez ve hat
+            # her gun AYNI Shorts'u uretir — sessizce, cunku her koşum kendi
+            # icinde basarili olur.
+            "turetildi": (
+                {
+                    "kimlik": turetme.turetme_kimligi(turet[0], turet[1]),
+                    "kaynak_url": turet[0].get("url", ""),
+                    "pencere": turet[1],
+                }
+                if turet is not None
+                else None
+            ),
             "url": url,
             "task_id": task_id,
             "video_path": str(video_path),
@@ -8669,6 +8794,16 @@ def main() -> None:
             "kipte serbest — aynı çapa zaten istenen şey."
         ),
     )
+    parser.add_argument(
+        "--turet",
+        action="store_true",
+        help=(
+            "En son yayınlanan UZUN videodan dikey Shorts türet. Plan "
+            "üretilmez: sahneler, görseller ve anlatım yayınlanmış kayıttan "
+            "gelir (yalnızca başlık bir çıkarım çağrısı harcar). Her koşum "
+            "bir sonraki KULLANILMAMIŞ pencereyi alır."
+        ),
+    )
     args = parser.parse_args()
     # ⚠️ URETIMDEN ONCE ve tek basina calisiyor: bu bayrak bir BAKIM islemi,
     # koşum secenegi degil. Ayni komutta uretim de yapsaydi, "sogumayi
@@ -8704,6 +8839,37 @@ def main() -> None:
         parser.error(
             "--uzun ile --sahne-sayisi birlikte kullanılamaz (deney Shorts koluna ait)"
         )
+    turet_girdisi: tuple[dict[str, Any], int] | None = None
+    if args.turet:
+        # ⚠️ Diger konu kaynaklariyla BIRLIKTE kullanilamaz: turetmenin konusu
+        # zaten secilmis. Sessizce birini yok saymak, kullanicinin istedigini
+        # sandigi seyden baskasini uretirdi.
+        if args.uzun or args.konu or args.from_notion:
+            parser.error(
+                "--turet ile --uzun/--konu/--from-notion birlikte kullanılamaz: "
+                "türetmenin konusu yayınlanmış uzun videodan geliyor"
+            )
+        durum = load_state()
+        adaylar = turetme.turetilebilir_yayinlar(durum)
+        if not adaylar:
+            print(
+                "ℹ️ türetilebilir uzun yayın yok. 20 Ağu 2026 öncesi kayıtlarda "
+                "`description`/`tags` alanları yok, plan yeniden kurulamıyor.",
+                flush=True,
+            )
+            raise SystemExit(3)
+        for kaynak_kayit in adaylar:
+            pencere = turetme.sonraki_pencere(durum, kaynak_kayit)
+            if pencere is not None:
+                turet_girdisi = (kaynak_kayit, pencere)
+                break
+        if turet_girdisi is None:
+            print(
+                "ℹ️ türetilebilir pencere kalmadı: yayınlanmış uzun videoların "
+                "bütün pencereleri kullanılmış.",
+                flush=True,
+            )
+            raise SystemExit(3)
     result = run_cycle(
         dry_run=args.dry_run,
         privacy=args.privacy,
@@ -8713,6 +8879,7 @@ def main() -> None:
         sahne_sayisi=args.sahne_sayisi,
         bicim=bicim,
         konu_override=args.konu,
+        turet=turet_girdisi,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
