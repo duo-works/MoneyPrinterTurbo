@@ -54,6 +54,13 @@ tamamen farkli. `used_titles` zaten vardi ve yetmedi.
 """
 
 
+IZ_KENARI = 16
+"""Parmak izinin kenar uzunlugu — 16x16 = 256 bit.
+
+Sabit oldugu icin `izi_yaz`/`izi_oku` onbellek bicimini buradan turetiyor;
+sayi govdeye gomulu kalsaydi kenari degistirmek onbellegi sessizce bozardi.
+"""
+
 PARLAKLIK_TABANI = 45.0
 """Bir karenin "fazla karanlik" sayildigi ortalama luma (0-255) — DUZELTME esigi.
 
@@ -177,7 +184,7 @@ def parmak_izi(yol: Path) -> Any:
     """
     try:
         with Image.open(yol) as im:
-            gri = im.convert("L").resize((16, 16))
+            gri = im.convert("L").resize((IZ_KENARI, IZ_KENARI))
     except Image.DecompressionBombError as hata:
         raise OSError(f"gorsel olculemeyecek kadar buyuk: {yol}") from hata
     dizi = np.asarray(gri, dtype=float)
@@ -187,6 +194,37 @@ def parmak_izi(yol: Path) -> Any:
 def benzerlik(a: Any, b: Any) -> float:
     """Iki parmak izinin ortusme orani (0-1)."""
     return float(np.mean(a == b))
+
+
+def izi_yaz(iz: Any) -> str:
+    """Parmak izini onbellege yazilabilir metne cevirir: 256 bit -> 64 hex.
+
+    ⚠️ ONBELLEK ICIN, olcum icin DEGIL. `ayrik_arz_yeter_mi` ayni Commons
+    dosyasini birden cok capada goruyor ve kucuk resmi her seferinde yeniden
+    indirmek olculdu: ~1,9 sn/dosya (2026-08-22).
+
+    Tur-donus KAYIPSIZ ve olculdu: `benzerlik(iz, izi_oku(izi_yaz(iz))) == 1,0`.
+
+    ⚠️ Bicim BURADA duruyor cunku `parmak_izi`nin sekli burada tanimli.
+    Cagiran tarafa tasinsaydi numpy ayrintisi ikinci bir yere sizar ve iki
+    taraf ayrisirdi.
+    """
+    return np.packbits(np.asarray(iz).flatten()).tobytes().hex()
+
+
+def izi_oku(metin: str) -> Any:
+    """`izi_yaz`in tersi. Bozuk ya da yanlis uzunlukta metin `ValueError`.
+
+    ⚠️ Uzunluk kontrolu DAVRANIS DEGIL MESAJ icin: `reshape` zaten her yanlis
+    uzunlukta `ValueError` atiyor, yani kontrolu silmek mutasyon testinde
+    hicbir testi dusurmuyor (olculdu, 2026-08-22 — ESDEGER mutasyon). Yine de
+    duruyor cunku `IZ_KENARI` degisirse cikan numpy mesaji ("cannot reshape
+    array of size 128") sebebi soylemiyor; buradaki mesaj soyluyor.
+    """
+    dizi = np.unpackbits(np.frombuffer(bytes.fromhex(metin), dtype=np.uint8))
+    if dizi.size != IZ_KENARI * IZ_KENARI:
+        raise ValueError(f"parmak izi {dizi.size} bit, beklenen {IZ_KENARI**2}")
+    return dizi.astype(bool).reshape(IZ_KENARI, IZ_KENARI)
 
 
 def ton_yayilimi(dosyalar: list[Path]) -> float:

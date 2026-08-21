@@ -22,6 +22,7 @@ import wikimedia_materials as _wm  # noqa: E402
 import youtube_automation as _ya  # noqa: E402
 
 _GERCEK_KATEGORI_COZUMU = _wm.commons_kategorisi
+_GERCEK_KUCUK_RESIMLER = _wm.menu_kucuk_resimleri
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +39,31 @@ def _kategori_cozumu_kapali(monkeypatch):
     # sifirlanmali, yoksa testler birbirinin sonucunu okuyor. Yeni bir
     # onbellek eklenirse buraya da eklenmeli.
     monkeypatch.setattr(_ya, "_ENVANTER_ONBELLEGI", {})
+
+
+@pytest.fixture(autouse=True)
+def _kucuk_resimler_kapali(monkeypatch):
+    """⚠️ AYNI TUZAK UCUNCU KEZ — olculdu (2026-08-22).
+
+    `ayrik_arz_yeter_mi` (render oncesi ayrik arz kapisi) uretimin kapma
+    ucuna baglaninca, `aday_kapilabilir_mi` cagiran her test Commons'a
+    gitmeye basladi: `test_capa_arzi` + `test_huni_besleme` ikilisi TEK
+    BASINA 173 istek / 1373 dosya atti ve 226 saniye surdu.
+
+    Bos harita donmek testlerin anlamini DEGISTIRMIYOR: kucuk resmi inmeyen
+    girdi olcume girmiyor, olcum `hedef` kadar kare goremeyince kapi ACIK
+    dusuyor — yani bu fixture altinda kapi bugunku ham sayi kararini
+    veriyor. Kapinin KENDISINI sinayan testler (`test_ayrik_arz.py`)
+    `menu_kucuk_resimleri`yi kendileri yamiyor.
+    """
+    monkeypatch.setattr(_wm, "menu_kucuk_resimleri", lambda _dosyalar, _dizin: {})
+
+
+@pytest.fixture
+def gercek_kucuk_resimler(monkeypatch):
+    """Autouse susturmasini geri alir — ag katmani testte ayrica yamanmali."""
+    monkeypatch.setattr(_wm, "menu_kucuk_resimleri", _GERCEK_KUCUK_RESIMLER)
+    return _GERCEK_KUCUK_RESIMLER
 
 
 @pytest.fixture

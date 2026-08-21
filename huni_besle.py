@@ -179,6 +179,17 @@ def uretilebilir_mi(baslik: str) -> tuple[bool, int]:
     kare oranina gore de eliyor ve onbellekli, yani ayni konu icin iki taraf
     farkli sayi goruyordu (`Ernst Hanfstaengl` terfide 4, uretimde 8).
     Sayilar farkliysa "terfi edilebilir" ile "kapilabilir" ayrisir.
+
+    ⚠️ AYRIK ARZ KAPISI (`ayrik_arz_yeter_mi`) BURAYA KONMADI ve bu bir
+    unutma degil MALIYET KARARI (2026-08-22). Bu fonksiyon koşum basina
+    `OLCUM_TAVANI` (45) adaya kadar cagriliyor; ayrik olcum aday basina
+    10-24 kucuk resim indiriyor, yani ~900 indirme/koşum. Kapi uretimin
+    KAPMA ucunda (`aday_kapilabilir_mi`, koşum basina <=6 aday) duruyor.
+
+    Kalan asimetri tek yonlu zararsiz: terfi kapisi daha GEVSEK, yani
+    kapilabilir hicbir aday terfi edemeden olmuyor; bedeli bosa terfi ve
+    `besle()` onu kapilamaz sayip yerine bir tane daha terfi ettiriyor.
+    Gerekcenin tamami `aday_kapilabilir_mi` docstring'inde.
     """
     try:
         envanter = arsiv_envanteri(baslik, bicim=SHORTS_BICIMI)

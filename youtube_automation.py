@@ -901,6 +901,22 @@ def aday_kapilabilir_mi(
     ⚠️ Menu kurulamazsa `arsiv_envanteri` BOS donuyor (kendi sozlesmesi) ve
     aday kapilamaz sayiliyor. Bilincli: atlamanin bedeli bir yedek kip
     videosu, kapmanin bedeli yanmis bir slot.
+
+    ⚠️ AYRIK ARZ KAPISI BURADA, TERFI TARAMASINDA DEGIL (2026-08-22) — ve
+    asimetri BILINCLI. Huni iki ayri yerde olcuyor:
+
+        terfi taramasi   `uretilebilir_mi`        OLCUM_TAVANI = 45 aday
+        kuyruk derinligi `aday_kapilabilir_mi`    HEDEF_DERINLIK = 6 aday
+
+    45 aday x ~20 kucuk resim ~ 900 indirme/koşum: terfi taramasi bu yuzden
+    DISARIDA. Ama derinlik sayacini disarida birakmak, `9824db3`in
+    kapattigi kusuru geri getirirdi: sayac uretimin KAPABILDIGINDEN baska
+    bir sey sayarsa kuyruk zombiyle dolar, `eksik <= 0` gorulur, terfi durur.
+
+    Kalan asimetri TEK YONLU ZARARSIZ: terfi kapisi DAHA GEVSEK, yani
+    kapilabilir hicbir aday terfi edemeden olmuyor. Bedeli bosa terfi ve
+    `besle()` onu kapilamaz sayip yerine bir tane daha terfi ettiriyor.
+    Tehlikeli olan ters yondu (terfi siki, kapma gevsek) ve o olmuyor.
     """
     kalan_saat = aday_sogumada_mi(baslik, state)
     if kalan_saat > 0:
@@ -922,6 +938,16 @@ def aday_kapilabilir_mi(
             False,
             f"arşiv menüsü {len(envanter)} < {gereken} — her sahneye "
             "ayrı görsel düşmüyor",
+            "arsiv",
+        )
+    # ⚠️ AYRIK KAPI EN SONA: ham sayi kapisi bedava eliyor, bu kapi kucuk
+    # resim indiriyor. Bedavaya elenebilecek bir aday icin ag trafigi
+    # odenmemeli — soguma kapisinin yukarida durmasiyla ayni gerekce.
+    if not ayrik_arz_yeter_mi(envanter, gereken, bicim=bicim, konu=baslik):
+        return KapmaKarari(
+            False,
+            f"arşiv menüsü {len(envanter)} dosya veriyor ama render edilen "
+            f"karede {gereken} ayrı görsel çıkmıyor",
             "arsiv",
         )
     return KapmaKarari(True)
@@ -4392,6 +4418,207 @@ def arsiv_videoyu_tasir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
     return len(menu) >= max(int(sahne_sayisi or 0), 1)
 
 
+AYRIK_OLCUM_TAVANI = 4
+"""Bir koşumda ayrik arzi OLCULEN capa sayisi — BUTCE, kalite esigi DEGIL.
+
+⚠️ Tavan dolunca kapi KAPANMIYOR; bugunku ham sayi karari geciyor.
+`_yedek_capa_sec` 54 capalik havuzu geziyor ve olcum soguk halde capa basina
+20-50 sn suruyor (10-24 kucuk resim, ~1,9 sn/indirme — 2026-08-22 olcumu).
+Havuzun tamami olculmus konulardan olustugu icin beklenen olcum sayisi ~1:
+ayni olcumde yayinlanmis alti konunun altisi da geciyor.
+"""
+
+KARE_IZI_DOSYASI = ROOT / "storage" / "youtube_automation" / "kare_parmak_izleri.json"
+
+KARE_IZI_SURUMU = 1
+"""Onbellek semasi.
+
+⚠️ Donusum (`dikeye_uydur`) ya da parmak izi bicimi degisirse ARTIRILMALI.
+Yoksa eski izler yeni olcumle karsilastirilir ve kapi, indiricinin gordugu
+karelerden BASKA bir sey olcmeye baslar — bu deponun imza kusuru.
+"""
+
+
+def _kare_izi_onbellegi() -> dict[str, str]:
+    try:
+        veri = json.loads(KARE_IZI_DOSYASI.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(veri, dict) or veri.get("surum") != KARE_IZI_SURUMU:
+        return {}
+    girdiler = veri.get("girdiler")
+    return girdiler if isinstance(girdiler, dict) else {}
+
+
+def _kare_izini_yaz(onbellek: dict[str, str]) -> None:
+    KARE_IZI_DOSYASI.parent.mkdir(parents=True, exist_ok=True)
+    # ⚠️ Gecici dosya ADI SURECE OZEL — `_write_state`in birebir gerekcesi:
+    # zamanlayici 3 saatte bir atesliyor ve elle koşumla cakisabilir.
+    gecici = KARE_IZI_DOSYASI.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        gecici.write_text(
+            json.dumps(
+                {"surum": KARE_IZI_SURUMU, "girdiler": onbellek}, ensure_ascii=False
+            ),
+            encoding="utf-8",
+        )
+        gecici.replace(KARE_IZI_DOSYASI)
+    except OSError:
+        gecici.unlink(missing_ok=True)
+
+
+def _ayrik_say(izler: list[Any], hedef: int) -> int:
+    """Acgozlu AYRIK sayim: birbirine tekrar esigi kadar benzemeyen kare sayisi.
+
+    `hedef`e ulasinca DURUR — kapinin sordugu sey "en az bu kadar var mi",
+    "tam olarak kac tane" degil. Erken cikis indirmeyi de kisaltiyor:
+    Sacsayhuaman 37 girdinin 14'unde hedefe ulasti (2026-08-22).
+
+    ⚠️ Esik `gorsel_olcum.ARSIV_TEKRAR_ESIGI`den OKUNUYOR, kopyalanmiyor.
+    Indirici tarafi (`wikimedia_materials._tekrar_mi`) ayni sabiti kullaniyor;
+    iki taraf ayrisirsa kapi, tuketicinin gordugunden baska bir seyi olcer.
+    """
+    secili: list[Any] = []
+    for iz in izler:
+        if len(secili) >= hedef:
+            break
+        if all(
+            gorsel_olcum.benzerlik(iz, onceki) < gorsel_olcum.ARSIV_TEKRAR_ESIGI
+            for onceki in secili
+        ):
+            secili.append(iz)
+    return len(secili)
+
+
+def ayrik_arz_yeter_mi(
+    menu: list[dict[str, str]],
+    hedef: int,
+    *,
+    bicim: "VideoBicimi | None" = None,
+    konu: str = "",
+) -> bool:
+    """Menu, RENDER EDILECEK karede `hedef` kadar AYRI gorsel verebiliyor mu.
+
+    ⚠️ NEDEN VAR — `arsiv_videoyu_tasir` menudeki DOSYA SAYISINI sayiyor,
+    indirici ise (`880f26c`den beri) dikeye cevrilmis kareyi olcup birbirine
+    benzeyen adayi dusuruyor. Iki sayi ayni degil ve fark uretimin sirtinda:
+    menusu yeten konu kapidan geciyor, sahnelerin bir kismi denetlenmemis
+    arama yoluna dusuyor. Kapi, tuketicinin gordugunden baska bir seyi
+    olcuyordu.
+
+    Olculdu (2026-08-22, uretim menu boyunda, hedef 8):
+
+        YAYIN  Persepolis 16 · Chichen 13 · Sacsayhuaman 12 · Moai 10 ·
+               Palmyra 10 · Great Sphinx 9        -> ALTISI DA GECER
+        red    Jenkins Ear 10 · Gajdusek 9        -> gecer (kapi tek basina
+                                                    ayirt etmiyor, ETMEMELI)
+        red    May Ayim 6 · PETN 5                -> ELENIR
+
+    Iki dogru pozitif, SIFIR yanlis pozitif. Kapinin isi tabanin ALTINI
+    kesmek: 25 dakikalik bos koşum yerine ~30 saniyelik atlama.
+
+    ⚠️ UCUNCU BIR SEY OLCMUYOR ve bu olculdu. Kapi 400px kucuk resmi,
+    renderer tam cozunurlugu goruyor; ayni 10 dosya iki cozunurlukten
+    gecirildi:
+
+        ayni dosya 400px vs 1600px parmak izi : min 0,973 · ort 0,992
+        AYRIK sayi                             : 6 = 6
+        cift benzerliklerinde |fark|           : max 0,031 · ort 0,007
+
+    0,70 esiginin karar marji yaninda 0,031 gurultu.
+
+    ⚠️ HATA HALINDE ACIK DUSER: olcum basarisizsa bugunku ham sayi karari
+    gecerli kalir (`arsiv_envanteri`nin `return []` doktrininin tersi yonu).
+    Atlamanin bedeli bir yedek kip videosu, YANLIS atlamanin bedeli hicbir
+    sey uretmeyen bir slot.
+
+    ⚠️ Donusturucu `bicim.dikey`e gore seciliyor — §B'nin (`880f26c`)
+    enjeksiyon kuralinin birebir aynisi. Uzun formatta kare zaten ~16:9,
+    donusum uygulanmiyor.
+    """
+    hedef = max(int(hedef or 0), 1)
+    if not menu:
+        return True
+    try:
+        return _ayrik_arz_yeter_mi(menu, hedef, bicim=bicim, konu=konu)
+    except Exception as hata:  # noqa: BLE001 — olcum uretimi durduramaz
+        print(
+            f"ℹ️ ayrık arz ölçülemedi, menü sayısı geçerli ({konu}): {hata}",
+            flush=True,
+        )
+        return True
+
+
+def _ayrik_arz_yeter_mi(
+    menu: list[dict[str, str]],
+    hedef: int,
+    *,
+    bicim: "VideoBicimi | None",
+    konu: str,
+) -> bool:
+    donusturucu = dikeye_uydur if (bicim or SHORTS_BICIMI).dikey else None
+    onbellek = _kare_izi_onbellegi()
+    dosyalar = [str(g.get("dosya", "")) for g in menu if g.get("dosya")]
+    izler: list[Any] = []
+    yeni = 0
+    with tempfile.TemporaryDirectory(prefix="ayrik-arz-") as gecici:
+        kok = Path(gecici)
+        # ⚠️ OBEK OBEK: hedefe ulasinca kalan girdiler HIC indirilmiyor.
+        for bas in range(0, len(dosyalar), hedef):
+            if _ayrik_say(izler, hedef) >= hedef:
+                break
+            obek = dosyalar[bas : bas + hedef]
+            eksik = [ad for ad in obek if ad not in onbellek]
+            yollar = (
+                wikimedia_materials.menu_kucuk_resimleri(eksik, kok / str(bas))
+                if eksik
+                else {}
+            )
+            for ad in obek:
+                if kayit := onbellek.get(ad):
+                    try:
+                        izler.append(gorsel_olcum.izi_oku(kayit))
+                        continue
+                    except ValueError:
+                        onbellek.pop(ad, None)
+                if (yol := yollar.get(ad)) is None:
+                    continue
+                try:
+                    olculecek = (
+                        donusturucu(yol, kok / "olcum.jpg") if donusturucu else yol
+                    )
+                    iz = gorsel_olcum.parmak_izi(Path(olculecek))
+                except (OSError, ValueError):
+                    # ⚠️ Olculemeyen dosya menuden ELENMIYOR, yalnizca bu
+                    # sayima girmiyor — `menu_kucuk_resimleri` sozlesmesinin
+                    # aynisi.
+                    continue
+                onbellek[ad] = gorsel_olcum.izi_yaz(iz)
+                izler.append(iz)
+                yeni += 1
+    if yeni:
+        _kare_izini_yaz(onbellek)
+    # ⚠️ RED ICIN OLCUMUN KENDISI YETERLI OLMALI. Kapinin iddiasi "bu menude
+    # `hedef` kadar ayrik kare YOK"; bunu soyleyebilmek icin en az `hedef`
+    # kare gercekten olculmus olmali. Indirme ya da parmak izi dusunce `izler`
+    # kisa kaliyor ve o hal "arsiv yetersiz" DEGIL "bilmiyoruz" demek — kapi
+    # orada ACIK duser. Aksi halde tek bir ag hatasi konuyu elerdi.
+    if len(izler) < hedef:
+        print(
+            f"ℹ️ ayrık arz ölçülemedi ({konu or 'konu yok'}): "
+            f"{len(izler)} kare < {hedef} — menü sayısı geçerli",
+            flush=True,
+        )
+        return True
+    ayrik = _ayrik_say(izler, hedef)
+    print(
+        f"ℹ️ ayrık arz: {ayrik}/{hedef} ({konu or 'konu yok'}) — "
+        f"{len(izler)} kare ölçüldü, {yeni} yeni",
+        flush=True,
+    )
+    return ayrik >= hedef
+
+
 def _capa_arzi_kusuru(
     plan: ContentPlan,
     *,
@@ -4559,13 +4786,23 @@ def _yedek_capa_sec(
     dogrulaniyor. Hicbiri yetmezse "" doner ve cagiran taraf BUGUNKU serbest
     secim davranisina duser — menu bir iyilestirme, on kosul degil.
     """
+    gereken = sahne_sayisi or bicim.sahne_araligi[1]
+    olculen = 0
     for capa in eligible_anchors:
         try:
             menu = arsiv_envanteri(capa, sinir=envanter_sinir, bicim=bicim)
         except Exception as hata:  # noqa: BLE001 - menu on kosul degil
             print(f"⚠️ yedek capa menusu okunamadi ({capa}): {hata}", flush=True)
             continue
-        if ikinci_gorsel_istenebilir(menu, sahne_sayisi or bicim.sahne_araligi[1]):
+        if not ikinci_gorsel_istenebilir(menu, gereken):
+            continue
+        # ⚠️ OLCUM BUTCESI: tavan dolunca kapi kapanmiyor, bugunku ham sayi
+        # karari geciyor. 54 capalik havuzu soguk halde bastan sona olcmek
+        # bir slotu yakardi; havuzun tamami zaten olculmus konulardan olusuyor.
+        if olculen >= AYRIK_OLCUM_TAVANI:
+            return capa
+        olculen += 1
+        if ayrik_arz_yeter_mi(menu, gereken, bicim=bicim, konu=capa):
             return capa
     return ""
 
