@@ -2412,6 +2412,62 @@ def sikayet_sahneleri(
 # Ustelik `aday_menu` cogu konuda zaten kucuk (Sigiriya 8, Notre Dame 5).
 AZAMI_ONARIM = 3
 
+AZAMI_DENEME = 3
+"""Bir slotta kac render denenir — bugune kadar `range(1, 4)` icine gomuluydu."""
+
+ONARIM_EK_DENEME = 2
+"""Onarilan plan RENDER EDILMEDEN dongu bitmesin diye verilen EK deneme.
+
+⚠️ NEDEN VAR — olculdu 2026-08-22, 41 telemetrili red slotu:
+
+    son denemesi ONARILABILIR olan            : 14 slot (%34)
+    bunlarin skor esigini ZATEN gecenleri     :  6 slot
+
+Alti slot TEK RENDER uzaktaydi ve hepsi bir ya da iki sahne yuzunden dustu:
+
+    Persepolis 78 (1 sahne) · King Philip's War 78 (1) · Moai 80 (1)
+    Tikal 78 (1) · PETN 78 (2) · May Ayim 85 (1)
+
+Mekanizma: `kareyi_onar` denemenin SONUNDA calisiyor ve plani BIR SONRAKI
+deneme icin degistiriyor. Ucuncu denemede yapilan onarim hicbir zaman render
+edilmiyordu — cikarim ve ag maliyeti odenmis, sonuc atilmis.
+
+May Ayim koşumu (21 Agu 21:05) bunun canli hali. Uc deneme yakinsiyordu:
+
+    deneme 1 : skor 72 · agir kusur 16
+    deneme 2 : skor 75 · agir kusur  8
+    deneme 3 : skor 85 · agir kusur  2   <- TEK sahne, sonra butce bitti
+
+Koşum 22:19'da bitti; bir sonraki tetige 106 dakika vardi.
+
+⚠️ TAVAN NEDEN 2 — olculdu: deneme suresi medyan 8 dk, ortalama 11, max 33
+(n=50). Iki ek deneme medyanda ~16 dk demek ve 3 saatlik pencerede 22 deneme
+sigiyor, yani darbogaz sure DEGIL. Tavan yine de var cunku her onarim yeni
+bir onarim dogurabilir; sinirsiz uzatma slotu kilitlerdi.
+
+⚠️ Bu bir ESIK GEVSETMESI DEGIL: yayin kapisi, hakem esikleri ve
+`AZAMI_ONARIM` butcesi aynen duruyor. Degisen tek sey, ODENMIS bir onarimin
+render edilmeden atilmamasi.
+"""
+
+AZAMI_TOPLAM_DENEME = AZAMI_DENEME + ONARIM_EK_DENEME
+"""Bir slotta yapilabilecek MUTLAK deneme tavani — dongunun kendi siniri.
+
+⚠️ NEDEN AYRI SABIT VE NEDEN DONGU KOSULUNDA. Deneme dongusu `for` iken
+tavani asmak YAPISAL OLARAK imkansizdi; `while`a cevrilince o guvence
+kayboldu ve yanlis bir tavan hesabi donguyu SONSUZA cevirebilir hale geldi.
+
+Olculdu, iki kez: mutasyon testinde tavan klempini kaldiran surum pytest'i
+on dakika boyunca dondurdu ve kaynak CANLI CHECKOUT ta mutasyonlu kaldi.
+Ilk savunmam test kurgusuna kacak sayaci koymakti; yetmedi, cunku baska test
+dosyalarinin kendi kurgulari var ve onlar yine asildi.
+
+Yani savunma testte degil KODDA olmali: dongu kosulu bu sabiti de okuyor,
+boylece `azami_deneme` ne olursa olsun tavan asilamaz. Sonsuz calisan bir
+koşum, dusen bir koşumdan cok daha pahali — kilidi tutar, cikarim kredisi
+yakar ve gozetimsiz bir zamanlayicida gunlerce surebilir.
+"""
+
 
 def agir_kusurlu_kareler(
     review: QualityReview,
@@ -8719,7 +8775,13 @@ def run_cycle(
             )
             save_state(state)
 
-        for attempt in range(1, 4):
+        # ⚠️ TAVAN DEGISKEN: onarim son denemede yapilirsa butce uzatiliyor,
+        # yoksa odenmis onarim render edilmeden atiliyor. Gerekce ve olcum
+        # `ONARIM_EK_DENEME` sabitinde.
+        azami_deneme = AZAMI_DENEME
+        attempt = 0
+        while attempt < azami_deneme and attempt < AZAMI_TOPLAM_DENEME:
+            attempt += 1
             try:
                 (
                     task_id,
@@ -8783,7 +8845,7 @@ def run_cycle(
                         flush=True,
                     )
                     break
-                if attempt < 3:
+                if attempt < azami_deneme:
                     try:
                         plan = generate_content_plan(
                             exclusions,
@@ -8870,7 +8932,7 @@ def run_cycle(
                         flush=True,
                     )
                     break
-                if attempt < 3:
+                if attempt < azami_deneme:
                     try:
                         plan = generate_content_plan(
                             exclusions,
@@ -8922,6 +8984,25 @@ def run_cycle(
                         f"ℹ️ kare onarımı: sahne {onarilan} görseli menüden değiştirildi",
                         flush=True,
                     )
+                    # ⚠️ ONARILAN PLAN RENDER EDILMELI. Onarim son denemede
+                    # yapildiysa dongu biterdi ve odenmis onarim atilirdi —
+                    # 41 red slotunun 14'u tam boyle bitti, altisi skor
+                    # esigini ZATEN geciyordu. Gerekce `ONARIM_EK_DENEME`de.
+                    # ⚠️ TAVAN `min` ILE, kosulla DEGIL. Dongu artik `while`
+                    # ve yanlis bir kosul onu SONSUZA cevirebilir — mutasyon
+                    # testinde tam bu oldu: tavan kosulunu silen surum pytest'i
+                    # 10 dakika boyunca dondurdu (kaynak canli checkout'ta
+                    # mutasyonlu kaldi). `for` dongusunde bu sinif hic yoktu;
+                    # riski ben getirdim, yapisal olarak kapatiyorum.
+                    yeni_tavan = min(azami_deneme + 1, AZAMI_TOPLAM_DENEME)
+                    if attempt >= azami_deneme and yeni_tavan > azami_deneme:
+                        azami_deneme = yeni_tavan
+                        print(
+                            "ℹ️ onarım için ek deneme: "
+                            f"{attempt}/{azami_deneme} (tavan "
+                            f"{AZAMI_DENEME + ONARIM_EK_DENEME})",
+                            flush=True,
+                        )
                 else:
                     plan = refine_search_terms(plan, review, bicim=bicim)
 

@@ -12,6 +12,7 @@ gotuuruluyor ve onarimin calistigi dogrulaniyor. Bir daha ayni sinif kusur
 uretime kadar gidemez.
 """
 
+import itertools
 import sys
 from pathlib import Path
 
@@ -109,7 +110,9 @@ def _hat(monkeypatch, tmp_path):
             for i in range(1, 5)
         ],
     )
-    secim = iter([f"YENI-{i}.jpg" for i in range(1, 5)])
+    # ⚠️ DONGUSEL: onarim dongusu uzayabiliyor (`ONARIM_EK_DENEME`) ve sabit
+    # dort elemanli taklit `StopIteration` ile dusuyordu.
+    secim = itertools.cycle([f"YENI-{i}.jpg" for i in range(1, 5)])
     # ⚠️ `n` SAHNE numarasi, kare degil. Hakem "kare 6" diyor ve sahne
     # basina iki kare oldugu icin (`KARE_YUVASI`) bu SAHNE 3 demek.
     # 2026-08-14'e kadar burada 6 yaziyordu; kare duzeni degisince taklit
@@ -146,8 +149,15 @@ def test_onarim_dali_NameError_vermeden_calisiyor(monkeypatch, tmp_path, capsys)
     assert sahne["kaynak_dosya"] == "eski-3.jpg", (
         "ayni sahnenin TEMIZ birincil karesi dokunulmamali"
     )
-    # Uc denemenin ucunde de onarim calisti: dal her turda yuruttuluyor.
-    assert capsys.readouterr().out.count("kare onarımı") == 3
+    # Denemelerin HEPSINDE onarim calisti: dal her turda yuruttuluyor.
+    #
+    # ⚠️ SAYI KODDAN GELIYOR (2026-08-22). Burada duz `3` yaziyordu ve
+    # `ONARIM_EK_DENEME` gelince dustu — oysa olculen ozellik "dal her turda
+    # calisiyor", "tam uc tur var" degil. Sabit yazmak, tavani degistiren her
+    # degisiklikte bu testi yanlis yere bakmaya zorlardi.
+    assert capsys.readouterr().out.count("kare onarımı") == (
+        ya.AZAMI_DENEME + ya.ONARIM_EK_DENEME
+    )
 
 
 def test_onarim_temiz_kareye_dokunmuyor(monkeypatch, tmp_path):

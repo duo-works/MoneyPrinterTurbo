@@ -461,8 +461,16 @@ def _kur(monkeypatch, tmp_path, akis, *, bicim=None):
 
     monkeypatch.setattr(ya, "generate_content_plan", _plan_uret)
 
-    sira = iter(akis)
-    monkeypatch.setattr(ya, "review_video", lambda *_a, **_k: next(sira))
+    # ⚠️ AKIS TUKENINCE SON DEGER TEKRARLANIYOR (2026-08-22). Dongu artik
+    # onarim yapildiginda uzayabiliyor (`ONARIM_EK_DENEME`) ve sabit uc
+    # elemanli bir taklit `StopIteration` ile dusuyordu. Testin olctugu sey
+    # DIZI, akisin uzunlugu degil.
+    sira = list(akis)
+    monkeypatch.setattr(
+        ya,
+        "review_video",
+        lambda *_a, **_k: sira.pop(0) if len(sira) > 1 else sira[0],
+    )
 
     ek = {} if bicim is None else {"bicim": bicim}
     ya.run_cycle(konu_override="Gobekli Tepe", dry_run=True, **ek)

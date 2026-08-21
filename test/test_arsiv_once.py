@@ -67,9 +67,14 @@ def _hazirla(monkeypatch, tmp_path, incelemeler, arsiv_indirme):
         "youtube_automation.create_source_montage",
         lambda *_args, **_kwargs: tmp_path / "sources.jpg",
     )
-    sira = iter(incelemeler)
+    # ⚠️ AKIS TUKENINCE SON DEGER TEKRARLANIYOR (2026-08-22). Dongu artik
+    # onarim yapildiginda uzayabiliyor (`ONARIM_EK_DENEME`) ve sabit uc
+    # elemanli bir taklit `StopIteration` ile dusuyordu. Testin olctugu sey
+    # DIZI, akisin uzunlugu degil.
+    sira = list(incelemeler)
     monkeypatch.setattr(
-        "youtube_automation.review_source_materials", lambda *_, **__: next(sira)
+        "youtube_automation.review_source_materials",
+        lambda *_, **__: sira.pop(0) if len(sira) > 1 else sira[0],
     )
     # Kapiyi gectikten sonraki adimlar (kare yerlesimi, seslendirme suresi,
     # render) bu testin konusu degil; ilki gercek dosya ister.
