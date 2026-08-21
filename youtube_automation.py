@@ -2607,25 +2607,77 @@ def kareyi_onar(
     return sorted(degisen)
 
 
-def onarilabilir_mi(review: QualityReview) -> bool:
-    """Skor esigin HEMEN altinda ve video yapisal olarak saglam mi.
+def onarilabilir_mi(
+    review: QualityReview,
+    *,
+    yuva: int = KARE_YUVASI,
+    ornekler: list[int] | None = None,
+) -> bool:
+    """Render, karelerini degistirerek kurtarilabilir mi.
 
     Boyle bir render'in konusu atilmaz; hakemin isaretledigi karelerin
     gorseli degistirilip AYNI konu yeniden render edilir. Gerekce ve olcum
     `ONARILABILIR_BANT` sabitinde.
 
-    Uc kosul da SART:
+    ⚠️ AGIR KUSUR ARTIK KAPIYI KAPATMIYOR — ONARIM BUTCESI KAPATIYOR
+    (2026-08-21). Burada eskiden ilk satir `if review.agir_kusurlar: return
+    False` idi ve gerekcesi "agir kusur planin kendisi yanlis demek"ti. O
+    gerekce YAYILMIS kusur icin dogru, TEK KARE icin degil — ve kapi ikisini
+    ayirt etmiyordu.
 
-      · agir kusur YOK — agir kusur "yanlis kisi/yanlis donem" demek ve o
-        bir kare degisikligiyle kapanan bir sey degil, planin kendisi yanlis;
+    Sonucu: `kareyi_onar` agir kusurlu kareleri ACIKCA onceliklendiriyor
+    ("⚠️ AGIR KUSURLAR ONCE") ve kendi docstring'i tam bu vakayi olcmus, ama
+    o dal agir kusur varken HIC CAGRILMIYORDU. Onarim yolu kendi hedef
+    kitlesine kapaliydi — deponun imza kusuru (kapi, tuketicinin gordugunden
+    baska bir seyi olcuyor), bu kez kapi ile besledigi fonksiyon arasinda.
+
+    Olculdu (68 red logu, 88 telemetrili deneme):
+
+        skor >= 75 AMA agir kusur var : 22 deneme (%25)
+          -> etkilenen kare 1:5  2:9  4:4  6:3  7:1
+          -> 14/22 (%64) AZAMI_ONARIM butcesine SIGIYOR
+
+    Tek kareden olen koşumlar arasinda kanalin en yuksek skorlari var:
+    Moai 98 · Hadrian's Wall 85 · King Philip's War 78.
+
+    ⚠️ OLCUM PESIN HIPOTEZI CURUTTU: "diyagram agirlikli konular daha cok
+    agir kusur uretir" yanlisti (diyagram >=%25 -> ort. 1,75 agir kusur;
+    <%25 -> 1,83). Konu sinifina kapi yazmak yanlis izdi.
+
+    ⚠️ YAYIN KAPISI DEGISMEDI. `yayina_uygun_mu` agir kusurlu videoyu hala
+    reddediyor; burada acilan tek sey, hat o denemeden VAZGECMEDEN once
+    onarimi denemesi.
+
+    Kosullar:
+
       · "modern footage" GECMIYOR — ayni gerekce, mevcut davranis korunuyor;
-      · skor bandin icinde — cok dusuk skor "birkac karesi bozuk" degil
-        "video gercekten yanlis" demek (olculdu: 55 boyle, 65 ve 72 degil).
+      · agir kusurun yayilimi `AZAMI_ONARIM`i asMIYOR — asiyorsa eski gerekce
+        gecerli: o kadar kare bozuksa planin kendisi yanlis. ⚠️ Yeni sabit
+        ICAT EDILMEDI; butce zaten `kareyi_onar` icindeki `AZAMI_ONARIM`,
+        yani "onarilabilir" = "onarim butcesine sigiyor";
+      · agir kusur VARSA skor tabanin ustunde olmasi yeter (78 gibi esigi
+        gecen skorlar da onarilir — dusuren sey skor degil kusurdu);
+      · agir kusur YOKSA band aynen duruyor (65 <= skor < 75), cunku oradaki
+        gerekce ("cok dusuk skor = video gercekten yanlis") dokunulmamis
+        olcume dayaniyor.
+
+    ⚠️ `yuva`/`ornekler` SART: onarim SAHNE uzerinde calisiyor ve hakem uzun
+    formatta karelerin yalnizca bir ornegini goruyor. Cevrimi burada yeniden
+    yazmak yerine `agir_kusurlu_kareler` cagriliyor — iki yerde iki sayim
+    tutmak, bu kusurun tam kendisini geri getirirdi.
     """
-    if review.agir_kusurlar:
-        return False
     if "modern footage" in " ".join(review.issues).lower():
         return False
+    agir_sahneler = agir_kusurlu_kareler(review, yuva, ornekler)
+    if review.agir_kusurlar and not agir_sahneler:
+        # ⚠️ KUSUR VAR AMA HEDEFLENEMIYOR. `agir_kusurlu_kareler` kati turkce
+        # kalibi (`kare 7: ...`) okuyor; hakem baska bicimde yazmissa onarim
+        # hangi kareyi degistirecegini bilmez. Eski davranis korunuyor.
+        return False
+    if len(agir_sahneler) > AZAMI_ONARIM:
+        return False
+    if agir_sahneler:
+        return review.visual_alignment_score >= MIN_VISUAL_SCORE - ONARILABILIR_BANT
     return (
         MIN_VISUAL_SCORE - ONARILABILIR_BANT
         <= review.visual_alignment_score
@@ -2633,7 +2685,12 @@ def onarilabilir_mi(review: QualityReview) -> bool:
     )
 
 
-def should_abandon_topic(review: QualityReview) -> bool:
+def should_abandon_topic(
+    review: QualityReview,
+    *,
+    yuva: int = KARE_YUVASI,
+    ornekler: list[int] | None = None,
+) -> bool:
     # Eskiden ucuncu bir kosul daha vardi: "publishable false ama iki skor da
     # esigi geciyor" — modelin gerekcesiz reddi. `publishable` artik skorlardan
     # turetildigi icin o durum olusamiyor; kosul kaldirildi (DW-87).
@@ -2643,7 +2700,10 @@ def should_abandon_topic(review: QualityReview) -> bool:
     # esigin ALTINDAKI her skorda True donuyordu ve `kareyi_onar` cagrisi
     # `else` dalinda oldugu icin onarim, hattin surekli aldigi skorda
     # yapisal olarak erisilemezdi. Olcum ve gerekce `ONARILABILIR_BANT`ta.
-    if onarilabilir_mi(review):
+    # ⚠️ `yuva`/`ornekler` GECIRILIYOR: onarilabilirlik agir kusurun kac
+    # SAHNEye yayildigini sayiyor ve hakemin "kare 7"si uzun formatta
+    # videonun 7. karesi degil, orneklemin 7. elemani.
+    if onarilabilir_mi(review, yuva=yuva, ornekler=ornekler):
         return False
     issue_text = " ".join(review.issues).lower()
     return (
@@ -8783,7 +8843,11 @@ def run_cycle(
                     malzeme_dizini,
                 )
                 break
-            if should_abandon_topic(review):
+            if should_abandon_topic(
+                review,
+                yuva=bicim.kare_yuvasi,
+                ornekler=hakem_kareleri(len(plan.scenes) * bicim.kare_yuvasi, bicim),
+            ):
                 rejected_topic = plan.topic
                 exclusions.extend([rejected_topic, plan.visual_anchor])
                 _video_reddini_kaydet(review, task_id, credits)

@@ -62,10 +62,58 @@ def test_esigi_GECEN_render_onarilabilir_sayilmaz():
     assert not ya.onarilabilir_mi(_review(78))
 
 
-def test_AGIR_KUSURLU_render_onarilabilir_DEGIL():
-    """⚠️ Agir kusur "yanlis kisi/yanlis donem" demek — bir kare
-    degisikligiyle kapanmaz, planin kendisi yanlistir."""
-    assert not ya.onarilabilir_mi(_review(72, agir=["kare 3: anlatilan kisi degil"]))
+def test_TEK_KARELIK_agir_kusur_ONARILABILIR():
+    """⚠️ DAVRANIS DEGISTI (2026-08-21). Eskiden agir kusurun VARLIGI kapiyi
+    kapatiyordu; artik YAYILIMI kapatiyor. Olculdu: 88 telemetrili denemenin
+    22'si skor esigini GECMISKEN yalnizca agir kusurdan dustu ve 14'u
+    `AZAMI_ONARIM` butcesine siğiyordu (Moai 98, Hadrian's Wall 85)."""
+    assert ya.onarilabilir_mi(_review(72, agir=["kare 3: anlatilan kisi degil"]))
+
+
+def test_BUTCEYI_ASAN_agir_kusur_onarilamaz():
+    """⚠️ Eski gerekce burada AYNEN gecerli: o kadar kare bozuksa planin
+    kendisi yanlis. Sinir `AZAMI_ONARIM` — yeni sabit icat edilmedi.
+
+    Shorts'ta yuva 2, yani kare 1/3/5/7 DORT ayri sahne eder."""
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 3, 5, 7)]
+    assert not ya.onarilabilir_mi(_review(78, agir=agir))
+
+
+def test_TAM_BUTCE_kadar_agir_kusur_hala_onarilabilir():
+    """Sinirin kendisi disarida degil: uc sahne butcenin tamami."""
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 3, 5)]
+    assert ya.onarilabilir_mi(_review(78, agir=agir))
+
+
+def test_agir_kusur_VARKEN_esigi_GECEN_skor_da_onarilir():
+    """⚠️ 12:05 koşumunun gercek sekli: skor 78 (esik 75) ve dusuren sey
+    `agir_kusurlar`di. Band yalnizca agir kusur varken yukari aciliyor."""
+    assert ya.onarilabilir_mi(_review(78, agir=["kare 3: donem uyusmuyor"]))
+
+
+def test_agir_kusur_YOKKEN_esigi_gecen_skor_ONARILMIYOR():
+    """⚠️ Bandin ust ucu agir kusursuz halde AYNEN duruyor — 78 yayin
+    yolunda, onarim yolunda degil."""
+    assert not ya.onarilabilir_mi(_review(78))
+
+
+def test_HEDEFLENEMEYEN_agir_kusur_onarilamaz():
+    """⚠️ `agir_kusurlu_kareler` kati turkce kalibi okuyor. Kusur var ama
+    hangi kareye ait oldugu cozulemiyorsa onarim ne yapacagini bilmez —
+    eski davranis korunuyor."""
+    assert not ya.onarilabilir_mi(_review(72, agir=["frame 3 is wrong period"]))
+
+
+def test_agir_kusur_sahneye_CEVRILIYOR_kare_sayilmiyor():
+    """⚠️ Yuva 2'de kare 1-2-3-4 IKI sahne eder; kare olarak sayilsa dort
+    olur ve butce bosuna dolardi. Cevrim `hakem_karesinden_sahne`den gecmeli."""
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 2, 3, 4)]
+    assert ya.onarilabilir_mi(
+        _review(
+            78,
+            agir=agir,
+        ),
+    )
 
 
 def test_MODERN_FOOTAGE_render_onarilabilir_DEGIL():
@@ -85,8 +133,23 @@ def test_55_KONUYU_YAKIYOR():
     assert ya.should_abandon_topic(_review(55))
 
 
-def test_agir_kusurlu_72_KONUYU_YAKIYOR():
-    assert ya.should_abandon_topic(_review(72, agir=["kare 3: donem uyusmuyor"]))
+def test_tek_kareli_agir_kusur_KONUYU_YAKMIYOR():
+    """⚠️ DAVRANIS DEGISTI (2026-08-21): onarim denenmeden konu atilmiyor."""
+    assert not ya.should_abandon_topic(_review(72, agir=["kare 3: donem uyusmuyor"]))
+
+
+def test_YAYILMIS_agir_kusur_KONUYU_YAKIYOR():
+    """Butceyi asan kusur hala konuyu bitiriyor — eski gerekce orada gecerli."""
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 3, 5, 7)]
+    assert ya.should_abandon_topic(_review(72, agir=agir))
+
+
+def test_AGIR_KUSURLU_video_YAYINLANMIYOR():
+    """⚠️ ASIL KILIT. Onarim yolu agir kusura acildi; YAYIN kapisi acilMADI.
+    Bu satir duşerse hat yanlis donemli kareyi yayina verir."""
+    assert not ya.should_publish(
+        _review(88, altyazi=90, agir=["kare 3: donem uyusmuyor"])
+    )
 
 
 def test_modern_footage_esigi_GECSE_DE_konuyu_bitiriyor():
@@ -354,8 +417,12 @@ def test_kayit_TEK_YERDE_uretiliyor():
 # kosturuyor.
 
 
-def _kur(monkeypatch, tmp_path, akis):
-    """`run_cycle`i aga cikmadan kosturur; `akis` her denemenin incelemesi."""
+def _kur(monkeypatch, tmp_path, akis, *, bicim=None):
+    """`run_cycle`i aga cikmadan kosturur; `akis` her denemenin incelemesi.
+
+    ⚠️ `bicim` KEYWORD ve varsayilani `None`: mevcut cagrilarin hicbiri
+    degismesin diye. `None` gelince `run_cycle` kendi varsayilanini
+    (SHORTS_BICIMI) kullaniyor."""
     durum = {"published": [], "rejected": [], "completed_slots": []}
     monkeypatch.setattr(ya, "load_state", lambda: durum)
     monkeypatch.setattr(ya, "save_state", lambda *_a, **_k: None)
@@ -397,7 +464,8 @@ def _kur(monkeypatch, tmp_path, akis):
     sira = iter(akis)
     monkeypatch.setattr(ya, "review_video", lambda *_a, **_k: next(sira))
 
-    ya.run_cycle(konu_override="Gobekli Tepe", dry_run=True)
+    ek = {} if bicim is None else {"bicim": bicim}
+    ya.run_cycle(konu_override="Gobekli Tepe", dry_run=True, **ek)
     return durum["rejected"]
 
 
@@ -425,7 +493,11 @@ def test_KARISIK_dizi_ne_bosluk_ne_CIFTE_yakma(monkeypatch, tmp_path):
         tmp_path,
         [
             _review(72),
-            _review(72, agir=["kare 3: anlatilan kisi degil"]),
+            # ⚠️ KALDIRAC DEGISTI (2026-08-21), sinanan ozellik DEGISMEDI.
+            # Konuyu yakmak icin eskiden tek agir kusur yetiyordu; artik
+            # butceyi (`AZAMI_ONARIM`) asmasi gerekiyor. Test kayit
+            # muhasebesini olcuyor, yakma esigini degil.
+            _review(72, agir=[f"kare {n}: anlatilan kisi degil" for n in (1, 3, 5, 7)]),
             _review(72),
         ],
     )
@@ -487,7 +559,8 @@ def test_ONCEKI_konunun_yuksek_skoru_yeni_konuya_YAZILMIYOR(monkeypatch, tmp_pat
         monkeypatch,
         tmp_path,
         [
-            _review(74, agir=["kare 1: anlatilan kisi degil"]),
+            # ⚠️ Yakma kaldiraci: butceyi asan yayilim (bkz. yukaridaki not).
+            _review(74, agir=[f"kare {n}: anlatilan kisi degil" for n in (1, 3, 5, 7)]),
             _review(65),
             _review(65),
         ],
@@ -499,3 +572,84 @@ def test_ONCEKI_konunun_yuksek_skoru_yeni_konuya_YAZILMIYOR(monkeypatch, tmp_pat
         f"onceki konunun skoru sizdi: {redler[1]['visual_alignment_score']}"
     )
     assert redler[0]["topic"] != redler[1]["topic"]
+
+
+# --- Yuva cevrimi CAGRI YERINDE de dogru mu --------------------------------
+
+
+def test_KARE_YUVASI_cagri_yerinden_geliyor_VARSAYILANDAN_degil(monkeypatch, tmp_path):
+    """⚠️ MUTASYON M9 BURADAN IKI KEZ KACTI (2026-08-21). `should_abandon_topic`
+    dogru sayiyordu ama `run_cycle` ona `yuva`/`ornekler` gecirmeyi birakinca
+    HICBIR test dusmuyordu — yani "deger dogru" olculmus, "hat onu KULLANIYOR"
+    olculmemisti. Bu oturumda ayni sekil dorduncu kez.
+
+    ⚠️ ILK denemem de kacti ve sebebi ogreticiydi: ayirt edici olarak "kayit
+    yazildi mi"yi almistim, oysa slot dusunce ONARIM dali da kayit yaziyor
+    (bkz. `test_UC_DENEME_de_onarilirsa_slot_dusunce_TEK_kayit`). Iki yol da
+    "kayit var" diyordu. Olculerek duzeltildi — gercek fark KONU SAYISI:
+
+        UZUN   (yuva 1): kare 1-2-3-4 -> DORT sahne, butce asilir
+                         -> konu yakilir, her deneme yeni konu -> 3 kayit
+        SHORTS (yuva 2): ayni kareler -> IKI sahne, butceye sigar
+                         -> onarim dali, konu korunur           -> 1 kayit
+
+    ⚠️ Skor 72 SART: 78 esigin ustunde oldugu icin `should_abandon_topic`
+    zaten False doner ve iki bicim de ayni sonucu verir — ilk olcumumde
+    tam bu yuzden fark cikmadi.
+    """
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 2, 3, 4)]
+    redler = _kur(
+        monkeypatch,
+        tmp_path,
+        [_review(72, agir=agir), _review(72, agir=agir), _review(72, agir=agir)],
+        bicim=ya.UZUN_BICIMI,
+    )
+
+    konular = [r["topic"] for r in redler]
+    assert len(set(konular)) == 3, (
+        "uzun formatta dort sahne butceyi asar, her deneme konuyu yakmaliydi; "
+        f"tek konu gorunuyorsa cagri yeri varsayilan yuvayi (2) kullaniyor: {konular}"
+    )
+
+
+def test_ayni_kareler_SHORTS_formatinda_butceye_SIGIYOR(monkeypatch, tmp_path):
+    """Ustteki testin karsi kutbu — cevrimin gercekten yuvaya bagli oldugunu
+    gosterir, yoksa ust test "her zaman yakar" ile de gecerdi."""
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 2, 3, 4)]
+    redler = _kur(
+        monkeypatch,
+        tmp_path,
+        [_review(72, agir=agir), _review(72, agir=agir), _review(72, agir=agir)],
+    )
+
+    konular = [r["topic"] for r in redler]
+    assert konular == ["konu-1"], f"onarim daline gitmeliydi, kayitlar: {konular}"
+
+
+def test_ORNEKLEM_sahne_sayimini_degistirebiliyor():
+    """`ornekler` parametresinin anlamini kilitler.
+
+    ⚠️ DURUSTLUK NOTU (2026-08-21). `ornekler` baglantisini cagri yerinden
+    kesen mutasyon (M10) hicbir testi dusurmedi ve sebebi olculdu: bu kapi
+    yalnizca AYRIK SAHNE SAYIYOR, ve hattin bugun urettigi hicbir yapilandirmada
+    ornekleme o sayiyi degistiremiyor —
+
+        UZUN   25 sahne: ornek [1,3,5,8,...]  kare1-4 -> 4 sahne
+                         ornekSIZ             kare1-4 -> 4 sahne   (ayni)
+        SHORTS 10 sahne: ornekleme kimlige esit                    (ayni)
+
+    Yani M10 kacan degil ESDEGER bir mutasyon. Parametre yine de geciriliyor
+    (`kareyi_onar` ile ayni cagri sekli) ve anlami burada sabitleniyor: sayimi
+    DEGISTIREBILDIGI bir ornekemde dogru davranmali. Bu test, ileride kapi
+    sahne KIMLIKLERINI kullanmaya baslarsa sessiz kalmaz.
+    """
+    agir = [f"kare {n}: donem uyusmuyor" for n in (1, 2, 3, 4)]
+
+    # yuva 2, ornekleme YOK: kare 1-2-3-4 -> sahne 1,1,2,2 = IKI sahne
+    assert ya.onarilabilir_mi(_review(72, agir=agir), yuva=2) is True
+
+    # ayni kareler, seyrek ornekem: gercek kareler 1,3,5,7 -> DORT sahne
+    assert (
+        ya.onarilabilir_mi(_review(72, agir=agir), yuva=2, ornekler=[1, 3, 5, 7])
+        is False
+    )
