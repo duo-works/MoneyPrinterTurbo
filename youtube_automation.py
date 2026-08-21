@@ -7391,6 +7391,11 @@ def run_generator(
                 # yatay bir belgesel icin portre gorseller ustte gelir (bkz.
                 # `wikimedia_materials.UZUN_ORANI`).
                 hedef_oran=kare_orani(bicim),
+                # ⚠️ TEKRAR KAPISI RENDER EDILECEK KAREYI OLCSUN. Gerekce ve
+                # olcum `wikimedia_materials._olcum_karesi` icinde: yatay
+                # orijinalde 0/28 cift esigi geciyordu, dikey karede 7/28.
+                # Uzun formatta None: orada kare zaten ~16:9.
+                kare_donusturucu=dikeye_uydur if bicim.dikey else None,
                 # ⚠️ Uzun formatta capa BASLIKTA aranir. Gerekce ve olcum
                 # `wikimedia_materials._puanli_adaylar` icinde: aciklamada
                 # gecen capa, gorselin onu gosterdigi anlamina gelmiyor (adas
@@ -7474,6 +7479,9 @@ def run_generator(
                         if credit.get("object_id") is not None
                     },
                     hedef_oran=kare_orani(bicim),
+                    # ⚠️ Onarim yolu da ayni kapidan gecmeli; gecmezse
+                    # onarilan kare tekrar elemesini atlar.
+                    kare_donusturucu=dikeye_uydur if bicim.dikey else None,
                 )
             except MaterialsUnavailableError:
                 # Arsiv bu sahneleri besleyemedi; asagida AI devralir.
@@ -7591,6 +7599,9 @@ def run_generator(
             esleme_gerekli=[bool(p) and bant_ister(p) for p in material_files],
             # Algisal tekrar elemesi icin; gerekcesi `ikincil_gorseller`de.
             birincil_dosyalar=list(material_files),
+            # ⚠️ Ikincil yol da RENDER EDILECEK kareyi olcsun — birincille
+            # ayni gerekce (`wikimedia_materials._olcum_karesi`).
+            kare_donusturucu=dikeye_uydur if bicim.dikey else None,
             # ⚠️ MENU YEDEGI (2026-08-18). Olculdu: Cemal Pasha koşumunda menu
             # 32 girdiydi, birincil olarak 6'si kullanilmisti ve **26'si
             # bostaydi** — hepsi lisans/kadraj/aciklama suzgecinden gecmis,

@@ -5,8 +5,10 @@ import itertools
 import json
 import os
 import re
+import tempfile
 import time
 import urllib.parse
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -1406,28 +1408,79 @@ def _download(
         raise RuntimeError(f"downloaded Commons image is unexpectedly small: {url}")
 
 
-def _izi_ekle(yol: Path, izler: list[Any]) -> None:
+@contextmanager
+def _olcum_karesi(yol: Path, donusturucu: Any) -> Any:
+    """Parmak izinin alinacagi kareyi verir — RENDER EDILECEK HALIYLE.
+
+    ⚠️ NEDEN VAR — olculdu 2026-08-21, canli koşum (May Ayim). Tekrar kapisi
+    YATAY orijinali olcuyordu, oysa Shorts'ta ekrana gelen sey `kareye_uydur`
+    ciktisi. AYNI 0,70 esigiyle ayni sekiz dosya:
+
+        yatay orijinal (kapinin olctugu) : 0/28 cift esik ustu, en yuksek 0,668
+        dikey kare     (hakemin gordugu) : 7/28 cift esik ustu, en yuksek 0,816
+
+    Mekanizma: 16:9 arsiv fotografi 9:16'ya BULANIK ARKA PLAN yoluyla gidiyor,
+    yani karenin buyuk kismi ayni goruntunun bulanik kopyasi; iki AYRI fotograf
+    bu donusumde yakinsiyor. Sonuc canli koşumda gorundu — sekiz sahnenin
+    DORDU ayni duvar resmiydi (farkli dosyalar), hakem "essentially the same
+    photographs" dedi ve koşum 35 aldi. Dosya kimligi cesitliligi ise 129
+    kaydin hepsinde 1,0; yani eski olcut yapisal olarak kordu.
+
+    ⚠️ DONUSUM YENIDEN YAZILMADI, ENJEKTE EDILIYOR. Buraya ikinci bir kirpma
+    kodu yazmak ucuncu bir olcum yaratirdi ve duzeltilen kusurun tam kendisi
+    odur (bkz. `kapi-modele-gosterileni-olcmeli`). Cagiran taraf uretimin
+    KENDI fonksiyonunu geciriyor (`youtube_automation.dikeye_uydur`);
+    dairesel ice aktarma bu yuzden enjeksiyonla cozuldu.
+
+    ⚠️ HATADA ACIK DUSER: donusum basarisiz olursa orijinal olculur. Bir
+    kirpma hatasi yuzunden mesru adayi elemek, tekrari kacirmaktan kotu —
+    `_tekrar_mi`nin kendi doktrini.
+
+    ⚠️ Uzun format donusturucu GECIRMIYOR: orada kare zaten ~16:9 ve
+    orijinalin olcumu dogru olcumdur.
+    """
+    if donusturucu is None:
+        yield yol
+        return
+    gecici = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tf:
+            gecici = Path(tf.name)
+        yield Path(donusturucu(yol, gecici))
+    except Exception:  # noqa: BLE001 — olcum uretimi durduramaz
+        yield yol
+    finally:
+        if gecici is not None:
+            gecici.unlink(missing_ok=True)
+
+
+def _izi_ekle(yol: Path, izler: list[Any], donusturucu: Any = None) -> None:
     """Secilen sahnenin parmak izini listeye ekler.
 
     Okunamayan dosya olcumu degil URETIMI ilgilendirir; burada sessizce
     geciliyor cunku dosya zaten indirilmis ve kullanilacak.
     """
     try:
-        izler.append(gorsel_olcum.parmak_izi(yol))
+        with _olcum_karesi(yol, donusturucu) as olculecek:
+            izler.append(gorsel_olcum.parmak_izi(olculecek))
     except OSError:
         pass
 
 
-def _tekrar_mi(yol: Path, izler: list[Any]) -> bool:
+def _tekrar_mi(yol: Path, izler: list[Any], donusturucu: Any = None) -> bool:
     """Aday, secilmis sahnelerden birinin kopyasi mi.
 
     ⚠️ Olcum basarisiz olursa `False` doner — okunamayan bir dosya yuzunden
     mesru bir adayi elemek, tekrari kacirmaktan daha kotu.
+
+    ⚠️ `donusturucu` verilirse olcum RENDER EDILECEK kareden yapilir;
+    gerekce ve olcum `_olcum_karesi` icinde.
     """
     if not izler:
         return False
     try:
-        iz = gorsel_olcum.parmak_izi(yol)
+        with _olcum_karesi(yol, donusturucu) as olculecek:
+            iz = gorsel_olcum.parmak_izi(olculecek)
     except OSError:
         return False
     return any(
@@ -1541,6 +1594,7 @@ def ikincil_gorseller(
     birincil_dosyalar: list[Path | None] | None = None,
     menu: list[dict[str, str]] | None = None,
     capa: str = "",
+    kare_donusturucu: Callable[[Path, Path], Path] | None = None,
 ) -> tuple[list[Path | None], list[dict[str, Any]]]:
     """Sahnelerin IKINCI alintisini indirir; bulunamayan sahne icin None.
 
@@ -1572,7 +1626,7 @@ def ikincil_gorseller(
     izler: list[Any] = []
     for birincil in birincil_dosyalar or []:
         if birincil:
-            _izi_ekle(birincil, izler)
+            _izi_ekle(birincil, izler, kare_donusturucu)
     # Capa kelimeleri puanlamadan cikariliyor; gerekce `_menuden_ikincil`de.
     capa_kelimeleri = {
         kelime for kelime in re.findall(r"\b[\w'-]+\b", capa.lower()) if len(kelime) > 2
@@ -1674,11 +1728,11 @@ def ikincil_gorseller(
         # bakiyor. Kopya cikarsa sahne ikincilsiz kaliyor ([A, A]) ve bu
         # dogru sonuc: ayni fotografi iki yuvada gostermek zaten kacinmak
         # istedigimiz sey. Dosya siliniyor ki kunye/denetim onu gormesin.
-        if _tekrar_mi(hedef, izler):
+        if _tekrar_mi(hedef, izler, kare_donusturucu):
             hedef.unlink(missing_ok=True)
             dosyalar.append(None)
             continue
-        _izi_ekle(hedef, izler)
+        _izi_ekle(hedef, izler, kare_donusturucu)
         kullanilan.add(aday["title"])
         dosyalar.append(hedef)
         # ⚠️ Kredi ZORUNLU: CC BY gorsellerinde atif hukuki yukumluluk.
@@ -1756,6 +1810,7 @@ def download_scene_materials(
     kategori_havuzu: list[dict[str, Any]] | None = None,
     hedef_oran: float = SHORTS_ORANI,
     capa_baslikta: bool = False,
+    kare_donusturucu: Callable[[Path, Path], Path] | None = None,
 ) -> tuple[list[Path], list[dict[str, Any]]]:
     """Sahne gorsellerini arsivlerden indirir.
 
@@ -1835,7 +1890,7 @@ def download_scene_materials(
                 except requests.HTTPError:
                     failed_titles.add(alinti_adayi["title"])
                 else:
-                    if _tekrar_mi(alinti_hedefi, secilmis_izler):
+                    if _tekrar_mi(alinti_hedefi, secilmis_izler, kare_donusturucu):
                         yedek = (alinti_adayi, alinti_hedefi)
                         failed_titles.add(alinti_adayi["title"])
                     else:
@@ -1874,10 +1929,10 @@ def download_scene_materials(
             #
             # Olculdu (2026-08-13, Mehmed II): sahne 1 ve 4 benzerlik 0,887
             # (esik 0,70) ve hakem "dort madalya karesi" diye yazdi.
-            if _tekrar_mi(met_path, secilmis_izler):
+            if _tekrar_mi(met_path, secilmis_izler, kare_donusturucu):
                 hazir_yedek = (met_path, met_credit)
             else:
-                _izi_ekle(met_path, secilmis_izler)
+                _izi_ekle(met_path, secilmis_izler, kare_donusturucu)
                 files.append(met_path)
                 credits.append(met_credit)
                 continue
@@ -1929,7 +1984,7 @@ def download_scene_materials(
                     continue
                 # ⚠️ Indirdikten SONRA bakiliyor: benzerlik pikselden olculuyor,
                 # baslikla ya da URL'yle bilinemez.
-                if _tekrar_mi(candidate_destination, secilmis_izler):
+                if _tekrar_mi(candidate_destination, secilmis_izler, kare_donusturucu):
                     if yedek is None:
                         yedek = (candidate, candidate_destination)
                     failed_titles.add(candidate["title"])
@@ -1967,7 +2022,7 @@ def download_scene_materials(
                 except requests.HTTPError:
                     failed_titles.add(aday["title"])
                     continue
-                if _tekrar_mi(aday_hedefi, secilmis_izler):
+                if _tekrar_mi(aday_hedefi, secilmis_izler, kare_donusturucu):
                     if yedek is None:
                         yedek = (aday, aday_hedefi)
                     failed_titles.add(aday["title"])
@@ -2001,12 +2056,12 @@ def download_scene_materials(
                 used_europeana_ids.add(str(eu_credit["europeana_id"]))
                 # ⚠️ Met'teki kusurun ikizi — burada da parmak izi
                 # kaydediliyor ama sorgulanmiyordu (2026-08-13'e kadar).
-                if _tekrar_mi(eu_path, secilmis_izler):
+                if _tekrar_mi(eu_path, secilmis_izler, kare_donusturucu):
                     if hazir_yedek is None:
                         hazir_yedek = (eu_path, eu_credit)
                 else:
                     used_titles.add(str(eu_credit["title"]))
-                    _izi_ekle(eu_path, secilmis_izler)
+                    _izi_ekle(eu_path, secilmis_izler, kare_donusturucu)
                     files.append(eu_path)
                     credits.append(eu_credit)
                     continue
@@ -2028,7 +2083,7 @@ def download_scene_materials(
             # Commons yedegi de yoksa Met/Europeana'nin kopyasina donuluyor.
             # Kredisi hazir geldigi icin asagidaki kurulum atlaniyor.
             yol, kredi = hazir_yedek
-            _izi_ekle(yol, secilmis_izler)
+            _izi_ekle(yol, secilmis_izler, kare_donusturucu)
             files.append(yol)
             credits.append(kredi)
             continue
@@ -2042,7 +2097,7 @@ def download_scene_materials(
             eksik.append(index)
             continue
         used_titles.add(selected["title"])
-        _izi_ekle(destination, secilmis_izler)
+        _izi_ekle(destination, secilmis_izler, kare_donusturucu)
         files.append(destination)
         credits.append(
             {

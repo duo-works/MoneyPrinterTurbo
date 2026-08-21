@@ -181,7 +181,16 @@ def test_menu_yalnizca_BANT_isteyen_sahneye():
 def test_DENETIM_ve_TEKRAR_elemesi_KALDIRILMADI():
     """⚠️ Menu yedegi arzi artiriyor, KAPILARI GEVSETMIYOR. #34'un koydugu
     denetim ve algisal tekrar elemesi yerinde durmali."""
-    assert "_tekrar_mi(hedef, izler)" in KAYNAK
+    # ⚠️ KOSUL CAGRININ ICINDE ARANIYOR, birebir satirda DEGIL. Eski hali
+    # `"_tekrar_mi(hedef, izler)"` dizesini ariyordu ve cagriya ucuncu bir
+    # arguman eklenince (`kare_donusturucu`, 2026-08-21) davranis hic
+    # bozulmadigi halde dustu — yani test "eleme duruyor mu"yu degil "satir
+    # aynen boyle mi yazilmis"i olcuyordu. Ayni kalip bu depoda ucuncu kez
+    # kirildi (bkz. `test_uzun_hat.test_bicim_URETICIYE_geciyor`).
+    assert "_tekrar_mi(hedef" in KAYNAK, "algisal tekrar elemesi kaldirilmis"
+    _bas = KAYNAK.index("_tekrar_mi(hedef")
+    _cagri = KAYNAK[_bas : KAYNAK.index(")", _bas) + 1]
+    assert "izler" in _cagri, f"eleme secilmis izlere bakmiyor: {_cagri}"
 
     otomasyon = (Path(wm.__file__).parent / "youtube_automation.py").read_text(
         encoding="utf-8"
