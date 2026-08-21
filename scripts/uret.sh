@@ -89,6 +89,30 @@ fi
 
 cd "$KOK" || exit 1
 
+# ⚠️ Slot karari AYRI DOSYADA ve saf — gerekcesi `slot_karari.sh` icinde.
+# Govdeye gomulu bir karar sinanamazdi.
+# shellcheck source=slot_karari.sh
+. "$KOK/scripts/slot_karari.sh"
+
+kilit_var() {
+  [ -e "$KOK/storage/youtube_automation/automation.lock" ] && echo 1 || echo 0
+}
+
+uretim_kosumu() {
+  # $@ = konu KAYNAGI bayraklari; gerisi her koşumda ayni.
+  .venv/bin/python youtube_automation.py \
+    "$@" --privacy public --sahne-sayisi "$SAHNE" \
+    >>"$CIKTI_DOSYASI" 2>&1
+}
+
+plan_redlerini_yaz() {
+  # ⚠️ HER koşumdan sonra calisiyor: ikinci koşumun denemeleri de bir butce
+  # yakiyor ve #41'in olcmek istedigi sinyal tam olarak o.
+  grep "reddedildi" "$CIKTI_DOSYASI" 2>/dev/null \
+    | while IFS= read -r satir; do echo "$(zaman) | $satir"; done \
+    >>"$LOG_DIZINI/plan-redleri.log" || true
+}
+
 # ⚠️ URETIMDEN ONCE KUYRUGU BESLE. Olculdu (2026-08-14): uretim iki kez
 # durdu ve ikisinde de sebep hattin kendisi degil beslenmemesiydi —
 # `Secildi` kuyrugu 1-2 adaya dusmustu, `Yeni`de 100+ aday bekliyordu ve
@@ -104,10 +128,30 @@ cd "$KOK" || exit 1
 # eklenmesin, uretim ciktisi asagida `>>` ile bunun ardina gelsin.
 .venv/bin/python huni_besle.py >"$CIKTI_DOSYASI" 2>&1 || true
 
-.venv/bin/python youtube_automation.py \
-  --from-notion --yedek-konu --privacy public --sahne-sayisi "$SAHNE" \
-  >>"$CIKTI_DOSYASI" 2>&1
+uretim_kosumu --from-notion --yedek-konu
 KOD=$?
+plan_redlerini_yaz
+
+# ⚠️ IKINCI KOSUM — olculdu 2026-08-21. Koşum medyani 25 dk, 3 saatlik
+# pencerede kalan bos sure 156 dk, denenen koşum 1. Hat %84 ihtimalle
+# dusuyor ve sonra 2,5 saat hicbir sey yapmiyor.
+#
+# ⚠️ Ikinci koşum `--from-notion` GECMIYOR: kanal sahibinin karari, ikinci
+# deneme kanitlanmis capa havuzundan gelsin. Bayrak davranisi kodda
+# dogrulandi — `--from-notion` yokken `aday` None kalir, `--yedek-konu`
+# `no-candidate` donusunu engeller ve akis `kaynak = "yedek"` daline duser
+# (`youtube_automation.py:8486`). Olculmus gerekce: model-secimli anit/yer
+# konulari 70-90 skor / 0-3 kusur, huniden gelen kisi konulari 68-84 / 9-11.
+if ikinci_kosum_gerekli_mi \
+    "$KOD" \
+    "$(sonraki_tetige_kalan_dk)" \
+    "$(bugunku_yayin_sayisi .venv/bin/python "$KOK/storage/youtube_automation/state.json")" \
+    "$(kilit_var)"; then
+  yaz "ikinci koşum | ilk koşum reddedildi, havuz çapasıyla yeniden deneniyor"
+  uretim_kosumu --yedek-konu
+  KOD=$?
+  plan_redlerini_yaz
+fi
 
 # ⚠️ PLAN DENEMELERI KALICI HALE GETIRILIYOR — olculdu (2026-08-18, #41).
 # Bu satirdan onceki tek kayit yolu suydu: `CIKTI_DOSYASI` bir `mktemp` ve
@@ -128,10 +172,6 @@ KOD=$?
 # da deneme yakmis olabilir ve o da sinyaldir.
 # ⚠️ `|| true` — betikte `set -e` yok (`set -uo pipefail`) ama eslesmeyen
 # grep 1 donduruyor; bagimliligi yok etmek icin acikca yutuluyor.
-grep "reddedildi" "$CIKTI_DOSYASI" 2>/dev/null \
-  | while IFS= read -r satir; do echo "$(zaman) | $satir"; done \
-  >>"$LOG_DIZINI/plan-redleri.log" || true
-
 case "$KOD" in
   0)
     URL="$(grep -o '"url": "[^"]*"' "$CIKTI_DOSYASI" | head -1 | cut -d'"' -f4)"

@@ -105,16 +105,29 @@ URET_BETIGI = Path(__file__).resolve().parent.parent / "scripts" / "uret.sh"
 CAPA = 'grep "reddedildi"'
 
 
+FONKSIYON = "plan_redlerini_yaz() {"
+
+
 def _yakalama_blogu() -> str:
     """`uret.sh`ten yakalama blogunu ayikla — testin CALISTIRDIGI sey bu.
 
     ⚠️ Capa kaybolunca `ValueError: substring not found` ile dusmemeli;
     bozulan seyin NE oldugu mesajdan anlasilmali.
+
+    ⚠️ ARTIK FONKSIYON KESILIYOR (2026-08-21). Blok eskiden govdede duz
+    duruyordu ve `grep`ten `case`e kadar kesiliyordu. §C ile iki koşumluk
+    dongu geldi ve blok `plan_redlerini_yaz` fonksiyonuna tasindi — her
+    koşumdan sonra cagriliyor, cunku ikinci koşumun denemeleri de bir butce
+    yakiyor. Eski kesit artik kapanis ayracini yutup sozdizimi hatasi
+    veriyordu; test bunu CALISMA ANINDA yakaladi, `bash -n` degil.
     """
     m = URET_BETIGI.read_text(encoding="utf-8")
     assert CAPA in m, f"{URET_BETIGI.name}: plan redi yakalama blogu ({CAPA}) YOK"
-    bas = m.index(CAPA)
-    return m[bas : m.index("\ncase", bas)]
+    assert FONKSIYON in m, f"{URET_BETIGI.name}: {FONKSIYON} YOK"
+    bas = m.index(FONKSIYON)
+    son = m.index("\n}", bas) + 2
+    # Tanim + cagri: testin kosturdugu sey gercekten uretimdeki govde.
+    return m[bas:son] + "\nplan_redlerini_yaz\n"
 
 
 def test_uret_betigi_plan_redlerini_KALICI_dosyaya_yaziyor():
@@ -129,8 +142,12 @@ def test_yakalama_CASE_ten_once_yani_her_cikis_kodunda_calisiyor():
     m = URET_BETIGI.read_text(encoding="utf-8")
 
     assert CAPA in m, f"yakalama blogu ({CAPA}) YOK"
-    assert m.index(CAPA) < m.index('case "$KOD" in'), (
-        "yakalama blogu `case`ten SONRA — o halde yalnizca tek bir cikis "
+    # ⚠️ Artik TANIMIN degil CAGRININ yeri onemli: blok bir fonksiyona
+    # tasindi ve tanim zaten dosyanin basinda. Olculecek sey, `case`e
+    # varmadan once en az bir kez CAGRILDIGI.
+    cagri = m.index("plan_redlerini_yaz\n")
+    assert cagri < m.index('case "$KOD" in'), (
+        "yakalama `case`ten SONRA cagriliyor — o halde yalnizca tek bir cikis "
         "kodunu kapsar, yayinlanan koşumun yaktigi denemeler kaybolur"
     )
 
