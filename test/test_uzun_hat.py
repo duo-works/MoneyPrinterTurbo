@@ -71,25 +71,44 @@ def test_ONARIMA_orneklem_geciyor():
     assert "bicim=bicim" in govde
 
 
-# --- Ince arsivde Shorts'a dusus ------------------------------------------
+# --- Ince arsivde ne oluyor -----------------------------------------------
 
 
-def test_ince_arsivde_SHORTS_A_dusuyor():
-    """⚠️ Durmak, kuyruktan kapilmis adayi ve uretim slotunu birlikte
-    yakmak olurdu. Uzun format bir IYILESTIRME, uretimin on kosulu degil."""
-    govde = _run_cycle_govdesi()
+def test_uzun_format_uygun_degil_YAKALANIYOR():
+    """⚠️ DAVRANIS DEGISTI (2026-08-22, kanal sahibi: "uzun israr et").
 
-    assert "except UzunFormatUygunDegilError" in govde
-    assert "[bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]" in govde
+    Bu test eskiden `[bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]`
+    dizesini ariyordu, yani uzun kolun Shorts'a DUSTUGUNU sabitliyordu.
+    Karar tersine dondu: 00:05 slotu uzun-ya-da-hic.
+
+    ⚠️ Eski gerekcenin ("durmak adayi ve slotu birlikte yakar") iki yarisi
+    da olculerek gecersizlesti: adayi `finally` her cikis yolunda
+    `adayi_birak` ile kuyruga geri koyuyor, slot ise artik uzun icin var.
+
+    Burada yalnizca istisnanin YAKALANDIGI duruyor; ne yapildigini
+    `test_uzun_kol.py` KODU KOSTURARAK olcuyor.
+    """
+    assert "except UzunFormatUygunDegilError" in _run_cycle_govdesi()
 
 
-def test_kuyruk_adayi_yoksa_uzun_DENENMIYOR():
+def test_uzun_kol_SHORTS_A_dusmuyor():
+    """⚠️ Bicim listesi Shorts'u ICERMEMELI — davranisi `test_uzun_kol.py`
+    kosturarak olcuyor, burasi yalnizca eski kalibin geri gelmedigini
+    gozluyor."""
+    govde = _bosluksuz(_run_cycle_govdesi())
+
+    assert "denenecek=[bicim]" in govde
+    assert "SHORTS_BICIMI]ifdenecek_uzun" not in govde
+
+
+def test_kuyruk_adayi_yoksa_HAVUZ_capasi_baglaniyor():
     """⚠️ `--uzun --yedek-konu` ile bos kuyrukta `aday` None kalir ve
-    `generate_content_plan` `ValueError` atar — dongu onu yakalamiyordu,
-    yani koşum izlenmeyen bir istisnayla olurdu."""
+    `generate_content_plan` `ValueError` atar. Cozum Shorts'a dusmek DEGIL,
+    konuyu havuzdan sabitlemek — sabitlenemezse koşum duruyor."""
     govde = _run_cycle_govdesi()
 
     assert "if not bicim.dikey and etkin_konu is None:" in govde
+    assert "_yedek_capa_sec(" in govde
 
 
 def test_planlama_hatasi_DONGUDE_yakalaniyor():
@@ -202,10 +221,22 @@ def test_uzun_KONU_zorunlu_kiliyor():
     """⚠️ Konusuz uzun plan 2.000 kelimeyi hafizadan yazar; uydurma riski
     kelime basina degil kelime SAYISIYLA olcekleniyor (DW-114).
 
-    ⚠️ Sart olan sey Notion DEGIL, konunun verilmis olmasi: `--konu` ayni
-    kosulu birebir sagliyor (kaynak metin ve arsiv menusu isteme giriyor).
+    ⚠️ Sart olan sey Notion DEGIL, konunun verilmis olmasi. `--konu` bunu
+    birebir sagliyor; `--yedek-konu` ise `run_cycle`in havuz capasini
+    SABITLEMESI sayesinde sagliyor (2026-08-22) — sabitlenemezse koşum
+    cikis 3 ile duruyor, modele serbest konu urettirilmiyor.
+
+    ⚠️ Bu test ARTIK METNE CAKILI DEGIL: eski hali yasagin birebir
+    ifadesini ariyordu ve yasak daralinca davranis dogru oldugu halde
+    dustu. Kabul/red `test_uzun_kol.py`de PARSER KOSTURULARAK olculuyor;
+    burasi yalnizca uc kaynagin da adinin gectigini gozluyor.
     """
-    assert "if args.uzun and not (args.from_notion or args.konu):" in KAYNAK
+    i = KAYNAK.index("if args.uzun and not (")
+    kosul = KAYNAK[i : KAYNAK.index(")", i) + 1]
+
+    assert "args.from_notion" in kosul
+    assert "args.konu" in kosul
+    assert "args.yedek_konu" in kosul
 
 
 def test_ACIK_KONU_kuyrugu_atliyor():

@@ -4366,8 +4366,34 @@ def turetilmis_plani_kur(
     return ContentPlan(title=_turetilmis_baslik(alanlar, onceki), **alanlar)
 
 
-def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
-    """Menu her sahneye IKI AYRI dosya verebilir mi.
+def ikinci_gorsel_istenebilir(
+    menu: list[dict[str, str]], sahne_sayisi: int, *, yuva: int = KARE_YUVASI
+) -> bool:
+    """Menu her sahnenin `yuva` kadar yuvasina AYRI dosya verebilir mi.
+
+    ⚠️ `yuva` PARAMETRE oldu (2026-08-22) ve bir kusuru kapatiyor: fonksiyon
+    global `KARE_YUVASI`yi (2, Shorts'un yuvasi) okuyordu, oysa cagiranin
+    bicimi baska olabiliyor. `UZUN_BICIMI.kare_yuvasi = 1` — uzun formatta
+    sahne basina TEK kare var — ve kapi biciminin tukettiginin IKI KATINI
+    istiyordu: 28 sahne x 2 = 56 dosya.
+
+    Olculdu (`sinir=60`, `bicim=UZUN_BICIMI`), havuzun en zengin sekiz capasi:
+
+        Chichen Itza 53 · Baalbek 51 · Palmyra 49 · Alhambra 49 ·
+        Petra 46 · Pont du Gard 45 · Persepolis 30 · Angkor Thom 24
+
+    Sekizinin SEKIZI de >=56 kapisindan dusuyordu; dogru olcut (sahne basina
+    bir birincil) yedisini geciriyor. Yani `_yedek_capa_sec` uzun kipte HIC
+    capa dondurmuyordu ve model konuyu serbest seciyordu — o kip 2026-08-20'de
+    kaynak hakeminde 65 almisti.
+
+    Deponun imza kusuru: kapi, tuketicinin kullandigindan baska bir sayiyi
+    olcuyor (`kapi-modele-gosterileni-olcmeli`). Duzeltme yeni bir esik
+    ICAT ETMIYOR — uzun formatta olcut kendiliginden `len(menu) >= sahne`
+    oluyor, yani `arsiv_videoyu_tasir`in zaten uyguladigi kural.
+
+    ⚠️ Varsayilan `KARE_YUVASI`: `yuva` gecmeyen her cagiran BUGUNKU
+    davranisi aliyor, yani Shorts yolunda sifir degisiklik.
 
     ⚠️ OLCULDU (2026-08-14) ve bir GERILEME kapatiyor. Ikinci alinti
     eklenince istem her sahne icin iki dosya istiyordu; menusu kucuk
@@ -4382,7 +4408,7 @@ def ikinci_gorsel_istenebilir(menu: list[dict[str, str]], sahne_sayisi: int) -> 
     18:05 zamanlanmis koşumu tam bu yuzden hic video uretmeden dustu
     (materyal dizini bile olusmadi).
     """
-    return len(menu) >= sahne_sayisi * KARE_YUVASI
+    return len(menu) >= sahne_sayisi * max(int(yuva), 1)
 
 
 def arsiv_videoyu_tasir(menu: list[dict[str, str]], sahne_sayisi: int) -> bool:
@@ -4761,6 +4787,22 @@ def _kaynak_ve_menu_blogu(
     return blok
 
 
+def uygun_capalar(state: dict[str, Any]) -> list[str]:
+    """Havuzdan HENUZ YAKILMAMIS capalar.
+
+    ⚠️ TEK KAYNAK olmasi zorunlu. Ayni liste hem `generate_content_plan`in
+    yedek kip dalinda hem `run_cycle`in uzun kolunda geziliyor; iki yerde
+    ayri kurulsaydi biri `engellenen_capalar`i okur digeri okumaz ve hat
+    yakilmis bir capayi yeniden secerdi — deponun imza kusurunun aynisi.
+    """
+    engelli = engellenen_capalar(state)
+    return [
+        capa
+        for capa in EDITORIAL_ANCHOR_POOL
+        if not is_duplicate_visual_anchor(capa, engelli)
+    ]
+
+
 def _yedek_capa_sec(
     eligible_anchors: list[str],
     *,
@@ -4794,7 +4836,7 @@ def _yedek_capa_sec(
         except Exception as hata:  # noqa: BLE001 - menu on kosul degil
             print(f"⚠️ yedek capa menusu okunamadi ({capa}): {hata}", flush=True)
             continue
-        if not ikinci_gorsel_istenebilir(menu, gereken):
+        if not ikinci_gorsel_istenebilir(menu, gereken, yuva=bicim.kare_yuvasi):
             continue
         # ⚠️ OLCUM BUTCESI: tavan dolunca kapi kapanmiyor, bugunku ham sayi
         # karari geciyor. 54 capalik havuzu soguk halde bastan sona olcmek
@@ -5339,11 +5381,7 @@ def generate_content_plan(
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = engellenen_capalar(state)
-    eligible_anchors = [
-        anchor
-        for anchor in EDITORIAL_ANCHOR_POOL
-        if not is_duplicate_visual_anchor(anchor, previous_anchors)
-    ]
+    eligible_anchors = uygun_capalar(state)
     if not eligible_anchors and not konu:
         # ⚠️ SESSIZ TUKENME. Olculdu (2026-08-13): havuzdaki 15 capanin 15'i
         # de kullanilmisti, liste bos gidiyordu ve model bos listeyle ince
@@ -8738,8 +8776,23 @@ def run_cycle(
             # ⚠️ Olcut `aday_kapilabilir_mi`de — HUNI DE AYNISINI cagiriyor.
             # Burada yeniden yazmak, 2026-08-19'da olculen ayrismayi geri
             # getirirdi (terfi 12/`arsiv_menusu`, kapma 6/`arsiv_envanteri`).
+            #
+            # ⚠️ SAHNE SAYISI YOKSA BICIMIN TABANI (2026-08-22). Uzun kolda
+            # `--sahne-sayisi` CLI'da YASAK, yani `sahne_sayisi` hep None ve
+            # `aday_kapilabilir_mi` icinde `ASGARI_SAHNE_ARZI` = 6'ya dusuyor:
+            # menusu 6 dosyalik bir aday, 24-28 SAHNELIK bir uzun video icin
+            # kapilabilir sayiliyordu ve plan asamasinda kesin reddedilip
+            # slotu yakiyordu. Bicimin kendi TABANI (uzun 24) dogru sayi —
+            # tavan degil taban, cunku plan tabanin altina inemiyor ve
+            # tavani hedeflemek gereksiz siki bir kapi olurdu.
+            #
+            # Shorts'ta degisiklik YOK: `uret.sh` her koşumda
+            # `--sahne-sayisi` geciyor, yani `or` dali hic calismyor.
             karar = aday_kapilabilir_mi(
-                sirasiyla.baslik, state, bicim=bicim, sahne_sayisi=sahne_sayisi
+                sirasiyla.baslik,
+                state,
+                bicim=bicim,
+                sahne_sayisi=sahne_sayisi or bicim.sahne_araligi[0],
             )
             if not karar.kapilabilir:
                 print(
@@ -8821,20 +8874,54 @@ def run_cycle(
         capa_serbest = bool(konu_override)
         plan: ContentPlan | None = None
         planlama_hatasi: DistinctTopicUnavailableError | None = None
-        # ⚠️ KONUSUZ UZUN PLAN OLMAZ ve burada durmak yerine Shorts'a
-        # dusuluyor. `--uzun --yedek-konu` ile bos kuyrukta konu None
-        # kaliyor; `generate_content_plan` o durumda `ValueError` atiyor ve
-        # bu dongu onu yakalamiyordu, yani nazikce reddedilecek bir koşum
-        # izlenmeyen bir istisnayla olurdu.
+        # ⚠️ KONUSUZ UZUN PLAN OLMAZ. `--uzun --yedek-konu` ile bos kuyrukta
+        # konu None kaliyor ve `generate_content_plan` `ValueError` atiyor.
+        # Cozum Shorts'a dusmek DEGIL, konuyu HAVUZDAN sabitlemek: capa zaten
+        # arsivi OLCULEREK secilmis oluyor, yani "konu verilmis olsun"
+        # kosulunu birebir sagliyor (`--konu`nun sagladigi seyin aynisi).
+        #
+        # ⚠️ Capa sabitlenemezse koşum DURUR (`no-candidate`, cikis 3) ve
+        # modele serbest konu URETTIRILMEZ. Uydurma bu hatta olculmus bir
+        # kusur (DW-114) ve uzun formatta kelime SAYISIYLA olcekleniyor.
         if not bicim.dikey and etkin_konu is None:
+            havuz_capasi = _yedek_capa_sec(
+                uygun_capalar(state),
+                bicim=bicim,
+                envanter_sinir=envanter_siniri(bicim),
+                sahne_sayisi=sahne_sayisi,
+            )
+            if not havuz_capasi:
+                print(
+                    "ℹ️ uzun format icin ne kuyruk adayi ne uygun havuz capasi "
+                    "var — konu uydurulmadi",
+                    flush=True,
+                )
+                return {
+                    "status": "no-candidate",
+                    "slot": slot,
+                    "reason": (
+                        "uzun kip icin kapilabilir aday ve uygun havuz capasi yok; "
+                        "konu uydurulmadi"
+                    ),
+                }
+            etkin_konu = havuz_capasi
             print(
-                "ℹ️ uzun format icin kuyruk adayi yok (yedek konu kipi), "
-                "Shorts'a dusuluyor",
+                f"ℹ️ uzun format havuz capasina baglandi: {havuz_capasi}",
                 flush=True,
             )
-            bicim = SHORTS_BICIMI
-        denecek_uzun = not bicim.dikey
-        denenecek = [bicim, SHORTS_BICIMI] if denecek_uzun else [bicim]
+        # ⚠️ UZUN KOL SHORTS'A DUSMUYOR (2026-08-22, kanal sahibinin karari:
+        # "uzun israr et"). Onceki davranis listeye `SHORTS_BICIMI`i de
+        # ekliyordu ve gerekcesi suydu: "konu zaten kuyruktan kapilmis, burada
+        # durmak adayi ve slotu birlikte yakar; uzun format bir IYILESTIRME."
+        #
+        # O gerekcenin iki yarisi da artik gecersiz:
+        #   · ADAY YANMIYOR — `finally` her cikis yolunda `adayi_birak`
+        #     cagiriyor, yani duran koşum adayi kuyruga geri koyuyor.
+        #   · SLOT ARTIK UZUN ICIN VAR — 00:05 slotunun tek isi uzun video;
+        #     Shorts'un kendi alti slotu duruyor. Uzun slottan Shorts cikarsa
+        #     kanal sahibinin istedigi sey ile uretilen sey ayrisirdi ve
+        #     hicbir yerde "uzun dustu" yazmazdi.
+        denenecek = [bicim]
         hazir_kareler: list[tuple[Path, dict[str, Any]]] | None = None
         if turet is not None:
             # ⚠️ Turetme kolu plan URETMIYOR — dolayisiyla `generate_content_plan`
@@ -8898,8 +8985,16 @@ def run_cycle(
                 bicim = aday_bicim
                 break
             except UzunFormatUygunDegilError as exc:
-                print(f"ℹ️ uzun format atlandi, Shorts'a dusuluyor: {exc}", flush=True)
-                continue
+                # ⚠️ ARTIK SHORTS'A GECMIYOR (bkz. `denenecek` gerekcesi).
+                # Kayit yolu `DistinctTopicUnavailableError` ile ayni: koşum
+                # GORUNUR bicimde reddediliyor, aday sogutuluyor ve `finally`
+                # onu kuyruga geri koyuyor. Sessiz bicim degisikligi yerine
+                # kayitli bir red.
+                print(
+                    f"ℹ️ uzun format uygun degil, koşum reddediliyor: {exc}", flush=True
+                )
+                planlama_hatasi = DistinctTopicUnavailableError(str(exc))
+                break
             except DistinctTopicUnavailableError as exc:
                 # Konu sorunu bicim degistirerek cozulmez; denemeye devam
                 # etmek bes cikarim koşumunu daha yakmak olurdu.
@@ -9556,9 +9651,16 @@ def main() -> None:
     # arsiv menusu ancak konu varken isteme giriyor, yani konusuz uzun plan
     # 2.000 kelimeyi hafizadan yazar (DW-114 riski, kelime SAYISIYLA
     # olcekleniyor). `--konu` bu kosulu birebir sagliyor.
-    if args.uzun and not (args.from_notion or args.konu):
+    #
+    # ⚠️ `--yedek-konu` DA sagliyor (2026-08-22) — ama YASAK KALKMIYOR,
+    # DARALIYOR. Kabul edilmesinin sebebi bayragin adi degil `run_cycle`in
+    # davranisi: uzun kolda konu None kalirsa havuz capasi `_yedek_capa_sec`
+    # ile SABITLENIYOR ve sabitlenemezse koşum cikis 3 ile DURUYOR. Yani
+    # "konu verilmis olsun" kosulu bu yolda da fiilen saglaniyor; modele
+    # serbest konu urettirilen bir yol acilmiyor.
+    if args.uzun and not (args.from_notion or args.konu or args.yedek_konu):
         parser.error(
-            "--uzun için --from-notion ya da --konu gerekli: "
+            "--uzun için --from-notion, --konu ya da --yedek-konu gerekli: "
             "konusuz uzun plan uydurma riski taşır"
         )
     if args.konu and args.from_notion:

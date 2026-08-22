@@ -20,6 +20,28 @@
 # Kanal sahibinin karari (21 Agu): slot basina EN FAZLA IKI koşum, ikincisi
 # kanitlanmis capa havuzundan.
 
+TETIK_SAATLERI="0 5 8 11 14 17 20"
+# ⚠️ TEK KAYNAK. Zamanlayici (`com.shemz.uretim.plist`) ayni diziyi tasiyor
+# ve `test_slot_karari.py` ikisini KARSILASTIRIYOR — ayrisirlarsa
+# `sonraki_tetige_kalan_dk` gercekte olmayan bir tetigi bekler ve ikinci
+# koşum penceresi yanlis hesaplanir.
+#
+# ⚠️ IZGARA ARTIK DUZENLI DEGIL (2026-08-22, kanal sahibinin karari):
+# 00:05 UZUN · 05:05 · 08:05 · 11:05 · 14:05 · 17:05 · 20:05.
+# Uzun slota ~5 saat veriliyor cunku olculen uzun koşum 100-210 dk surdu ve
+# 3 saatlik pencereye SIGMIYORDU: tasan koşum sonraki Shorts slotunu
+# "atlandi | onceki kosum suruyor" ile yakiyordu (20-21 Agu'da uc kez).
+
+UZUN_SAAT=0
+# ⚠️ Gunde TEK uzun video. Kalan alti tetik Shorts.
+
+uzun_slot_mu() {
+  # $1 saat (0-23) — verilmezse simdiki saat.
+  # ⚠️ `10#` ONEKI ZORUNLU: `date +%H` saat 08'de "08" veriyor ve bash bunu
+  # SEKIZLIK sanip hata veriyor. Ayni tuzak `uret.sh`te de yazili.
+  [ "$((10#${1:-$(date +%H)}))" = "$UZUN_SAAT" ]
+}
+
 GUNLUK_YUKLEME_TAVANI=6
 # ⚠️ YouTube kotasi: `videos.insert` 1600 birim, gunluk kota 10.000 ->
 # gunde en fazla 6 yukleme. Bugune kadar hat bu tavana TEPKISEL carpiyordu
@@ -32,10 +54,30 @@ ASGARI_PENCERE_DK=35
 # "atlandi | onceki kosum suruyor" yazip slotu bos gecer. Yani agresif
 # davranmak bir sonraki slotu yakardi.
 
+UZUN_ASGARI_PENCERE_DK=120
+# ⚠️ Uzun koşum icin AYRI esik, ve sayi olculdu:
+#
+#     Herculaneum  slot 2026-08-20-14 -> yayin 15:42   ~100 dk
+#     Alhambra     slot 2026-08-20-21 -> yayin 00:37   ~210 dk
+#
+# En KISA uzun koşum 100 dk. 35 dakikalik artikla uzun bir ikinci koşum
+# baslatmak, kilidi bir sonraki tetige tasimak demekti — yani Shorts
+# slotunu yakmak. Bu bir kalite esigi degil, SURE butcesi.
+
+asgari_pencere_dk() {
+  # $1 uzun kol mu (1/0)
+  [ "${1:-0}" = "1" ] && echo "$UZUN_ASGARI_PENCERE_DK" || echo "$ASGARI_PENCERE_DK"
+}
+
 ikinci_kosum_gerekli_mi() {
   # $1 ilk koşumun cikis kodu · $2 sonraki tetige kalan dakika
-  # $3 bugun yayinlanan video · $4 kilit var mi (1/0)
-  local kod="$1" kalan="$2" yayin="$3" kilit="$4"
+  # $3 bugun yayinlanan video · $4 kilit var mi (1/0) · $5 uzun kol mu (1/0)
+  #
+  # ⚠️ UZUN SLOTTA IKINCI KOSUM DA UZUN — Shorts'a DUSULMUYOR (kanal
+  # sahibinin karari: "uzun israr et"). Kol secimi `uret.sh`te bir kez
+  # yapiliyor ve iki koşum da ayni bayraklarla kosuyor; burasi yalnizca
+  # PENCERE esigini kola gore seciyor.
+  local kod="$1" kalan="$2" yayin="$3" kilit="$4" uzun="${5:-0}"
 
   # ⚠️ YALNIZCA KALITE REDDINDE (cikis 2) yeniden deneniyor.
   #   0 yayinlandi   -> slot dolu, is bitti
@@ -45,17 +87,22 @@ ikinci_kosum_gerekli_mi() {
   [ "$kod" = "2" ] || return 1
 
   [ "$kilit" = "0" ] || return 1
-  [ "$kalan" -ge "$ASGARI_PENCERE_DK" ] || return 1
+  [ "$kalan" -ge "$(asgari_pencere_dk "$uzun")" ] || return 1
   [ "$yayin" -lt "$GUNLUK_YUKLEME_TAVANI" ] || return 1
   return 0
 }
 
 sonraki_tetige_kalan_dk() {
   # $1 saat (0-23) · $2 dakika — verilmezse simdiki zaman.
-  # Zamanlayici 3 saatte bir :05'te atesliyor (com.shemz.uretim.plist).
+  #
+  # ⚠️ ARTIK FORMUL DEGIL LISTE GEZILIYOR (2026-08-22). Eski hali
+  # `(saat / 3 + 1) * 3 * 60 + 5` idi ve 3 SAATLIK DUZENLI IZGARA
+  # varsayiyordu. Yeni dizilim duzensiz (0,5,8,11,14,17,20): formul saat
+  # 05:30'da bir sonraki tetigi 06:05 sanardi, gercekte 08:05 — yani
+  # ikinci koşum penceresini 35 dk gorup 155 dk'yi kaciririrdi.
+  #
   # ⚠️ `10#` ONEKI HEM VARSAYILANA HEM GECILEN DEGERE — `date +%H` saat 08'de
-  # "08" veriyor ve bash bunu SEKIZLIK sanip hata veriyor. Ayni tuzak
-  # `uret.sh:83`te de yazili.
+  # "08" veriyor ve bash bunu SEKIZLIK sanip hata veriyor.
   #
   # ⚠️ Ilk yazimda onek yalnizca VARSAYILANDAYDI ve uretimde gorunmezdi
   # (`uret.sh` bu fonksiyonu argumansiz cagiriyor); testi yazarken "08 09"
@@ -63,8 +110,20 @@ sonraki_tetige_kalan_dk() {
   local saat=$((10#${1:-$(date +%H)}))
   local dakika=$((10#${2:-$(date +%M)}))
   local simdi=$((saat * 60 + dakika))
-  local sonraki=$(((saat / 3 + 1) * 3 * 60 + 5))
-  echo $((sonraki - simdi))
+  local tetik
+  for tetik in $TETIK_SAATLERI; do
+    local an=$((tetik * 60 + 5))
+    if [ "$an" -gt "$simdi" ]; then
+      echo $((an - simdi))
+      return 0
+    fi
+  done
+  # ⚠️ GECE YARISI SARMASI: bugunku tetiklerin hepsi gecmisse sonraki tetik
+  # YARININ ilkidir. Sarma olmadan fonksiyon 20:30'da NEGATIF doner ve
+  # `[ "$kalan" -ge ... ]` sessizce yanlis tarafa duserdi.
+  local ilk
+  ilk=$(echo "$TETIK_SAATLERI" | awk '{print $1}')
+  echo $((24 * 60 + ilk * 60 + 5 - simdi))
 }
 
 bugunku_yayin_sayisi() {

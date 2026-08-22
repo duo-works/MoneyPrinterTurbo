@@ -27,14 +27,32 @@ KARAR = KOK / "scripts" / "slot_karari.sh"
 URET = KOK / "scripts" / "uret.sh"
 
 
-def _karar(kod, kalan, yayin, kilit) -> bool:
+def _karar(kod, kalan, yayin, kilit, uzun=0) -> bool:
     """`ikinci_kosum_gerekli_mi` kabukta calistirilir; cikis kodu dondurulur."""
     sonuc = subprocess.run(
         [
             "bash",
             "-c",
-            f'. "{KARAR}"; ikinci_kosum_gerekli_mi {kod} {kalan} {yayin} {kilit}',
+            f'. "{KARAR}"; ikinci_kosum_gerekli_mi {kod} {kalan} {yayin} '
+            f"{kilit} {uzun}",
         ],
+        capture_output=True,
+        text=True,
+    )
+    return sonuc.returncode == 0
+
+
+def _kabuk(ifade: str) -> str:
+    """`slot_karari.sh` yuklu bir kabukta tek ifade calistirir."""
+    sonuc = subprocess.run(
+        ["bash", "-c", f'. "{KARAR}"; {ifade}'], capture_output=True, text=True
+    )
+    return sonuc.stdout.strip()
+
+
+def _uzun_slot(saat) -> bool:
+    sonuc = subprocess.run(
+        ["bash", "-c", f'. "{KARAR}"; uzun_slot_mu {saat}'],
         capture_output=True,
         text=True,
     )
@@ -110,22 +128,124 @@ def test_TAVANIN_ALTINDA_deneniyor(yayin):
 @pytest.mark.parametrize(
     "saat,dakika,beklenen",
     [
-        (12, 5, 180),  # koşum yeni basladi
-        (13, 0, 125),  # 55 dk sonra
-        (15, 19, 166),  # bugunku gercek vaka: 14 dk'da dusen koşum
-        (8, 30, 35),  # 09:05'e tam esik
-        (8, 35, 30),  # esigin altina duser
+        (0, 30, 275),  # UZUN slot yeni basladi -> 05:05
+        (12, 5, 120),  # 14:05
+        (13, 0, 65),  # 14:05
+        (15, 19, 106),  # 17:05
+        (8, 30, 155),  # 11:05 (eski izgarada 35 idi)
+        (20, 30, 215),  # ⚠️ GECE YARISI SARMASI -> ertesi gun 00:05
+        (23, 59, 6),  # sarmanin sinir vakasi
     ],
 )
 def test_sonraki_tetige_kalan_dogru(saat, dakika, beklenen):
-    """Zamanlayici 3 saatte bir :05'te atesliyor (com.shemz.uretim.plist)."""
+    """⚠️ IZGARA DUZENSIZ (0 5 8 11 14 17 20) — eski `(saat / 3 + 1) * 3`
+    formulu 05:30'da bir sonraki tetigi 06:05 sanardi, gercekte 08:05.
+
+    Mutasyon: 3 saatlik formule geri donmek bu testi dusurur.
+    """
     assert _kalan(saat, dakika) == beklenen
+
+
+def test_kalan_HIC_NEGATIF_olmuyor():
+    """⚠️ Sarma olmadan 20:30 NEGATIF donerdi ve `[ "$kalan" -ge 35 ]`
+    sessizce yanlis tarafa duserdi — ikinci koşum hic denenmezdi."""
+    for saat in range(24):
+        for dakika in (0, 30, 59):
+            assert _kalan(saat, dakika) > 0, f"{saat}:{dakika}"
 
 
 def test_SEKIZLIK_tuzagi_yok():
     """⚠️ `date +%H` saat 08/09'da '08'/'09' veriyor ve bash bunu sekizlik
     sanip hata verir. Ayni tuzak `uret.sh`te bir kez yasandi."""
-    assert _kalan("08", "09") == 56
+    assert _kalan("08", "09") == 176
+
+
+# --- Kol secimi -------------------------------------------------------------
+
+
+def test_SAAT_SIFIR_uzun_kol():
+    """⚠️ Kanal sahibinin karari: 00:05 uzun video, kalani Shorts.
+
+    Mutasyon: kol secimini sabitlemek bu testi dusurur.
+    """
+    assert _uzun_slot(0) is True
+
+
+@pytest.mark.parametrize("saat", [5, 8, 11, 14, 17, 20])
+def test_KALAN_TETIKLER_shorts(saat):
+    assert _uzun_slot(saat) is False
+
+
+def test_uzun_slot_SEKIZLIK_tuzagina_dusmuyor():
+    """`date +%H` saat 08'de "08" veriyor."""
+    assert _uzun_slot("08") is False
+    assert _uzun_slot("00") is True
+
+
+# --- Pencere esigi BICIME BAGLI --------------------------------------------
+
+
+def test_UZUN_pencere_esigi_120():
+    """⚠️ Olculdu: en KISA uzun koşum 100 dk (Herculaneum), en uzunu 210
+    (Alhambra). 35 dakikalik artikla uzun koşum baslatmak kilidi bir
+    sonraki tetige tasirdi.
+
+    Mutasyon: esigi 35'e dusurmek bu testi dusurur.
+    """
+    assert _kabuk("asgari_pencere_dk 1") == "120"
+    assert _kabuk("asgari_pencere_dk 0") == "35"
+
+
+def test_UZUN_kolda_DAR_pencerede_ikinci_kosum_YOK():
+    """Shorts icin yeterli olan 60 dk, uzun icin YETMIYOR."""
+    assert _karar(kod=2, kalan=60, yayin=1, kilit=0, uzun=0) is True
+    assert _karar(kod=2, kalan=60, yayin=1, kilit=0, uzun=1) is False
+
+
+def test_UZUN_kolda_GENIS_pencerede_ikinci_kosum_VAR():
+    assert _karar(kod=2, kalan=150, yayin=1, kilit=0, uzun=1) is True
+
+
+def test_KOL_verilmezse_SHORTS_esigi():
+    """⚠️ Geriye donuk uyum: bes arguman gecmeyen cagiran bugunku esigi alir."""
+    sonuc = subprocess.run(
+        ["bash", "-c", f'. "{KARAR}"; ikinci_kosum_gerekli_mi 2 60 1 0'],
+        capture_output=True,
+        text=True,
+    )
+    assert sonuc.returncode == 0
+
+
+# --- Tetik dizisi TEK KAYNAK ------------------------------------------------
+
+
+def test_PLIST_tetikleri_TETIK_SAATLERI_ile_AYNI():
+    """⚠️ Ayrisirlarsa `sonraki_tetige_kalan_dk` gercekte OLMAYAN bir tetigi
+    bekler ve ikinci koşum penceresi yanlis hesaplanir.
+
+    Mutasyon: iki taraftan birinde bir saati degistirmek bu testi dusurur.
+    """
+    import plistlib
+
+    plist = KOK / "scripts" / "com.shemz.uretim.plist"
+    with plist.open("rb") as akis:
+        tetikler = plistlib.load(akis)["StartCalendarInterval"]
+
+    plist_saatleri = [t["Hour"] for t in tetikler]
+    kabuk_saatleri = [int(x) for x in _kabuk("echo $TETIK_SAATLERI").split()]
+
+    assert plist_saatleri == kabuk_saatleri
+    assert {t["Minute"] for t in tetikler} == {5}, "hepsi :05'te olmali"
+
+
+def test_PLIST_yuklenince_KOSMUYOR():
+    """⚠️ `launchctl load` bir video uretmeye baslamamali; kurulum bir
+    uretim karari degil."""
+    import plistlib
+
+    plist = KOK / "scripts" / "com.shemz.uretim.plist"
+    with plist.open("rb") as akis:
+        assert plistlib.load(akis)["RunAtLoad"] is False
 
 
 # --- Gunluk yayin sayaci ----------------------------------------------------
@@ -250,6 +370,66 @@ def test_PLAN_REDLERI_her_kosumdan_sonra_yaziliyor():
     assert govde.count("plan_redlerini_yaz") >= 3, (
         "plan reddi cikarimi her koşumdan sonra cagrilmiyor"
     )
+
+
+def test_UZUN_kolda_SAHNE_SAYISI_gecmiyor():
+    """⚠️ CLI `--uzun` ile `--sahne-sayisi`yi YASAKLIYOR (sahne sayisi deneyi
+    Shorts koluna ait). Gecirilseydi uzun slot her gun arguman hatasiyla
+    olurdu.
+
+    Mutasyon: uzun kola `--sahne-sayisi` eklemek bu testi dusurur.
+    """
+    govde = URET.read_text(encoding="utf-8")
+    bas = govde.index("if uzun_slot_mu")
+    uzun_dal = govde[bas : govde.index("else", bas)]
+
+    assert "--uzun" in uzun_dal
+    assert "--sahne-sayisi" not in uzun_dal
+
+
+def test_SHORTS_kolunda_SAHNE_SAYISI_geciyor():
+    """⚠️ Regresyon kilidi: sahne sayisi deneyi Shorts'ta SURUYOR."""
+    govde = URET.read_text(encoding="utf-8")
+    bas = govde.index("if uzun_slot_mu")
+    shorts_dal = govde[govde.index("else", bas) : govde.index("fi", bas)]
+
+    assert "--sahne-sayisi" in shorts_dal
+    assert "--uzun" not in shorts_dal
+
+
+def test_IKI_KOSUM_da_AYNI_kolda():
+    """⚠️ "Uzun israr et": uzun slotun ikinci denemesi de UZUN, Shorts'a
+    dusulmuyor.
+
+    ⚠️ Olculdu (mutasyon M16): `"${KOL_BAYRAKLARI[@]}"` GENISLEMESINI saymak
+    YETMIYOR. Ikinci koşumdan once diziyi YENIDEN ATAMAK genisleme sayisini
+    hic degistirmiyor — koşum sessizce Shorts'a duserdi ve test gecerdi.
+    Olculmesi gereken sey ATAMA: dizi yalnizca kol secim blogunda, iki
+    dalda birer kez kuruluyor.
+    """
+    govde = URET.read_text(encoding="utf-8")
+
+    assert govde.count("KOL_BAYRAKLARI=(") == 2, (
+        "kol bayraklari kol secim blogunun DISINDA yeniden atanmis"
+    )
+    # Iki atamanin ikisi de `if uzun_slot_mu ... fi` blogunun icinde.
+    bas = govde.index("if uzun_slot_mu")
+    blok = govde[bas : govde.index("\nfi\n", bas)]
+    assert blok.count("KOL_BAYRAKLARI=(") == 2
+
+    assert govde.count('"${KOL_BAYRAKLARI[@]}"') == 1
+    # Iki koşum da ayni fonksiyondan geciyor.
+    assert govde.count("uretim_kosumu --") == 2
+
+
+def test_IKINCI_kosum_karari_KOLU_aliyor():
+    """⚠️ Kol gecirilmezse uzun slot Shorts esigiyle (35 dk) olculur ve
+    kilit bir sonraki tetige tasar."""
+    govde = URET.read_text(encoding="utf-8")
+    bas = govde.index("ikinci_kosum_gerekli_mi")
+    cagri = govde[bas : govde.index("; then", bas)]
+
+    assert "$UZUN_KOL" in cagri, f"kol gecmiyor: {cagri!r}"
 
 
 def test_KABUK_sozdizimi_saglam():

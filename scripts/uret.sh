@@ -80,7 +80,15 @@ trap 'rm -f "$CIKTI_DOSYASI"' EXIT
 # ⚠️ `10#` ONEKI ZORUNLU. `date +%H` saat 06'da "06" veriyor ve bash bunu
 # `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce `else`
 # daline dusurup 06:05 koşumunu yanlis kola yazardi.
+# ⚠️ `10#` ONEKI ZORUNLU. `date +%H` saat 06'da "06" veriyor ve bash bunu
+# `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce `else`
+# daline dusurup 06:05 koşumunu yanlis kola yazardi.
 SAAT=$((10#$(date +%H)))
+
+# ⚠️ IZGARA 0 5 8 11 14 17 20 iken deney KOLLARI HALA DENGELI:
+#     5->8 · 8->6 · 11->8 · 14->6 · 17->8 · 20->6   (gunde 3'er)
+# Yani `(SAAT / 3) % 2` formulu duzensiz izgarada da bozulmuyor; saat 0
+# zaten uzun kola gidiyor ve bu hesabi hic kullanmiyor.
 if (( (SAAT / 3) % 2 == 0 )); then
   SAHNE=6
 else
@@ -90,18 +98,41 @@ fi
 cd "$KOK" || exit 1
 
 # ⚠️ Slot karari AYRI DOSYADA ve saf — gerekcesi `slot_karari.sh` icinde.
-# Govdeye gomulu bir karar sinanamazdi.
+# Govdeye gomulu bir karar sinanamazdi. Kol secimi (`uzun_slot_mu`) de
+# oradan geliyor, ayni sebeple.
 # shellcheck source=slot_karari.sh
 . "$KOK/scripts/slot_karari.sh"
+
+# ⚠️ KOL SECIMI — kanal sahibinin karari (2026-08-22): 00:05 UZUN video,
+# kalan alti tetik Shorts.
+#
+# ⚠️ Uzun kolda `--sahne-sayisi` GECILMIYOR ve bu zorunlu: CLI o ikiliyi
+# yasakliyor (`--uzun ile --sahne-sayisi birlikte kullanilamaz`), cunku
+# sahne sayisi deneyi Shorts koluna ait. Gecirilseydi uzun slot her gun
+# arguman hatasiyla olurdu.
+#
+# ⚠️ IKINCI KOSUM DA AYNI KOLDA: dizi bir kez kuruluyor ve iki koşum da
+# onu kullaniyor, yani uzun slotun ikinci denemesi de uzun ("uzun israr
+# et"). Shorts'a dusus yok.
+if uzun_slot_mu "$SAAT"; then
+  KOL="uzun"
+  KOL_BAYRAKLARI=(--uzun)
+  UZUN_KOL=1
+else
+  KOL="shorts"
+  KOL_BAYRAKLARI=(--sahne-sayisi "$SAHNE")
+  UZUN_KOL=0
+fi
+yaz "kol | $KOL"
 
 kilit_var() {
   [ -e "$KOK/storage/youtube_automation/automation.lock" ] && echo 1 || echo 0
 }
 
 uretim_kosumu() {
-  # $@ = konu KAYNAGI bayraklari; gerisi her koşumda ayni.
+  # $@ = konu KAYNAGI bayraklari; gerisi kola gore (`KOL_BAYRAKLARI`).
   .venv/bin/python youtube_automation.py \
-    "$@" --privacy public --sahne-sayisi "$SAHNE" \
+    "$@" --privacy public "${KOL_BAYRAKLARI[@]}" \
     >>"$CIKTI_DOSYASI" 2>&1
 }
 
@@ -146,7 +177,8 @@ if ikinci_kosum_gerekli_mi \
     "$KOD" \
     "$(sonraki_tetige_kalan_dk)" \
     "$(bugunku_yayin_sayisi .venv/bin/python "$KOK/storage/youtube_automation/state.json")" \
-    "$(kilit_var)"; then
+    "$(kilit_var)" \
+    "$UZUN_KOL"; then
   yaz "ikinci koşum | ilk koşum reddedildi, havuz çapasıyla yeniden deneniyor"
   uretim_kosumu --yedek-konu
   KOD=$?
