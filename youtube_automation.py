@@ -3044,6 +3044,18 @@ def muzik_secenekleri() -> list[str]:
     CLI `--bgm-file`'i `storage/bgm` ve `resource/songs` beyaz listesinde
     cozuyor, dolayisiyla ciplak dosya adi yeterli ve daha guvenli: yol
     kacisi diye bir sey kalmiyor.
+
+    ⚠️ KUNYEDE KAYDI OLMAYAN DOSYA SECIME GIRMEZ. Bu fonksiyon DIZINI
+    tariyor, kunyeyi degil — yani lisansi dogrulanmamis bir mp3 `storage/bgm`
+    icine dustugu anda videoya girebilirdi. Delik bugun YOK (33 dosya = 33
+    kayit; iskarta dosyalar alt dizinlerde ve `iterdir()` ozyinelemeli degil)
+    ama riskin dogdugu an parca EKLEME anidir: dosya diske, kunye kaydindan
+    once dusuyor. 2026-08-23'te havuza 18 parca eklenirken bu yol acikti.
+
+    ⚠️ KORUMA ACIK DUSER: kunye okunamaz/bossa YA DA suzgec hicbir sey
+    birakmazsa bugunku davranis aynen surer. Gerekce `muzik_kunyesi`
+    docstring'inde yazili — kunye bir IYILESTIRME, on kosul degil; muzik
+    ugruna video uretimi dusmemeli.
     """
     adlar: set[str] = set()
     for dizin in (ROOT / "storage" / "bgm", ROOT / "resource" / "songs"):
@@ -3052,6 +3064,11 @@ def muzik_secenekleri() -> list[str]:
         for parca in dizin.iterdir():
             if parca.is_file() and parca.suffix.lower() in MUZIK_UZANTILARI:
                 adlar.add(parca.name)
+    kunye = muzik_kunyesi()
+    if kunye:
+        kayitli = {ad for ad in adlar if ad in kunye}
+        if kayitli:
+            return sorted(kayitli)
     return sorted(adlar)
 
 

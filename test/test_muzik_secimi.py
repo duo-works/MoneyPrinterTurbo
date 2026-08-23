@@ -242,3 +242,55 @@ def test_uretim_hatti_kazanci_ve_ruh_halini_GECIRIYOR():
     assert "MUZIK_SES_TABANI * muzik_kazanci(secilen_muzik)" in kaynak
     assert 'str(muzik_sesi)' in kaynak
     assert '"--bgm-volume",\n        "0.2",' not in kaynak, "ses hala sabit"
+
+
+# --- Kunye korumasi (2026-08-23) --------------------------------------------
+
+
+def _sahte_havuz(tmp_path, monkeypatch, adlar: list[str]):
+    """`muzik_secenekleri`nin taradigi DIZINI tmp'ye yonlendirir."""
+    bgm = tmp_path / "storage" / "bgm"
+    bgm.mkdir(parents=True)
+    for ad in adlar:
+        (bgm / ad).write_bytes(b"\x00" * 32)
+    monkeypatch.setattr(ya, "ROOT", tmp_path)
+    return bgm
+
+
+def test_KUNYEDE_OLMAYAN_dosya_secime_GIRMIYOR(tmp_path, monkeypatch):
+    """Lisansi dogrulanmamis mp3 diske dusunce videoya girmemeli.
+
+    Riskin dogdugu an parca EKLEME anidir: dosya diske, kunye kaydindan
+    once dusuyor — 2026-08-23'te havuza 18 parca eklenirken bu yol acikti.
+    """
+    _sahte_havuz(tmp_path, monkeypatch, ["kayitli.mp3", "KACAK.mp3"])
+    monkeypatch.setattr(ya, "muzik_kunyesi", lambda: {"kayitli.mp3": {}})
+
+    secenekler = ya.muzik_secenekleri()
+
+    assert secenekler == ["kayitli.mp3"]
+    assert "KACAK.mp3" not in secenekler
+
+
+def test_kunye_BOSKEN_bugunku_davranis_suruyor(tmp_path, monkeypatch):
+    """Regresyon kilidi: kunye bir IYILESTIRME, on kosul degil.
+
+    Kunye okunamazsa `muzik_kunyesi` bos sozluk donuyor; koruma o durumda
+    devreye girerse havuz komple kaybolur ve video muziksiz kalirdi.
+    """
+    _sahte_havuz(tmp_path, monkeypatch, ["a.mp3", "b.mp3"])
+    monkeypatch.setattr(ya, "muzik_kunyesi", lambda: {})
+
+    assert ya.muzik_secenekleri() == ["a.mp3", "b.mp3"]
+
+
+def test_suzgec_HERSEYI_elerse_ACIK_dusuyor(tmp_path, monkeypatch):
+    """Kunye dolu ama HICBIRI eslesmiyorsa havuz bosaltilmamali.
+
+    ⚠️ `olcum-dusunce-red-degil-bilinmiyor` dersinin muzik tarafi: suzgec
+    eslesme bulamadigi icin bos kaliyorsa bu "parca yok" demek degil.
+    """
+    _sahte_havuz(tmp_path, monkeypatch, ["a.mp3", "b.mp3"])
+    monkeypatch.setattr(ya, "muzik_kunyesi", lambda: {"bambaska.mp3": {}})
+
+    assert ya.muzik_secenekleri() == ["a.mp3", "b.mp3"]
