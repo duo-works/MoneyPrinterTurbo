@@ -132,12 +132,33 @@ uretim_kosumu() {
     >>"$CIKTI_DOSYASI" 2>&1
 }
 
+# ⚠️ ISLENMIS SATIR SAYACI — cift yazimi kapatiyor (2026-08-23).
+PLAN_RED_ISLENEN=0
+
 plan_redlerini_yaz() {
   # ⚠️ HER koşumdan sonra calisiyor: ikinci koşumun denemeleri de bir butce
   # yakiyor ve #41'in olcmek istedigi sinyal tam olarak o.
-  grep "reddedildi" "$CIKTI_DOSYASI" 2>/dev/null \
+  #
+  # ⚠️ YALNIZCA YENI SATIRLAR — olculdu (2026-08-23). Eskiden `CIKTI_DOSYASI`nin
+  # TAMAMI yeniden grep'leniyordu. Ikinci koşum ayni dosyaya `>>` ile ekliyor,
+  # yani ilk koşumun red satirlari IKI KEZ yaziliyordu. Log'un tek kullanicisi
+  # olcum oldugu icin sayi dogrudan yaniltiyordu:
+  #
+  #     147 ham satir -> 123 tekil   (%16 sisme)
+  #
+  # Ornegin 23 Agu 05:50 ve 06:43 bloklari ilk dort satirda BIREBIR ayni.
+  local toplam
+  toplam="$(wc -l <"$CIKTI_DOSYASI" 2>/dev/null | tr -d ' ')"
+  toplam="${toplam:-0}"
+  # ⚠️ ${VAR:-0} ZORUNLU: betik `set -u` ile kosuyor ve bu fonksiyon
+  # testte GOVDESINDEN KESILIP tek basina calistiriliyor. Disaridaki
+  # baslangic degerine yaslanan bir surum orada tanimsiz degiskene duser —
+  # ve `bash -n` bunu yakalamaz.
+  tail -n "+$(( ${PLAN_RED_ISLENEN:-0} + 1 ))" "$CIKTI_DOSYASI" 2>/dev/null \
+    | grep "reddedildi" \
     | while IFS= read -r satir; do echo "$(zaman) | $satir"; done \
     >>"$LOG_DIZINI/plan-redleri.log" || true
+  PLAN_RED_ISLENEN="$toplam"
 }
 
 # ⚠️ URETIMDEN ONCE KUYRUGU BESLE. Olculdu (2026-08-14): uretim iki kez

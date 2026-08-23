@@ -108,6 +108,10 @@ class VideoParams(BaseModel):
     #
     # Varsayilan False: bu hattin tercihi, webui'nin degil.
     video_zoom_donusumlu: Optional[bool] = False
+    # ⚠️ SAHNE BASINA KARE. Donusumlu zoom'un yonu bu birime gore degisiyor:
+    # sahnenin butun yuvalari ayni yonu surduruyor. Varsayilan 1 — webui ve
+    # sahne basina tek kare ureten her yol icin bugunku davranis.
+    video_yuva: Optional[int] = 1
     video_clip_speed: Optional[float] = 1.0
     match_materials_to_script: bool = False
     video_count: Optional[int] = 1

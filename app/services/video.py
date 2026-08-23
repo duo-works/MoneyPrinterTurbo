@@ -1318,7 +1318,11 @@ def _yuva_suresi(clip_duration, sira: int) -> float:
 
 
 def preprocess_video(
-    materials: List[MaterialInfo], clip_duration=4, zoom=True, donusumlu_zoom=False
+    materials: List[MaterialInfo],
+    clip_duration=4,
+    zoom=True,
+    donusumlu_zoom=False,
+    yuva: int = 1,
 ):
     """Duragan gorselleri klibe cevirir.
 
@@ -1328,7 +1332,11 @@ def preprocess_video(
     - `zoom=True` (varsayilan): her kare 1,00'dan baslayip buyur. Bugunku
       davranis.
     - `zoom=False`: gorsel duragan kalir.
-    - `zoom=True, donusumlu_zoom=True`: yon kare paritesine gore degisir.
+    - `zoom=True, donusumlu_zoom=True`: yon SAHNE paritesine gore degisir
+      ve sahnenin butun yuvalari ayni yonu surdurur (`yuva`).
+
+    ⚠️ `yuva` = SAHNE BASINA KARE. Varsayilan 1, yani "her kare kendi
+    sahnesi" — webui ve uzun format icin bugunku davranisin BIREBIR aynisi.
 
     ⚠️ `clip_duration` SKALER ya da YUVA BASINA LISTE olabilir. Liste kipi
     2026-08-18'de eklendi: klip suresi sahneden bagimsiz esitken uzun bir
@@ -1464,20 +1472,53 @@ def preprocess_video(
                         if donusumlu_zoom
                         else bu_klip_suresi * 0.03
                     )
-                    if len(valid_materials) % 2 == 0:
-                        # Tek numarali kare (1., 3., ...): 1,00 -> 1,00+Δ
+                    # ⚠️ YON SAHNE PARITESINDEN, KARE PARITESINDEN DEGIL
+                    # (2026-08-23). Eskiden `len(valid_materials) % 2` idi ve
+                    # Shorts'ta sahne basina IKI yuva var; `kare_yerlesimi` uc
+                    # duzenden IKISINDE ayni gorseli iki ardisik yuvaya koyuyor
+                    # ([A, A] ve [AB, AB]). Sonucu: AYNI GORUNTU once iceri,
+                    # sonra geri disari zoomluyordu — kanal sahibinin tarifi
+                    # birebir ("bir sahneye zoom yapip tekrar uzaklasiyor, kotu
+                    # bir goruntu olusturuyor"). Ucuncu duzen ([A, B], iki AYRI
+                    # gorsel) iyi gorunuyordu, cunku goruntu degistigi icin
+                    # donus fark edilmiyor — "bazen tam oturuyor" tam bu ayrim.
+                    #
+                    # Uzun formatta (`yuva == 1`) kusur HIC yoktu: orada zaten
+                    # yon sahne basina degisiyor. Bu yuzden `yuva=1` yeni
+                    # formulde de BIREBIR eski diziyi uretiyor ve bir test onu
+                    # kilitliyor.
+                    #
+                    #   sira  = ciktidaki kare sirasi (0-tabanli)
+                    #   sahne = sira // yuva      dilim = sira % yuva
+                    #
+                    # Sahne basina TOPLAM buyume Δ; her yuva onun `1/yuva`lik
+                    # dilimini tasiyor, yani kadraj araligi 1,00-1,00+Δ olarak
+                    # KALIYOR ve sinirlarda olcek SUREKLI.
+                    #
+                    # ⚠️ Sahnenin yuvalari sureyi ESIT paylasiyor
+                    # (`klip_sureleri` docstring'i, olculmus), yani Δ'yi esit
+                    # bolmek sahne icinde zoom HIZINI da sabit tutuyor. Sureye
+                    # gore oranlamak bu yuzden gerekmiyor.
+                    yuva_sayisi = max(int(yuva), 1)
+                    sira = len(valid_materials)
+                    dilim = sira % yuva_sayisi
+                    iceri = (sira // yuva_sayisi) % 2 == 0
+                    bas = dilim / yuva_sayisi
+                    son = (dilim + 1) / yuva_sayisi
+                    if not donusumlu_zoom:
+                        # Duz kip DEGISMEDI: her kare 1,00'dan baslar.
                         render_clip = clip.resized(
                             lambda t: 1 + buyume * (t / clip.duration)
                         )
-                    elif donusumlu_zoom:
-                        # Cift numarali kare: 1,00+Δ -> 1,00. Onceki klip
-                        # 1,00+Δ'da bittigi icin sinirda olcek SUREKLI kaliyor.
+                    elif iceri:
                         render_clip = clip.resized(
-                            lambda t: 1 + buyume * (1 - t / clip.duration)
+                            lambda t, a=bas, b=son: 1
+                            + buyume * (a + (b - a) * (t / clip.duration))
                         )
                     else:
                         render_clip = clip.resized(
-                            lambda t: 1 + buyume * (t / clip.duration)
+                            lambda t, a=bas, b=son: 1
+                            + buyume * (1 - (a + (b - a) * (t / clip.duration)))
                         )
                 else:
                     render_clip = clip

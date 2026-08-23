@@ -2540,6 +2540,7 @@ def kareyi_onar(
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
     ornekler: list[int] | None = None,
+    engellenen: set[str] | None = None,
 ) -> list[int]:
     """Hakemin isaretledigi karelerin GORSELINI degistirir; degisen sahneler doner.
 
@@ -2614,6 +2615,14 @@ def kareyi_onar(
         for sahne in plan.scenes
         for alan in ("kaynak_dosya", "kaynak_dosya_2")
     } - {""}
+    # ⚠️ TESLIM EDILEMEYEN SECIM BIR DAHA SUNULMUYOR (2026-08-23). Onarim
+    # bir dosya secip plana yaziyor, ama teslim zinciri onu dusurebiliyor
+    # (`_alinti_adayi` cozemedi · indirme dustu · `_tekrar_mi` tekrar dedi).
+    # Dusen dosya menude DURMAYA devam ettigi icin ikinci onarim turu ayni
+    # secimi yapiyor ve butce bosa gidiyor. `onarim_sonucu` hangi secimin
+    # tutmadigini olcuyor, burasi onu kullaniyor — kapali dongunun ikinci
+    # yarisi.
+    kullanilan |= {str(ad).strip() for ad in (engellenen or set())} - {""}
     aday_menu = [girdi for girdi in menu if girdi["dosya"] not in kullanilan]
     if not aday_menu:
         return []
@@ -4287,6 +4296,58 @@ def _menuyu_zenginlestir(
     ]
 
 
+def onarim_sonucu(
+    talep: list[dict[str, Any]], sahneler: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Onarim ISTEDIGI dosyayi gercekten aldi mi — sahne sahne.
+
+    ⚠️ NEDEN VAR — olculdu (2026-08-23). `kareyi_onar` hakemin isaretledigi
+    karenin dosyasini plan uzerinde DEGISTIRIYOR ve baska bir sey yapmiyor:
+    teslim zinciri (`_alinti_adayi` → `_tekrar_mi` → Met → Commons aramasi)
+    o dosyayi sessizce dusurebiliyor ve sahne denetlenmemis bir arama
+    sonucuyla doluyor. Yani onarim KOR bir yazim.
+
+    Bedeli olculdu: 19 Agu sonrasi video asamasi redlerinin 22'sinin
+    22'sinde agir kusur var ve onarim kapisi tam 11'ine ACIK — yani onarim
+    kosuyor ve video yine oluyor. NEDEN oldugu hicbir yerde yazmiyordu:
+
+      · `ℹ️ kare onarımı: ...` yalnizca stdout'a basiliyor ve `uret.sh`
+        cikti dosyasini `mktemp` ile acip cikista SILIYOR;
+      · `state.json`'daki red kaydinda onarimla ilgili tek alan yoktu.
+
+    Sonucu: 21 Agu'da sevk edilen onarim duzeltmesi iki gun boyunca
+    DOGRULANAMADI. Bu fonksiyon o korlugu kapatiyor.
+
+    ⚠️ "File:" oneki temizleniyor: kredi basliklari onekli geliyor, plan
+    alanlari onekli gelmiyor. Karsilastirma onsuz yapilirsa HER onarim
+    "tutmadi" gorunurdu.
+    """
+
+    def _sade(deger: Any) -> str:
+        return str(deger or "").replace("File:", "").strip()
+
+    kayit_by_sahne = {int(k.get("sahne", 0)): k for k in sahneler}
+    sonuc: list[dict[str, Any]] = []
+    for istek in talep:
+        sahne_no = int(istek.get("sahne", 0))
+        alan = str(istek.get("alan", "kaynak_dosya"))
+        # Birincil yuvanin teslimi `gelen`, ikincilinki `gelen_2`.
+        teslim_alani = "gelen_2" if alan == "kaynak_dosya_2" else "gelen"
+        kayit = kayit_by_sahne.get(sahne_no) or {}
+        istenen = _sade(istek.get("istenen"))
+        gelen = _sade(kayit.get(teslim_alani))
+        sonuc.append(
+            {
+                "sahne": sahne_no,
+                "alan": alan,
+                "istenen": istenen,
+                "gelen": gelen,
+                "tuttu": bool(istenen) and istenen == gelen,
+            }
+        )
+    return sonuc
+
+
 def sahne_kaydi(
     plan: ContentPlan, credits: list[dict[str, Any]] | None = None
 ) -> list[dict[str, Any]]:
@@ -4298,12 +4359,38 @@ def sahne_kaydi(
     alintilandi, karsiliginda ne indirildi. Kayit olmadan bir sonraki
     "olcup degistir" turu da ayni korlukle baslar.
 
-    Arayuzun okuyacagi bicim: `{sahne, terim, kaynak_dosya, gelen, anlatim}`.
+    Arayuzun okuyacagi bicim:
+    `{sahne, terim, kaynak_dosya, kaynak_dosya_2, gelen, gelen_2, anlatim}`.
+
+    ⚠️ `gelen` BIRINCIL YUVA, `gelen_2` IKINCIL — ve bu bir DUZELTME
+    (2026-08-23). Eskiden tek bir sozluk vardi:
+
+        {int(kredi["scene"]): kredi["title"] for kredi in credits}
+
+    `credits` once birincil, sonra IKINCIL kredileri tasiyor (ikincil olanlar
+    sona ekleniyor) ve ikisi ayni `scene` numarasini kullaniyor — yani sozluk
+    ikincili birincilin USTUNE yaziyordu. Sonucu: iki gorselli sahnelerde
+    `gelen`, `kaynak_dosya`nin degil `kaynak_dosya_2`nin karsiligiydi.
+
+    ⚠️ SESSIZ BIR OLCUM KUSURUYDU: "istenen dosya teslim edildi mi" sorusuna
+    bakan her analiz birincil istegi IKINCIL teslimle karsilastiriyordu. Bu
+    oturumda tam o karsilastirma yapildi ve %50 "teslim kacmasi" cikti — sayi
+    guvenilir degildi.
+
+    ⚠️ Yuva isareti kredide YOK (`wikimedia_materials` ikisini de
+    `{"scene": index, "title": ...}` diye yaziyor), o yuzden ayrim SIRAYA
+    dayaniyor: bir sahnenin ilk kredisi birincil, ikincisi ikincildir.
     """
-    gelen_by_scene = {
-        int(kredi.get("scene", 0)): str(kredi.get("title") or "")
-        for kredi in (credits or [])
-    }
+    gelen_by_scene: dict[int, list[str]] = {}
+    for kredi in credits or []:
+        gelen_by_scene.setdefault(int(kredi.get("scene", 0)), []).append(
+            str(kredi.get("title") or "")
+        )
+
+    def _teslim(sira: int, yuva: int) -> str:
+        gelenler = gelen_by_scene.get(sira) or []
+        return gelenler[yuva] if len(gelenler) > yuva else ""
+
     return [
         {
             "sahne": sira,
@@ -4315,7 +4402,11 @@ def sahne_kaydi(
             # tek kare tasir, yani turetilen Shorts orijinalden FARKLI
             # gorunur ve fark sessizdir (kod calisir, video baskadir).
             "kaynak_dosya_2": str(sahne.get("kaynak_dosya_2", "")),
-            "gelen": gelen_by_scene.get(sira, ""),
+            "gelen": _teslim(sira, 0),
+            # ⚠️ IKINCIL TESLIM. Bu alan olmadan `kareyi_onar`in ikincil
+            # yuvaya yazdigi onarimin tutup tutmadigi YAPISAL OLARAK
+            # olculemiyordu — onarim `kaynak_dosya_2`ye de yaziyor.
+            "gelen_2": _teslim(sira, 1),
             "anlatim": str(sahne.get("narration", "")),
         }
         for sira, sahne in enumerate(plan.scenes, 1)
@@ -8182,14 +8273,19 @@ def run_generator(
         # ([A,A] ve [AB,AB]), yani sicrama piksel birebir ayniyken oluyordu —
         # en gorunur hali.
         #
-        # Donusumlu kipte tek numarali kare iceri, cift numarali kare disari
-        # zoomluyor; olcek HER sinirda surekli kaliyor ve ayni gorselin iki
-        # yuvaya kondugu durum bir kesme gibi degil yavas bir nefes gibi
-        # gorunuyor.
+        # Donusumlu kipte olcek HER sinirda surekli kaliyor, yani ayni
+        # gorselin iki yuvaya kondugu durum bir kesme gibi degil yavas bir
+        # hareket gibi gorunuyor.
         #
-        # Bayrak yalnizca bu hatti etkiliyor; webui varsayilani (duz zoom)
-        # degismedi.
+        # ⚠️ YON SAHNE BASINA DEGISIYOR, KARE BASINA DEGIL (2026-08-23).
+        # Once kare paritesiyle yapiliyordu ve Shorts'ta sahne basina IKI yuva
+        # var: `kare_yerlesimi` uc duzenden ikisinde ayni gorseli iki ardisik
+        # yuvaya koyuyor ([A, A] ve [AB, AB]), yani AYNI GORUNTU once iceri
+        # sonra geri disari zoomluyordu. Kanal sahibinin tarifi birebir buydu.
+        # `--video-yuva` olmadan `preprocess_video` sahne sinirini bilemez.
         "--video-zoom-alternating",
+        "--video-yuva",
+        str(bicim.kare_yuvasi),
         "--voice-name",
         SES_ADI,
         "--voice-rate",
@@ -9185,11 +9281,22 @@ def run_cycle(
         # asamanin incelemesi.
         son_render: tuple[QualityReview, str, list[dict[str, Any]]] | None = None
 
+        # ⚠️ ONARIM TALEBI DONGU BOYUNCA TASINIYOR. `kareyi_onar` bir denemenin
+        # SONUNDA calisip plani degistiriyor; sonucu ancak BIR SONRAKI
+        # denemenin teslim kaydinda gorunuyor. Liste YERINDE guncelleniyor
+        # cunku `_video_reddini_kaydet` onu kapatiyor.
+        onarim_talebi: list[dict[str, Any]] = []
+        # ⚠️ Teslim edilemeyen onarim secimleri. Bir dosya menude duruyor ama
+        # teslim zinciri onu dusuruyorsa (`_alinti_adayi` cozemedi, indirme
+        # dustu, `_tekrar_mi` tekrar dedi) ikinci turda da dusurur.
+        onarim_engelli: set[str] = set()
+
         def _video_reddini_kaydet(
             gozden_gecirme: QualityReview,
             gorev: str | None,
             kunyeler: list[dict[str, Any]] | None,
         ) -> None:
+            sahneler = sahne_kaydi(plan, kunyeler)
             state.setdefault("rejected", []).append(
                 {
                     "stage": "video",
@@ -9204,7 +9311,11 @@ def run_cycle(
                     "subtitle_readability_score": gozden_gecirme.subtitle_readability_score,
                     "issues": gozden_gecirme.issues,
                     "agir_kusurlar": gozden_gecirme.agir_kusurlar,
-                    "sahneler": sahne_kaydi(plan, kunyeler),
+                    "sahneler": sahneler,
+                    # ⚠️ ONCEKI denemede yapilan onarimin SONUCU. Bos liste
+                    # "onarim denenmedi" demek; dolu liste her sahne icin
+                    # `tuttu` tasiyor. Gerekce `onarim_sonucu`nda.
+                    "onarim": onarim_sonucu(onarim_talebi, sahneler),
                     "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                 }
             )
@@ -9436,6 +9547,40 @@ def run_cycle(
                 # goruyor ve "kare 7" dedigi sey videonun 7. karesi degil,
                 # orneklemin 7. elemani. Gecirilmezse her onarim YANLIS
                 # sahnenin gorselini degistirir (bkz. `hakem_karesinden_sahne`).
+                # ⚠️ ONCEKI ONARIMIN SONUCU ONCE OKUNUYOR. `onarim_talebi`
+                # bir onceki turda dolduruldu ve `son_render`in kunyeleri
+                # teslimi tasiyor; boylece "istenen dosya geldi mi" sorusu
+                # loga ve `state.json`a yaziliyor. Okunmadan uzerine
+                # yazilsaydi kapali dongu hic kapanmazdi.
+                # ⚠️ `son_render` SART: teslim kunyeleri oradan geliyor.
+                # Yoksa her istek "gelmedi" gorunur ve saglam dosyalar
+                # bosuna engellenirdi — kapali dongu kendi kendini zehirlerdi.
+                if onarim_talebi and son_render:
+                    _onceki = onarim_sonucu(
+                        onarim_talebi,
+                        sahne_kaydi(plan, son_render[2] if son_render else None),
+                    )
+                    for _kayit in _onceki:
+                        if not _kayit["tuttu"]:
+                            # ⚠️ Tutmayan dosya bir daha SECILMESIN: teslim
+                            # zinciri onu bir kez dusurduyse ikinci turda da
+                            # dusurur ve onarim butcesi bosa gider.
+                            onarim_engelli.add(_kayit["istenen"])
+                    print(
+                        "ℹ️ önceki onarım: "
+                        + " · ".join(
+                            f"sahne {k['sahne']} {'✓' if k['tuttu'] else '✗'}"
+                            for k in _onceki
+                        ),
+                        flush=True,
+                    )
+                onceki_dosyalar = [
+                    (
+                        str(sahne.get("kaynak_dosya", "")),
+                        str(sahne.get("kaynak_dosya_2", "")),
+                    )
+                    for sahne in plan.scenes
+                ]
                 if onarilan := kareyi_onar(
                     plan,
                     review,
@@ -9444,11 +9589,32 @@ def run_cycle(
                     ornekler=hakem_kareleri(
                         len(plan.scenes) * bicim.kare_yuvasi, bicim
                     ),
+                    engellenen=onarim_engelli,
                 ):
                     print(
                         f"ℹ️ kare onarımı: sahne {onarilan} görseli menüden değiştirildi",
                         flush=True,
                     )
+                    # ⚠️ HANGI ALAN degisti, ONCE-SONRA farkindan okunuyor.
+                    # `kareyi_onar` yalnizca sahne numarasi donduruyor ve
+                    # yazdigi alan `kaynak_dosya` ya da `kaynak_dosya_2`
+                    # olabiliyor (`ikincil_bozuk`). Alani bilmeden teslimi
+                    # dogru yuvayla karsilastirmak mumkun degil.
+                    onarim_talebi.clear()
+                    for _no in onarilan:
+                        _sahne = plan.scenes[_no - 1]
+                        for _alan, _eski in (
+                            ("kaynak_dosya", onceki_dosyalar[_no - 1][0]),
+                            ("kaynak_dosya_2", onceki_dosyalar[_no - 1][1]),
+                        ):
+                            if str(_sahne.get(_alan, "")) != _eski:
+                                onarim_talebi.append(
+                                    {
+                                        "sahne": _no,
+                                        "alan": _alan,
+                                        "istenen": str(_sahne.get(_alan, "")),
+                                    }
+                                )
                     # ⚠️ ONARILAN PLAN RENDER EDILMELI. Onarim son denemede
                     # yapildiysa dongu biterdi ve odenmis onarim atilirdi —
                     # 41 red slotunun 14'u tam boyle bitti, altisi skor
@@ -9574,6 +9740,11 @@ def run_cycle(
                 {**kayit, "kelime": len(re.findall(r"\b[\w'-]+\b", kayit["anlatim"]))}
                 for kayit in sahne_kaydi(plan, credits)
             ],
+            # ⚠️ ONARIMLA YAYINLANAN KOSUM DA SINYAL. Alan yalnizca red
+            # kaydina yazilsaydi telemetri yalnizca BASARISIZ onarimlari
+            # gorurdu ve "onarim ise yariyor mu" sorusu yapisal olarak
+            # cevaplanamazdi — kapinin acilmasinin butun amaci buydu.
+            "onarim": onarim_sonucu(onarim_talebi, sahne_kaydi(plan, credits)),
             "topic": plan.topic,
             "visual_anchor": plan.visual_anchor,
             "title": plan.title,

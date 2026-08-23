@@ -208,3 +208,48 @@ def test_yakalama_ESLESME_YOKKEN_kosumu_OLDURMUYOR(tmp_path):
     sonuc = subprocess.run(["bash", str(betik)], capture_output=True, text=True)
 
     assert sonuc.returncode == 0, sonuc.stderr
+
+
+def test_IKINCI_kosum_ILK_kosumun_redlerini_TEKRAR_YAZMIYOR(tmp_path):
+    """⚠️ OLCULDU (2026-08-23): log CIFT SAYIYORDU.
+
+    `plan_redlerini_yaz` her koşumdan sonra calisiyor ve eskiden
+    `CIKTI_DOSYASI`nin TAMAMINI yeniden grep'liyordu. Ikinci koşum ayni
+    dosyaya `>>` ile ekliyor, yani ilk koşumun red satirlari IKI KEZ
+    yaziliyordu:
+
+        147 ham satir -> 123 tekil   (%16 sisme)
+
+    Bu log'un tek kullanicisi OLCUM, yani sisme dogrudan yanlis teshis
+    uretiyor — 23 Agu 05:50 ve 06:43 bloklari ilk dort satirda birebir
+    ayniydi.
+
+    Mutasyon: `tail` ile yalnizca yeni satirlari suzmeyi kaldirip tam dosyayi
+    yeniden grep'lemek bu testi dusurur.
+    """
+    import subprocess
+
+    cikti = tmp_path / "cikti.log"
+    cikti.write_text("⚠️ deneme 1/5 reddedildi: ILK KOSUM kusuru\n", encoding="utf-8")
+    betik = tmp_path / "cift.sh"
+    # Iki koşumun taklidi: fonksiyon cagrilir, dosyaya EKLENIR, yeniden
+    # cagrilir. Uretimdeki akis birebir bu (`uretim_kosumu` `>>` kullaniyor).
+    govde = _yakalama_blogu().replace("\nplan_redlerini_yaz\n", "\n")
+    betik.write_text(
+        "set -uo pipefail\n"
+        'zaman() { echo "ZAMAN"; }\n'
+        f'CIKTI_DOSYASI="{cikti}"\nLOG_DIZINI="{tmp_path}"\n'
+        + govde
+        + "\nplan_redlerini_yaz\n"
+        + f'echo "⚠️ deneme 1/5 reddedildi: IKINCI KOSUM kusuru" >>"{cikti}"\n'
+        + "plan_redlerini_yaz\n",
+        encoding="utf-8",
+    )
+
+    sonuc = subprocess.run(["bash", str(betik)], capture_output=True, text=True)
+
+    assert sonuc.returncode == 0, sonuc.stderr
+    satirlar = (tmp_path / "plan-redleri.log").read_text(encoding="utf-8").splitlines()
+    assert len(satirlar) == 2, f"her red BIR kez yazilmaliydi: {satirlar}"
+    assert "ILK KOSUM" in satirlar[0]
+    assert "IKINCI KOSUM" in satirlar[1]

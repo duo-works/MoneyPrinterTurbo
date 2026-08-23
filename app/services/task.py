@@ -575,6 +575,10 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             clip_duration=(params.video_clip_durations or params.video_clip_duration),
             zoom=params.video_zoom,
             donusumlu_zoom=params.video_zoom_donusumlu,
+            # ⚠️ Donusumlu zoom'un yonu SAHNE basina degisiyor; bu deger
+            # olmadan sahne basina iki yuva kullanan hat, ayni goruntuyu once
+            # iceri sonra disari zoomlar. Gerekce `preprocess_video`da.
+            yuva=params.video_yuva or 1,
         )
         if not materials:
             _mark_task_failed(

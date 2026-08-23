@@ -102,17 +102,22 @@ def _hat(monkeypatch, tmp_path):
     # Menude birden fazla kullanilmamis dosya: uc deneme boyunca onarim
     # calisabilsin (tek girdi olursa ikinci denemede menu tukenir ve akis
     # yedek yola duser — o zaman test onarimi degil yedegi olcer).
+    #
+    # ⚠️ MENU BUYUTULDU (2026-08-23). Onarim artik TESLIM EDILEMEYEN secimi
+    # bir daha sunmuyor (`engellenen`); dort girdiyle havuz dorduncu turda
+    # tukeniyordu ve bu test onarimi degil TUKENMEYI olcmeye basliyordu.
+    # Uretimde menu 30-45 girdi, yani tukenme gercek bir vaka degil.
     monkeypatch.setattr(
         ya,
         "arsiv_envanteri",
         lambda _k, **_: [
             {"dosya": f"YENI-{i}.jpg", "gosterdigi": "dogru nesne", "tarih": "1900"}
-            for i in range(1, 5)
+            for i in range(1, 21)
         ],
     )
     # ⚠️ DONGUSEL: onarim dongusu uzayabiliyor (`ONARIM_EK_DENEME`) ve sabit
     # dort elemanli taklit `StopIteration` ile dusuyordu.
-    secim = itertools.cycle([f"YENI-{i}.jpg" for i in range(1, 5)])
+    secim = itertools.cycle([f"YENI-{i}.jpg" for i in range(1, 21)])
     # ⚠️ `n` SAHNE numarasi, kare degil. Hakem "kare 6" diyor ve sahne
     # basina iki kare oldugu icin (`KARE_YUVASI`) bu SAHNE 3 demek.
     # 2026-08-14'e kadar burada 6 yaziyordu; kare duzeni degisince taklit

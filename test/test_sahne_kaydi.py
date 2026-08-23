@@ -55,8 +55,36 @@ def test_kayit_istenen_ve_geleni_yan_yana_koyuyor():
         # tasimiyor ve bos ikincil bir kusur DEGIL.
         "kaynak_dosya_2": "",
         "gelen": "File:Cutty-sark.png",
+        # ⚠️ 2026-08-23'te eklendi. Bu sahnenin ikincil kunyesi yok, o yuzden
+        # bos — ve bosluk bir kusur DEGIL.
+        "gelen_2": "",
         "anlatim": "gemi tam yelken",
     }
+
+
+def test_IKINCIL_kunye_birincilin_USTUNE_YAZMIYOR():
+    """⚠️ SESSIZ OLCUM KUSURU, olculdu 2026-08-23.
+
+    `credits` once birincil sonra IKINCIL kredileri tasiyor ve ikisi ayni
+    `scene` numarasini kullaniyor. Eski kod tek bir sozluk kuruyordu, yani
+    ikincil kredi birincilin USTUNE yaziyordu: iki gorselli sahnelerde
+    `gelen`, `kaynak_dosya`nin degil `kaynak_dosya_2`nin karsiligiydi.
+
+    Bedeli: "istenen dosya teslim edildi mi" sorusuna bakan her analiz
+    birincil istegi IKINCIL teslimle karsilastiriyordu. Bu oturumda tam o
+    karsilastirma yapildi ve %50 "teslim kacmasi" cikti — sayi yanlisti.
+
+    Mutasyon: tek sozluge (`{scene: title}`) geri donmek bu testi dusurur.
+    """
+    kunyeler = [
+        {"scene": 1, "title": "File:BIRINCIL.png"},
+        {"scene": 1, "title": "File:IKINCIL.png"},
+    ]
+
+    kayit = ya.sahne_kaydi(_plan(), kunyeler)
+
+    assert kayit[0]["gelen"] == "File:BIRINCIL.png", "birincil yuva ezilmis"
+    assert kayit[0]["gelen_2"] == "File:IKINCIL.png"
 
 
 def test_kunye_yoksa_alan_bos_kaliyor():
@@ -73,11 +101,37 @@ def test_kayit_HER_IKI_red_yoluna_da_bagli():
     Iki ayri red yolu var (kaynak kapisi ve video kapisi) ve bu oturumda
     maliyet farki tam da orada: 146 reddin 120'si render'a hic ulasmadan
     kaynak kapisinda dustu.
-    """
-    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
-    i = kaynak.index("def run_cycle(")
 
-    assert kaynak.count('"sahneler": sahne_kaydi(', i) == 2
+    ⚠️ KAYNAK AYRISTIRILIYOR, DIZE ARANMIYOR (2026-08-23). Eskiden
+    `'"sahneler": sahne_kaydi('` dizesi SAYILIYORDU ve video yolu ayni kaydi
+    bir yerel degiskenden (`sahneler`) yazmaya baslayinca test DAVRANIS
+    DOGRUYKEN dustu. Olculecek sey ifade degil, kaydin ALANI.
+    """
+    import ast
+
+    agac = ast.parse(Path(ya.__file__).read_text(encoding="utf-8"))
+    bulunan: set[str] = set()
+    for dugum in ast.walk(agac):
+        if not isinstance(dugum, ast.Dict):
+            continue
+        anahtarlar = {
+            k.value
+            for k in dugum.keys
+            if isinstance(k, ast.Constant) and isinstance(k.value, str)
+        }
+        if "stage" not in anahtarlar or "sahneler" not in anahtarlar:
+            continue
+        for anahtar, deger in zip(dugum.keys, dugum.values):
+            if (
+                isinstance(anahtar, ast.Constant)
+                and anahtar.value == "stage"
+                and isinstance(deger, ast.Constant)
+            ):
+                bulunan.add(str(deger.value))
+
+    assert {"source_materials", "video"} <= bulunan, (
+        f"iki red yolu da sahne kaydi tasimali; bulunan: {sorted(bulunan)}"
+    )
 
 
 def test_kaynak_kapisi_kunyeyi_tasiyor():

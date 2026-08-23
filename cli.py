@@ -317,6 +317,16 @@ Output and exit status:
         help="disable the slow zoom applied to still images",
     )
     video_group.add_argument(
+        # ⚠️ SAHNE BASINA KARE. `--video-zoom-alternating` yonu bu birime gore
+        # ceviriyor; verilmezse 1, yani "her kare kendi sahnesi" ve davranis
+        # bugunku ile BIREBIR ayni kalir.
+        "--video-yuva",
+        dest="video_yuva",
+        type=int,
+        default=None,
+        help="frames per scene; alternating zoom flips direction per scene",
+    )
+    video_group.add_argument(
         # ⚠️ Ayni desen: yalnizca ACMA bayragi, varsayilan `None`. Zoom'un
         # VARLIGINI degil YONUNU degistiriyor — tek numarali kare iceri, cift
         # numarali kare disari zoomlar ve olcek klip sinirlarinda surekli
@@ -327,7 +337,7 @@ Output and exit status:
         const=True,
         default=None,
         help=(
-            "alternate zoom direction per frame so the scale stays continuous "
+            "alternate zoom direction per scene so the scale stays continuous "
             "across clip boundaries (no effect with --no-video-zoom)"
         ),
     )
@@ -606,6 +616,7 @@ def build_video_params(args: argparse.Namespace) -> VideoParams:
         "video_clip_durations",
         "video_zoom",
         "video_zoom_donusumlu",
+        "video_yuva",
         "match_materials_to_script",
         "n_threads",
         "voice_volume",
