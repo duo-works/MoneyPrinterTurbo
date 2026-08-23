@@ -99,12 +99,23 @@ def test_red_kayitlari_slot_tasiyor():
         yerler.append(konum)
         konum = kaynak.find(capa, konum + 1)
 
-    # ⚠️ UC KAYIT YERI (2026-08-18'de ikiden uce cikti): kaynak asamasi, video
-    # asamasi ve PLANLAMA. Ucuncusu #38'in sogumasindaki deligi kapatiyor —
-    # plan uretilemeden dusen koşum adayi hic sogutmuyordu ve aday ertesi
-    # koşumda yine kuyrugun basindaydi (canlida olculdu, `Orkhon Yazıtları`).
-    # Sayi burada tutuluyor ki yeni bir cikis yolu SESSIZCE eklenmesin.
-    assert len(yerler) == 3, f"uc kalici red kaydi bekleniyordu, {len(yerler)} bulundu"
+    # ⚠️ DORT KAYIT YERI: kaynak asamasi, video asamasi, PLANLAMA ve RENDER
+    # ZAMAN ASIMI.
+    #
+    # Ucuncusu (2026-08-18) #38'in sogumasindaki deligi kapatiyor — plan
+    # uretilemeden dusen koşum adayi hic sogutmuyordu ve aday ertesi koşumda
+    # yine kuyrugun basindaydi (canlida olculdu, `Orkhon Yazıtları`).
+    #
+    # Dorduncusu (2026-08-23) ayni sinif deligin RENDER tarafi: 00:05 uzun
+    # koşumu `subprocess.TimeoutExpired` ile oldu ve `state.json`'a tek bir
+    # kayit dusmedi, yani darbogaz siralamasinda o vaka HIC gorunmuyordu.
+    #
+    # ⚠️ Sayi burada tutuluyor ki yeni bir cikis yolu SESSIZCE eklenmesin —
+    # ve 2026-08-23'te tripwire gorevini gercekten yapti, dorduncu yolu
+    # ekleyen degisikligi yakaladi.
+    assert len(yerler) == 4, (
+        f"dort kalici red kaydi bekleniyordu, {len(yerler)} bulundu"
+    )
     # ⚠️ Govde SONRAKI kayda kadar aliniyor, sabit uzunlukla degil: kaynak
     # asamasi kaydinin ustunde uzun bir gerekce yorumu var ve 900 karakterlik
     # pencere alanlara ulasmadan bitiyordu. Sabit pencere buyutmek de yanlis

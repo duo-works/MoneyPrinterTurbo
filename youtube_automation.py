@@ -446,6 +446,25 @@ class UzunFormatUygunDegilError(RuntimeError):
     """
 
 
+class RenderZamanAsimi(RuntimeError):
+    """Render alt sureci `render_zaman_asimi` butcesini asti.
+
+    ⚠️ NEDEN AYRI BIR TIP: deneme dongusu bu vakayi KALAN DENEMELERI
+    YAKMADAN yakalamak zorunda. `subprocess.TimeoutExpired` yakalanmadigi
+    surece `run_generator` -> deneme dongusu -> `run_cycle` -> `main`
+    zincirini delip geciyor ve butun koşumu olduruyordu; 2026-08-23 00:05
+    koşumunda tam bu oldu (`cikis 1`, iki denemenin ikisi de yandi).
+
+    ⚠️ `log_path` TASINIYOR cunku hatanin degeri tam olarak o: eski sirada
+    log yazimi `subprocess.run` DONDUKTEN sonraydi, yani zaman asiminda hic
+    calismiyordu ve 90 dakikalik render'dan tek satir bile kalmiyordu.
+    """
+
+    def __init__(self, mesaj: str, *, log_path: Path) -> None:
+        super().__init__(mesaj)
+        self.log_path = log_path
+
+
 # NFKD'nin AYRISTIRMADIGI harfler. Ayrismayan bir harf `[a-z0-9]+` suzgecinde
 # kelimeyi ikiye boluyor, o yuzden tek tek karsiliklari yaziliyor.
 _AYRISMAYAN_HARFLER = str.maketrans(
@@ -6894,35 +6913,61 @@ Uc ayri koşumda ayni deger cikti (bkz. `:760`). Ses olcumu agdan dondugu
 icin basarisiz olabilir; kelime sayisi olamaz.
 """
 
-RENDER_ZAMAN_ASIMI = 1800
+RENDER_ZAMAN_ASIMI = 2700
 """Render alt sureci icin ust sinir, saniye — SHORTS olcusu.
 
-⚠️ Bu sayinin Shorts'a gore oldugunu soyleyen bir yorum YOKTU; olculdu
-(2026-08-15, `logs/2026-08-15-15-attempt-1.log`): 33,4 saniyelik bir Short
-115 saniyede render ediliyor, yani 1800 sn 15 kat pay demek. Kimse bunun
-uzun formata bakmadigini yazmamis cunku hic bakilmamis.
+⚠️ OLCULDU 2026-08-23. Eski deger 1800'du ve gerekcesi tek bir 2026-08-15
+koşumundan geliyordu ("33,4 sn'lik Short 115 saniyede render ediliyor",
+yani 3,4x). O oran BUGUNKU hat icin gecerli degil: 2026-08-22 20:05
+koşumu (`logs/2026-08-22-20-attempt-1.log`, BASARILI) 41,4 sn ses icin
+19,6 DAKIKA surdu — GERCEK ZAMANIN 28,4 KATI. Fark kodda degil yukte:
+sahne basina iki kare, dikey 1080x1920, ve makine cekismesi.
+
+    Shorts kelime tavani 150 -> 53 sn ses (`KELIME_HIZI` 170)
+    53 sn x 28,4 = 1.505 sn = 25 dk     eski butce 1800 sn = 30 dk
+
+Yani eski deger yalnizca 1,20 kat pay birakiyordu ve ikinci bir gizli
+ariza orada bekliyordu. 2700 sn 1,79 kat pay verir; Shorts slotlari 3 saat
+arayla oldugu icin 45 dk render + plan pencereye rahat sigar.
 """
 
-UZUN_RENDER_ZAMAN_ASIMI = 5400
-"""Uzun formatta render siniri.
+UZUN_RENDER_ZAMAN_ASIMI = 12600
+"""Uzun formatta render siniri, saniye.
 
-Ayni koşumdan cikan olcum: render GERCEK ZAMANIN 3,4 KATI suruyor
-(115 sn / 33,4 sn). Uc gecis var ve her biri yeniden kodluyor —
-`preprocess_video` her kareyi ayri mp4 yaziyor, `combine_videos` her klibi
-`temp-clip-N.mp4` olarak birlestiriyor, `generate_video` altyaziyla final'i
-uretiyor.
+⚠️ OLCULDU 2026-08-23, FAZ FAZ. Eski deger 5400'du ve turetme hatasi suydu:
+uzun butce, tek bir SHORTS koşumundan cikan 3,4x oraniyla boyutlandirilmisti.
+Uzun format hic ffmpeg duzeyinde zamanlanmamisti ve 2026-08-23 00:05 koşumu
+tam burada oldu (`subprocess.TimeoutExpired`, 5400 sn).
 
-Uzun formatta ayni butceye giren yuk:
-    ses      423-775 sn  (`UZUN_BICIMI.kelime_araligi`, 170 kelime/dk)
-    kodlama  3,4 x 775 ≈ 2.635 sn
-    TTS      ayni surecin ICINDE, en kotu 3 x 660 = 1.980 sn
+Faz basina birim maliyet (saniye / saniye-video), olen koşumun artefaktlariyla:
 
-⚠️ Yani bugunku TTS duzeltmesi (30 sn -> kelime x 0,3) tek basina eski
-1800'u tasiriyordu. Iki sabit birbirine bagli ve ayri ayri degistirilemez.
+    faz 2  preprocess_video (zoom)   5,40x   <- darbogaz, %46'si Python/PIL
+    faz 3  combine_videos            0,97x
+    faz 4  generate_video + altyazi  3,15x
+                                     -----
+    TOPLAM                           9,52x
 
-⚠️ Bu sayi `KILIT_BAYATLAMA` ile BIRLIKTE dusunulmeli: zaman asimini
-yukseltip kilidi 4 saatte birakmak, iki koşumun ayni `state.json` uzerinde
-paralel calismasi demekti.
+⚠️ Altyazi maliyeti KUS SAYISIYLA buyumuyor — ayni video, ayni sure,
+17/34/68/136 kus: sekiz kat kus, yalnizca 1,12 kat sure. Yani maliyet kare
+basina kompozit, kus basina degil; sureyle DOGRUSAL, karesel DEGIL. Butce
+bu yuzden dogrusal genisletmeyle yazilabiliyor.
+
+Butce kelime TAVANINDAN hesaplaniyor, hedeften degil — tavan modelin
+gercekten uretebildigi bir deger ve ayni tuzaga ikinci kez dusulmuyor:
+
+    kelime tavani 2200 -> 775 sn ses
+    775 x  9,52 =  7.379 sn = 123 dk   (olcum anindaki cekisme)
+    775 x 14,10 = 10.928 sn = 182 dk   (00:05 gecesinin AGIR rejimi)
+
+Ikinci satir olculen faz 2 farkindan turetildi (8,0x / 5,4x = 1,48 kat) ve
+o gecenin GOZLENEN 79 dakikasini 76 dk olarak yeniden uretiyor, yani model
+dogrulanmis sayilir. 12600 bunun uzerine %15 pay birakir.
+
+⚠️ Bu sayi `KILIT_BAYATLAMA` ile BIRLIKTE dusunulmeli ve tavana yakin
+secildi: kilit (12 saat) bu sayinin UC KATINI asmak zorunda
+(`test_render_butcesi.py`), yani ust sinir 14400. Zaman asimini yukseltip
+kilidi kisa birakmak, iki koşumun ayni `state.json` uzerinde paralel
+calismasi demekti.
 """
 
 
@@ -7655,6 +7700,48 @@ def _hazir_kareleri_yerlestir(
     return dosyalar, kunyeler
 
 
+def _cikitiyi_metne_cevir(cikti: str | bytes | None) -> str:
+    """Alt surec ciktisini yaziya cevirir — `None` ve `bytes` dahil."""
+    if cikti is None:
+        return ""
+    if isinstance(cikti, bytes):
+        return cikti.decode("utf-8", errors="replace")
+    return cikti
+
+
+def _deneme_logu_yaz(
+    attempt: int, stdout: str | bytes | None, stderr: str | bytes | None
+) -> Path:
+    """Deneme ciktisini diske yazar ve log yolunu dondurur.
+
+    ⚠️ NEDEN AYRI FONKSIYON: iki cagiran var — `subprocess.run` normal
+    donduğunde ve ZAMAN ASIMINDA. Eskiden log yazimi yalnizca birinci yolda
+    duruyordu, yani asilan render hic log birakmiyordu.
+
+    ⚠️ Cikti UC AYRI TIPTE gelebilir ve bu OLCULDU, varsayilmadi:
+
+        subprocess.run dondu                       -> str    (`text=True`)
+        TimeoutExpired, alt surec bir sey bastiysa  -> bytes
+        TimeoutExpired, alt surec sessiz kaldiysa   -> None
+
+    Ortadaki satir sasirtici: `text=True` verilmis olmasina ragmen CPython
+    `TimeoutExpired` alanlarini COZMEDEN, ham bayt olarak dolduruyor
+    (zaman asimi yolunda `_translate_newlines` hic calismiyor). Eski koddaki
+    gibi duz birlestirme yazilsaydi (`result.stdout + "..."`) zaman
+    asiminda `TypeError` atardi — yani teshis icin tutulan log, tam teshis
+    gerektigi anda kendisi duserdi.
+    """
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = LOG_DIR / f"{publication_slot_key()}-attempt-{attempt}.log"
+    log_path.write_text(
+        _cikitiyi_metne_cevir(stdout)
+        + "\n--- STDERR ---\n"
+        + _cikitiyi_metne_cevir(stderr),
+        encoding="utf-8",
+    )
+    return log_path
+
+
 def run_generator(
     plan: ContentPlan,
     attempt: int,
@@ -8045,6 +8132,12 @@ def run_generator(
 
     command = [
         sys.executable,
+        # ⚠️ `-u` (tamponsuz) ZORUNLU ve olcume dayaniyor: basarili bir
+        # koşumun logunda teshis iceriginin TAMAMI stdout'ta duruyor
+        # (2026-08-22 20:05: stdout 87 satir, stderr 3). Tamponlu stdout
+        # zaman asiminda alt surecin icinde kalir ve `TimeoutExpired.stdout`
+        # bos doner — yani zaman asimi logu yazilsa bile ICI BOS olurdu.
+        "-u",
         "cli.py",
         "--video-subject",
         plan.topic,
@@ -8195,20 +8288,30 @@ def run_generator(
             "--video-clip-durations",
             ",".join(str(s) for s in yuva_sureleri),
         ]
-    result = subprocess.run(
-        command,
-        cwd=ROOT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        timeout=render_zaman_asimi(bicim),
-    )
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = LOG_DIR / f"{publication_slot_key()}-attempt-{attempt}.log"
-    log_path.write_text(
-        result.stdout + "\n--- STDERR ---\n" + result.stderr, encoding="utf-8"
-    )
+    butce = render_zaman_asimi(bicim)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=ROOT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=butce,
+        )
+    except subprocess.TimeoutExpired as hata:
+        # ⚠️ LOG ONCE YAZILIYOR, hata SONRA yukseliyor. Eski sirada log
+        # yazimi `subprocess.run` DONDUKTEN sonraydi, yani zaman asiminda
+        # hic calismiyordu: 2026-08-23 00:05 koşumunun 90 dakikalik
+        # render'indan tek satir bile kalmadi ve `subtitle.srt`in neden
+        # yazilmadigi bugun CEVAPLANAMIYOR. Teshis icin tutulan sey, tam
+        # teshis gerektigi anda yok oluyordu.
+        log_path = _deneme_logu_yaz(attempt, hata.stdout, hata.stderr)
+        raise RenderZamanAsimi(
+            f"render {butce} sn butcesini asti; bkz. {log_path}",
+            log_path=log_path,
+        ) from hata
+    log_path = _deneme_logu_yaz(attempt, result.stdout, result.stderr)
     if result.returncode:
         raise RuntimeError(f"video generation failed; see {log_path}")
     payload = parse_cli_result(result.stdout)
@@ -9125,6 +9228,36 @@ def run_cycle(
                 ) = run_generator(
                     plan, attempt, bicim=bicim, hazir_kareler=hazir_kareler
                 )
+            except RenderZamanAsimi as hata:
+                # ⚠️ EN AZ IKI SEY birden duzeliyor burada. Once: bu istisna
+                # yakalanmadigi surece `run_cycle`i ve `main`i delip geciyor
+                # ve koşum `cikis 1` ile oluyordu — kalan denemeler de
+                # yaniyordu (2026-08-23 00:05, iki deneme). Sonra: hicbir
+                # `rejected` kaydi yazilmadigi icin telemetri bu vakayi HIC
+                # gormuyordu, yani darbogaz siralamasinda gorunmuyordu.
+                print(f"⛔ render zaman aşımı (deneme {attempt}): {hata}", flush=True)
+                state.setdefault("rejected", []).append(
+                    {
+                        "stage": "render_timeout",
+                        "slot": slot,
+                        "kaynak": kaynak,
+                        "aday_basligi": aday.baslik if aday else None,
+                        "topic": plan.topic,
+                        "visual_anchor": plan.visual_anchor,
+                        "attempt": attempt,
+                        "bicim": bicim.ad,
+                        "butce_sn": render_zaman_asimi(bicim),
+                        "log": str(hata.log_path),
+                        "rejected_at": datetime.now(
+                            ZoneInfo(TIMEZONE_NAME)
+                        ).isoformat(),
+                    }
+                )
+                save_state(state)
+                # ⚠️ `continue`: butce asimi PLANIN kusuru degil, o yuzden
+                # yeniden planlamaya gidilmiyor; ayni plan bir sonraki
+                # denemede yeniden render ediliyor.
+                continue
             except SourceMaterialRejected as exc:
                 review = exc.review
                 rejected_topic = plan.topic
