@@ -67,6 +67,18 @@ fi
 CIKTI_DOSYASI="$(mktemp)"
 trap 'rm -f "$CIKTI_DOSYASI"' EXIT
 
+cd "$KOK" || exit 1
+
+# ⚠️ Slot karari AYRI DOSYADA ve saf — gerekcesi `slot_karari.sh` icinde.
+# Govdeye gomulu bir karar sinanamazdi. Kol secimi (`uzun_slot_mu`) ve
+# deney kolu (`sahne_kolu`) de oradan geliyor, ayni sebeple.
+#
+# ⚠️ KAYNAK SIRASI: bu satir SAHNE hesabindan ONCE olmak ZORUNDA. Eskiden
+# sonra geliyordu cunku hesap bir formuldu (`(SAAT/3)%2`) ve hicbir seye
+# bagli degildi; `sahne_kolu` `TETIK_SAATLERI`yi geziyor.
+# shellcheck source=slot_karari.sh
+. "$KOK/scripts/slot_karari.sh"
+
 # ⚠️ DENEY KOLU SAATE GORE DONUSUMLU. Yoksa deney hic olusmaz: zamanlayici
 # bayraksiz kosar, model her seferinde 6-10 arasindan kendi secer ve iki kol
 # birbirine karisir.
@@ -75,33 +87,17 @@ trap 'rm -f "$CIKTI_DOSYASI"' EXIT
 # DEGISIMINDE gidiyor ve klip suresi `ses ÷ sahne`, yani sahne sayisi o
 # kesmenin ne zaman geldigini belirliyor. Karsilastirilacak sey bu.
 #
-# 0/6/12/18 → 6 sahne (uzun klip) · 3/9/15/21 → 8 sahne (mevcut davranis)
-# Gunde 4'er deneme, yani kol basina haftada ~28 sans.
+# ⚠️ SECIM ARTIK `slot_karari.sh`TE ve SAATTEN degil `TETIK_SAATLERI`
+# icindeki SIRADAN turuyor. Eski `(SAAT / 3) % 2` formulu 3 saatlik izgarada
+# dengeliydi ama 2 saatlik bantta 2:1 carpitiyordu (8 sahne 6 slot / 6 sahne
+# 3 slot) — yani deneyi sessizce curutuyordu. Gerekcenin tamami ve olcum
+# `sahne_kolu`nun yorumunda.
+#
 # ⚠️ `10#` ONEKI ZORUNLU. `date +%H` saat 06'da "06" veriyor ve bash bunu
-# `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce `else`
-# daline dusurup 06:05 koşumunu yanlis kola yazardi.
-# ⚠️ `10#` ONEKI ZORUNLU. `date +%H` saat 06'da "06" veriyor ve bash bunu
-# `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce `else`
-# daline dusurup 06:05 koşumunu yanlis kola yazardi.
+# `(( ))` icinde SEKIZLIK sayi sanip hata veriyor; hata da sessizce yanlis
+# kola yazardi.
 SAAT=$((10#$(date +%H)))
-
-# ⚠️ IZGARA 0 5 8 11 14 17 20 iken deney KOLLARI HALA DENGELI:
-#     5->8 · 8->6 · 11->8 · 14->6 · 17->8 · 20->6   (gunde 3'er)
-# Yani `(SAAT / 3) % 2` formulu duzensiz izgarada da bozulmuyor; saat 0
-# zaten uzun kola gidiyor ve bu hesabi hic kullanmiyor.
-if (( (SAAT / 3) % 2 == 0 )); then
-  SAHNE=6
-else
-  SAHNE=8
-fi
-
-cd "$KOK" || exit 1
-
-# ⚠️ Slot karari AYRI DOSYADA ve saf — gerekcesi `slot_karari.sh` icinde.
-# Govdeye gomulu bir karar sinanamazdi. Kol secimi (`uzun_slot_mu`) de
-# oradan geliyor, ayni sebeple.
-# shellcheck source=slot_karari.sh
-. "$KOK/scripts/slot_karari.sh"
+SAHNE="$(sahne_kolu "$SAAT")"
 
 # ⚠️ KOL SECIMI — kanal sahibinin karari (2026-08-22): 00:05 UZUN video,
 # kalan alti tetik Shorts.
@@ -158,6 +154,16 @@ plan_redlerini_yaz() {
 # Ilk yazim `>`: ayni slotta yeniden denenirse eski gunluk uzerine
 # eklenmesin, uretim ciktisi asagida `>>` ile bunun ardina gelsin.
 .venv/bin/python huni_besle.py >"$CIKTI_DOSYASI" 2>&1 || true
+
+# ⚠️ ILK KOSUM DA TAVANI GORUYOR. Bugune kadar tavan YALNIZCA ikinci koşumu
+# kapatiyordu; her slotun ilk koşumu tavandan bagimsiz calisip ~30 dakikalik
+# render'i yakiyor ve yuklemede `quotaExceeded` ile oluyordu. Izgara
+# siklastikca (6 -> 9 Shorts slotu) bu israf da siklasir.
+YAYIN_SAYISI="$(bugunku_yayin_sayisi .venv/bin/python "$KOK/storage/youtube_automation/state.json")"
+if tetik_atlansin_mi "$YAYIN_SAYISI"; then
+  yaz "tavan | bugun $YAYIN_SAYISI yayin, tetik atlandi"
+  exit 0
+fi
 
 uretim_kosumu --from-notion --yedek-konu
 KOD=$?
@@ -226,11 +232,15 @@ case "$KOD" in
       exit 0
     fi
     if grep -q "quotaExceeded" "$CIKTI_DOSYASI"; then
-      # ⚠️ Gunluk YouTube kotasi doldu, hat kirik degil. `videos.insert`
-      # 1600 birim ve gunluk kota 10.000 — yani GUNDE EN FAZLA 6 YUKLEME.
-      # Tetikleme araligi (3 saat = 8 deneme) bu tavana gore secildi; yine de
-      # yayin orani yukselirse gun icinde tavana vurulabilir.
-      yaz "kota doldu | gunluk 6 yukleme tavani"
+      # ⚠️ Gunluk YouTube kotasi doldu, hat kirik degil.
+      #
+      # ⚠️ ESKI GEREKCE CURUDU (2026-08-23): burada "videos.insert 1600 birim,
+      # gunluk kota 10.000 -> gunde en fazla 6 yukleme" yaziyordu. Google'in
+      # belgesi `videos.insert`in AYRI bir kovasi oldugunu ve gunluk 100
+      # cagri verildigini soyluyor (maliyet 1 birim). Bu dala DUSULURSE sebep
+      # yukleme sayisi degil, buyuk olasilikla 10.000 birimlik ORTAK havuz
+      # (arama/liste cagrilari) — o yuzden mesaj artik sayi soylemiyor.
+      yaz "kota doldu | YouTube gunluk kotasi"
       exit 0
     fi
     HATA_DOSYASI="$LOG_DIZINI/hata-$(date +%Y%m%d-%H%M%S).log"

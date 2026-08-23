@@ -2,19 +2,29 @@
 <!--
   Shemz uretim zamanlayicisi.
 
-  ⚠️ IZGARA DUZENSIZ, ve bu KASITLI (2026-08-22, kanal sahibinin karari):
+  ⚠️ SHORTS BANDI 2 SAATLIK, GECE BANDI DEGIL — KASITLI (2026-08-23,
+  kanal sahibinin karari):
 
-      00:05 UZUN · 05:05 · 08:05 · 11:05 · 14:05 · 17:05 · 20:05
+      00:05 UZUN
+      05:05 07:05 09:05 11:05 13:05 15:05 17:05 19:05 21:05  Shorts
 
-  Gunde 1 uzun video + 6 Shorts. Uzun slota ~5 saat veriliyor cunku
-  olculen uzun koşum 100-210 dk surdu ve 3 saatlik pencereye SIGMIYORDU:
-  tasan koşum sonraki slotu "atlandi | onceki kosum suruyor" ile yakiyordu
-  (20-21 Agu'da uc kez).
+  Gunde 1 uzun video + 9 Shorts. Gun 24 saat ve uzun slot 5 saatini yiyor,
+  yani "tam 2 saatte bir" ile "uzun slota genis pencere" ayni anda
+  saglanamaz; kanal sahibi olcumu gorup uzun slotu korumayi secti.
 
-  ⚠️ TETIK SAYISI KOTADAN da gecmeli: `videos.insert` 1600 birim, gunluk
-  kota 10.000 — yani GUNDE EN FAZLA 6 YUKLEME. 7 tetik tavanin bir ustunde
-  ama olculen yayin orani (p = 0,16 / koşum) ile baglamiyor; tavan yine de
-  `slot_karari.sh`te ONCEDEN sayiliyor.
+  Uzun slota ~5 saat veriliyor cunku olculen uzun koşum 100-210 dk surdu ve
+  3 saatlik pencereye SIGMIYORDU: tasan koşum sonraki slotu "atlandi |
+  onceki kosum suruyor" ile yakiyordu (20-21 Agu'da uc kez).
+
+  ⚠️ Gece bandina Shorts KONMADI, gerekcesi olcum: 23:05 koşumu 1/4
+  ihtimalle kilidi 00:05'e tasiyip uzun slotu yakardi, 03:05 ise uzun
+  slotun IKINCI koşumunu oldururdu ("uzun israr et" devre disi kalirdi).
+
+  ⚠️ TETIK SAYISI KOTAYI ZORLAMIYOR — eski gerekce CURUDU (2026-08-23).
+  Burada "videos.insert 1600 birim -> gunde en fazla 6 yukleme" yaziyordu;
+  Google'in belgesi `videos.insert`in AYRI bir kovasi oldugunu ve gunluk
+  100 cagri verildigini soyluyor (maliyet 1 birim). Gerekcenin tamami
+  `slot_karari.sh`teki `GUNLUK_YUKLEME_TAVANI` yorumunda.
 
   ⚠️ Bu dizi `scripts/slot_karari.sh` icindeki `TETIK_SAATLERI` ile AYNI
   olmak zorunda — `test_slot_karari.py` ikisini karsilastiriyor. Ayrisirsa
@@ -47,16 +57,21 @@
 
     <!-- Saatin 5'inde, tam saat degil: baska bir zamanlanmis is ya da elle
          baslatilan bir koşum tam saatte yigilmasin.
-         00 UZUN kol · 05/08/11/14/17/20 Shorts. -->
+         00 UZUN kol · 05/07/09/11/13/15/17/19/21 Shorts.
+         ⚠️ Bu dizi `scripts/slot_karari.sh` icindeki `TETIK_SAATLERI` ile
+         AYNI olmak zorunda; `test_slot_karari.py` ikisini karsilastiriyor. -->
     <key>StartCalendarInterval</key>
     <array>
         <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>5</integer></dict>
         <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
         <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>5</integer></dict>
         <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>5</integer></dict>
     </array>
 
     <!-- ⚠️ Yuklenince HEMEN calismasin: `launchctl load` bir video

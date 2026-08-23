@@ -109,17 +109,50 @@ def test_PENCERE_YETIYORSA_deneniyor(kalan):
     assert _karar(kod=2, kalan=kalan, yayin=1, kilit=0) is True
 
 
-@pytest.mark.parametrize("yayin", [6, 7, 12])
+@pytest.mark.parametrize("yayin", [10, 11, 20])
 def test_GUNLUK_TAVANDA_ikinci_kosum_YOK(yayin):
-    """⚠️ `videos.insert` 1600 birim, gunluk kota 10.000 -> gunde 6 yukleme.
-    Bugune kadar hat tavana TEPKISEL carpiyordu; ikinci koşum acilinca gunluk
-    yayin sayisi artacagi icin tavan ONCEDEN sayiliyor."""
+    """⚠️ Tavan bir EMNIYET SUPABI; eski kota gerekcesi curudu (2026-08-23).
+
+    Burada "videos.insert 1600 birim -> gunde 6 yukleme" yaziyordu. Google'in
+    belgesi `videos.insert`in AYRI bir kovasi oldugunu ve gunluk 100 cagri
+    verildigini soyluyor. Yanlis tavan, izgara siklasinca (6 -> 9 Shorts
+    slotu) GERCEK yayinlari bloklamaya baslardi.
+    """
     assert _karar(kod=2, kalan=150, yayin=yayin, kilit=0) is False
 
 
-@pytest.mark.parametrize("yayin", [0, 3, 5])
+@pytest.mark.parametrize("yayin", [0, 3, 5, 6, 9])
 def test_TAVANIN_ALTINDA_deneniyor(yayin):
+    """⚠️ 6 ve 9 REGRESYON KILIDI: eski tavan (6) bunlari bloklardi ve 22 Agu
+    olcumu (6 slot -> 4 yayin) 9 slotta ~6 yayin demek, yani tam da bloklanan
+    band."""
     assert _karar(kod=2, kalan=150, yayin=yayin, kilit=0) is True
+
+
+def test_TAVAN_TETIK_SAYISINDAN_turuyor():
+    """⚠️ Sayi ICAT EDILMIYOR: bir slot yayinladiktan sonra ikinci koşum
+    yapmiyor (`ikinci_kosum_gerekli_mi` yalnizca cikis 2'de donuyor), yani
+    gun icinde MUMKUN olan en fazla yayin = tetik sayisi. Tavan boylece
+    yapisi geregi baglamiyor ama patolojik donguyu kesiyor.
+
+    Mutasyon: tavani sabit bir sayiya (6) donmek bu testi dusurur.
+    """
+    tavan = int(_kabuk("echo $GUNLUK_YUKLEME_TAVANI"))
+    tetik_sayisi = len(_kabuk("echo $TETIK_SAATLERI").split())
+
+    assert tavan == tetik_sayisi, "tavan tetik sayisindan turemeli"
+
+
+def test_TAVAN_hicbir_SLOTU_bloklamiyor():
+    """⚠️ Asil ozellik: tavan gunun HICBIR slotunda bir yayini kesemez.
+
+    Mutasyon: tavani tetik sayisinin ALTINA cekmek bu testi dusurur.
+    """
+    tetik_sayisi = len(_kabuk("echo $TETIK_SAATLERI").split())
+
+    # Gun icinde ulasilabilecek en yuksek yayin sayisi bir eksigi; o noktada
+    # bile son slot denenebilmeli.
+    assert _karar(kod=2, kalan=150, yayin=tetik_sayisi - 1, kilit=0) is True
 
 
 # --- Pencere hesabi ---------------------------------------------------------
@@ -128,22 +161,39 @@ def test_TAVANIN_ALTINDA_deneniyor(yayin):
 @pytest.mark.parametrize(
     "saat,dakika,beklenen",
     [
-        (0, 30, 275),  # UZUN slot yeni basladi -> 05:05
-        (12, 5, 120),  # 14:05
-        (13, 0, 65),  # 14:05
+        (0, 30, 275),  # UZUN slot yeni basladi -> 05:05, pencere 5 saat
+        (6, 30, 35),  # 07:05 — ⚠️ 3 saatlik formul burada 155 derdi (09:05)
+        (8, 30, 35),  # 09:05
+        (12, 5, 60),  # 13:05
+        (13, 0, 5),  # 13:05
         (15, 19, 106),  # 17:05
-        (8, 30, 155),  # 11:05 (eski izgarada 35 idi)
-        (20, 30, 215),  # ⚠️ GECE YARISI SARMASI -> ertesi gun 00:05
+        (20, 30, 35),  # 21:05 — gunun SON Shorts slotu
+        (21, 10, 175),  # ⚠️ GECE YARISI SARMASI -> uzun slotun kosu pisti
         (23, 59, 6),  # sarmanin sinir vakasi
     ],
 )
 def test_sonraki_tetige_kalan_dogru(saat, dakika, beklenen):
-    """⚠️ IZGARA DUZENSIZ (0 5 8 11 14 17 20) — eski `(saat / 3 + 1) * 3`
-    formulu 05:30'da bir sonraki tetigi 06:05 sanardi, gercekte 08:05.
+    """⚠️ IZGARA DUZENSIZ (0 5 7 9 11 13 15 17 19 21) — eski
+    `(saat / 3 + 1) * 3` formulu 06:30'da bir sonraki tetigi 09:05 sanip
+    155 dk gorurdu, gercekte 07:05 yani 35 dk. Yani ikinci koşumu kalmayan
+    pencerede baslatip BIR SONRAKI slotu yakardi.
 
     Mutasyon: 3 saatlik formule geri donmek bu testi dusurur.
     """
     assert _kalan(saat, dakika) == beklenen
+
+
+def test_UZUN_SLOTUN_kosu_pisti_3_SAAT():
+    """⚠️ 21:05 gunun son Shorts slotu ve ondan sonra 00:05'e kadar tetik YOK.
+
+    Gerekcesi olcum: Shorts koşumu tek koşumda max 60 dk, iki koşumda 144 dk
+    surdu. 23:05'e bir tetik konsaydi 1/4 ihtimalle kilidi 00:05'e tasiyip
+    UZUN slotu yakardi.
+
+    Mutasyon: 23:05 tetigi eklemek bu testi dusurur.
+    """
+    assert _kalan(21, 10) == 175, "21:05 sonrasi sonraki tetik 00:05 olmali"
+    assert _kalan(22, 0) == 125
 
 
 def test_kalan_HIC_NEGATIF_olmuyor():
@@ -157,7 +207,7 @@ def test_kalan_HIC_NEGATIF_olmuyor():
 def test_SEKIZLIK_tuzagi_yok():
     """⚠️ `date +%H` saat 08/09'da '08'/'09' veriyor ve bash bunu sekizlik
     sanip hata verir. Ayni tuzak `uret.sh`te bir kez yasandi."""
-    assert _kalan("08", "09") == 176
+    assert _kalan("08", "09") == 56  # 09:05
 
 
 # --- Kol secimi -------------------------------------------------------------
@@ -436,3 +486,184 @@ def test_KABUK_sozdizimi_saglam():
     for betik in (URET, KARAR):
         sonuc = subprocess.run(["bash", "-n", str(betik)], capture_output=True)
         assert sonuc.returncode == 0, f"{betik.name}: {sonuc.stderr.decode()}"
+
+
+# --- Sahne deneyi kolu ------------------------------------------------------
+#
+# ⚠️ Bu kolun 2026-08-23'e kadar HIC TESTI YOKTU ve `uret.sh` govdesinde
+# `(SAAT / 3) % 2` olarak duruyordu. 3 saatlik izgarada dengeliydi; 2 saatlik
+# bantta 2:1 carpitiyordu (8 sahne 6 slot / 6 sahne 3 slot), yani
+# `tutunma-ilk-sahne-degisiminde-dusuyor` deneyini SESSIZCE curutuyordu.
+# Bozuk oldugu ancak elle hesaplanarak gorulebildi — testin yoklugu kusurun
+# kendisiydi.
+
+
+def _shorts_saatleri() -> list[int]:
+    saatler = [int(x) for x in _kabuk("echo $TETIK_SAATLERI").split()]
+    uzun = int(_kabuk("echo $UZUN_SAAT"))
+    return [s for s in saatler if s != uzun]
+
+
+def _kollar() -> list[int]:
+    return [int(_kabuk(f"sahne_kolu {saat}")) for saat in _shorts_saatleri()]
+
+
+def test_SAHNE_KOLU_dengeli():
+    """⚠️ Asil ozellik: iki kol arasindaki fark EN FAZLA BIR slot.
+
+    Eski `(SAAT / 3) % 2` bu izgarada 6/3 veriyordu — deneyin bir kolu
+    digerinin iki kati sans aliyordu.
+
+    Mutasyon: kolu saatten turetmeye (`(SAAT / 3) % 2`) donmek bu testi
+    dusurur.
+    """
+    kollar = _kollar()
+    alti = kollar.count(6)
+    sekiz = kollar.count(8)
+
+    assert alti + sekiz == len(kollar), f"6/8 disi kol var: {kollar}"
+    assert abs(alti - sekiz) <= 1, f"kol dengesizligi 1'den buyuk: {kollar}"
+
+
+def test_SAHNE_KOLU_ardisik_slotlarda_ALTERNATIF():
+    """⚠️ Denge tek basina yetmez: 8·8·8·8·8·6·6·6·6 de "dengeli" olurdu ama
+    gunun ilk yarisi tek kola giderdi ve gun ici etkiler (izleyici saati)
+    kola karisirdi.
+
+    Mutasyon: kolu sabitlemek ya da sirayi bozmak bu testi dusurur.
+    """
+    kollar = _kollar()
+
+    for onceki, sonraki in zip(kollar, kollar[1:]):
+        assert onceki != sonraki, f"ardisik iki slot ayni kolda: {kollar}"
+
+
+def test_SAHNE_KOLU_SEKIZLIK_tuzagina_dusmuyor():
+    """⚠️ `date +%H` saat 08/09'da '08'/'09' veriyor; bash bunu sekizlik
+    sanip hata verir ve kol sessizce yanlis tarafa duserdi."""
+    assert _kabuk("sahne_kolu 09") in {"6", "8"}
+    assert _kabuk("sahne_kolu 08") in {"6", "8"}
+
+
+def test_SAHNE_KOLU_izgara_disinda_GECERLI_deger():
+    """⚠️ Elle koşum izgara disi bir saatte olabilir. Bos deger donerse
+    `--sahne-sayisi ""` gecer ve CLI hatasi uretir."""
+    for saat in (2, 6, 10, 22):
+        assert _kabuk(f"sahne_kolu {saat}") in {"6", "8"}, f"saat {saat}"
+
+
+def test_SAHNE_KOLU_uret_sh_TARAFINDAN_kullaniliyor():
+    """Baglanti testi — fonksiyon tanimli olup cagrilmazsa islevsiz.
+
+    ⚠️ YORUM SATIRLARI AYIKLANIYOR, ve bu tesadufi degil: ilk yazimda test
+    butun dosyada eski formulu ariyordu ve DUSTU — cunku o dize, formulun
+    neden kaldirildigini ANLATAN yorumda geciyor. Metne cakili test kendi
+    belgelendirmesini kusur sandi. Olculecek sey KOD, dosya degil.
+
+    Mutasyon: kolu `uret.sh` govdesinde yeniden hesaplamak bu testi dusurur.
+    """
+    kod = "\n".join(
+        satir
+        for satir in URET.read_text(encoding="utf-8").splitlines()
+        if not satir.lstrip().startswith("#")
+    )
+
+    assert "sahne_kolu" in kod, "kol fonksiyonu cagrilmiyor"
+    assert "% 2" not in kod, "kol hala govdede hesaplaniyor"
+
+
+def test_SAHNE_KOLU_kaynak_SIRASI_dogru():
+    """⚠️ `sahne_kolu` `TETIK_SAATLERI`yi geziyor, yani `slot_karari.sh`
+    SAHNE hesabindan ONCE kaynaklanmali. Eskiden sonra geliyordu (hesap bir
+    formuldu ve hicbir seye bagli degildi).
+
+    Mutasyon: kaynak satirini SAHNE atamasindan sonraya almak (ya da silmek)
+    bu testi dusurur.
+    """
+    govde = URET.read_text(encoding="utf-8")
+    kaynak_satiri = '. "$KOK/scripts/slot_karari.sh"'
+
+    # ⚠️ Capa YORUMDAKI ad DEGIL, gercek kaynak KOMUTU: "slot_karari.sh"
+    # dizesi bu dosyada daha once bir yorumda ve bir shellcheck yonergesinde
+    # geciyor, yani onu aramak siranin bozuldugunu goremezdi.
+    assert kaynak_satiri in govde, "kaynak satiri hic yok"
+    assert govde.index(kaynak_satiri) < govde.index("SAHNE=")
+
+
+# --- Ilk koşum tavan kapisi -------------------------------------------------
+
+
+def _atlansin(yayin) -> bool:
+    sonuc = subprocess.run(
+        ["bash", "-c", f'. "{KARAR}"; tetik_atlansin_mi {yayin}'],
+        capture_output=True,
+        text=True,
+    )
+    return sonuc.returncode == 0
+
+
+def test_ILK_KOSUM_tavandayken_ATLANIYOR():
+    """⚠️ Bugune kadar tavan yalnizca IKINCI koşumu kapatiyordu; ilk koşum
+    ~30 dakikalik render'i yakip yuklemede `quotaExceeded` ile oluyordu.
+
+    Mutasyon: kapiyi kaldirmak bu testi dusurur.
+    """
+    tavan = int(_kabuk("echo $GUNLUK_YUKLEME_TAVANI"))
+
+    assert _atlansin(tavan) is True
+    assert _atlansin(tavan + 5) is True
+
+
+def test_ILK_KOSUM_tavanin_ALTINDA_calisiyor():
+    """⚠️ Regresyon kilidi: kapi her zaman kapaliysa hat hic video uretmez."""
+    tavan = int(_kabuk("echo $GUNLUK_YUKLEME_TAVANI"))
+
+    for yayin in (0, 1, tavan - 1):
+        assert _atlansin(yayin) is False, f"yayin={yayin} atlanmamaliydi"
+
+
+def test_ILK_KOSUM_kapisi_uret_sh_de_URETIMDEN_ONCE():
+    """⚠️ Kapi uretim koşumundan SONRA cagrilirsa render zaten yanmis olur.
+
+    Mutasyon: kapiyi ilk `uretim_kosumu` satirinin altina almak bu testi
+    dusurur.
+    """
+    govde = URET.read_text(encoding="utf-8")
+
+    assert govde.index("tetik_atlansin_mi") < govde.index("uretim_kosumu --from-notion")
+
+
+def test_TAVAN_SAYACI_gercek_durum_dosyasini_okuyor(tmp_path):
+    """⚠️ Sayac kabukta calisiyor ve bugunun tarihiyle suzuyor; test metne
+    degil GERCEK bir `state.json`a bakiyor."""
+    from datetime import datetime, timedelta
+
+    bugun = datetime.now().astimezone()
+    dun = bugun - timedelta(days=1)
+    durum = tmp_path / "state.json"
+    durum.write_text(
+        json.dumps(
+            {
+                "published": [
+                    {"published_at": bugun.isoformat()},
+                    {"published_at": bugun.isoformat()},
+                    {"published_at": dun.isoformat()},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    sayi = _kabuk(f'bugunku_yayin_sayisi "{sys.executable}" "{durum}"')
+
+    assert sayi == "2", "yalnizca BUGUNKU yayinlar sayilmali"
+
+
+def test_TAVAN_SAYACI_okunamayan_dosyada_ACIK_dusuyor(tmp_path):
+    """⚠️ Okunamayan bir durum dosyasi uretimi DURDURMAMALI — tavani bir kez
+    asmak, butun gunu bos gecirmekten iyidir."""
+    bozuk = tmp_path / "bozuk.json"
+    bozuk.write_text("{ bu json degil", encoding="utf-8")
+
+    assert _kabuk(f'bugunku_yayin_sayisi "{sys.executable}" "{bozuk}"') == "0"
+    assert _atlansin(0) is False
