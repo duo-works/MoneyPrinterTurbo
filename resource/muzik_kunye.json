@@ -10,17 +10,6 @@
     "olculen_db": -18.5,
     "ruh_hali": "agirbasli"
   },
-  "klasik-bach-PachbelCanonD.mp3": {
-    "besteci": "Bach",
-    "kaynak": "https://archive.org/details/PachbelCanonD",
-    "baslik": "pachbel Canon D",
-    "sanatci": "bach",
-    "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 5070848,
-    "ses_kazanci": 1.334,
-    "olculen_db": -23.8,
-    "ruh_hali": "agirbasli"
-  },
   "klasik-mozart-parso-falaaa03a9d2db4b6e1d.mp3": {
     "besteci": "Mozart",
     "kaynak": "https://archive.org/details/parso-falaaa03a9d2db4b6e1d",
@@ -106,17 +95,6 @@
     "olculen_db": -20.3,
     "ruh_hali": "merak"
   },
-  "klasik-handel-HandelMusicForTheRoyalFire.mp3": {
-    "besteci": "Handel",
-    "kaynak": "https://archive.org/details/HandelMusicForTheRoyalFireworks2011",
-    "baslik": "Handel Music for the Royal Fireworks (2011)",
-    "sanatci": "Paul Ayres/Handel",
-    "lisans": "http://creativecommons.org/publicdomain/zero/1.0/",
-    "bayt": 4393149,
-    "ses_kazanci": 0.881,
-    "olculen_db": -20.2,
-    "ruh_hali": "gorkemli"
-  },
   "klasik-brahms-GrantCarterBrahms.mp3": {
     "besteci": "Brahms",
     "kaynak": "https://archive.org/details/GrantCarterBrahms",
@@ -149,17 +127,6 @@
     "ses_kazanci": 0.376,
     "olculen_db": -12.8,
     "ruh_hali": "agirbasli"
-  },
-  "klasik-tchaikovsky-TchaikovskyDanceOfTheFlute.mp3": {
-    "besteci": "Tchaikovsky",
-    "kaynak": "https://archive.org/details/TchaikovskyDanceOfTheFlutes",
-    "baslik": "Dance of the Flutes",
-    "sanatci": "Pyotr Ilyich Tchaikovsky",
-    "lisans": "http://creativecommons.org/licenses/publicdomain/",
-    "bayt": 4310394,
-    "ses_kazanci": 2.113,
-    "olculen_db": -27.8,
-    "ruh_hali": "merak"
   },
   "yatak-thomaspark-RainShadowDesert-10YuccaValley.mp3": {
     "besteci": "Thomas Park",
