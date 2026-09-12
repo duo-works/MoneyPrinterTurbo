@@ -52,6 +52,16 @@ if ! command -v hermes >/dev/null 2>&1; then
   exit 1
 fi
 
+# ⚠️ BOSTA UYKU KILIDI — olculdu (2026-09-12, `pmset -g log`). Bu makine bir
+# MacBook; koşum surerken uyursa LLM/render denemesi zaman asimiyla oluyor ve
+# ODENMIS token cope gidiyor (12 Eyl 05:13 koşumu 11:12'ye kadar dondu).
+# `caffeinate -i` YALNIZCA bosta uykuyu tutar; kapak kapaninca makine yine
+# uyur — o operasyon karari (fiste + kapak acik). `-w $$` ile kilit bu
+# betikle birlikte olur; `command -v` yoksa (Linux) sessizce atlanir.
+if command -v caffeinate >/dev/null 2>&1; then
+  caffeinate -i -w $$ &
+fi
+
 # .env dosyasi degerleri: `ytoto` koprusu ve API anahtarlari oradan geliyor.
 # ⚠️ Icerik LOGA BASILMAZ; yalnizca ortama alinir.
 if [[ -f "$ENV_DOSYASI" ]]; then
@@ -120,6 +130,15 @@ else
   UZUN_KOL=0
 fi
 yaz "kol | $KOL"
+
+# ⚠️ GECIKMIS TETIK GORUNUR OLSUN — gerekce `tetikten_gecen_dk`. launchd
+# uyuyan makinede tetigi uyaninca atesliyor; 15 dk'dan gec baslayan tetik
+# "makine uyudu" demek. Slot ATLANMAZ, yalnizca loglanir: "koşum neden 6 saat
+# surdu" sorusu artik `zamanlayici.log`dan cevaplanir.
+GECIKME_DK="$(tetikten_gecen_dk)"
+if [ "${GECIKME_DK:-0}" -gt 15 ]; then
+  yaz "tetik gecikmesi | $GECIKME_DK dk (makine uyudu mu?)"
+fi
 
 kilit_var() {
   [ -e "$KOK/storage/youtube_automation/automation.lock" ] && echo 1 || echo 0

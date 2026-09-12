@@ -685,3 +685,64 @@ def test_TAVAN_SAYACI_okunamayan_dosyada_ACIK_dusuyor(tmp_path):
 
     assert _kabuk(f'bugunku_yayin_sayisi "{sys.executable}" "{bozuk}"') == "0"
     assert _atlansin(0) is False
+
+
+# --- Gecikmis tetik (uyku) — DW-139 ------------------------------------------
+
+
+def _gecen(saat, dakika) -> int:
+    return int(_kabuk(f"tetikten_gecen_dk {saat} {dakika}"))
+
+
+@pytest.mark.parametrize(
+    "saat,dakika,beklenen",
+    [
+        (16, 5, 0),  # tam tetik aninda
+        (16, 12, 7),  # launchd'nin olagan birkac dakikasi
+        (5, 13, 308),  # 12 Eyl: 00:05 tetiginden 05:13'e (05:05 artik tetik degil)
+        (11, 12, 7),  # 12 Eyl: 05:13 koşumu 11:12'de uyandi — 11:05 tetigine gore
+        (0, 3, 178),  # gunun ilk tetiginden ONCE: son tetik DUNUN 21:05'i
+        (23, 59, 174),  # 21:05'ten sonra
+    ],
+)
+def test_tetikten_gecen_dogru(saat, dakika, beklenen):
+    """⚠️ Olculdu (2026-09-12): uyuyan makinede launchd tetigi uyaninca
+    atesliyor; 05:05 tetigi 05:13'te, 00:05 tetigi 00:13'te basladi. Gecikme
+    izgaradaki EN SON tetige gore olculur, en yakina degil.
+
+    Mutasyon: `-le` yerine `-lt` -> tam tetik aninda "dunun sonuncusu"na
+    duser ve (16,5,0) satiri kirilir.
+    """
+    assert _gecen(saat, dakika) == beklenen
+
+
+def test_gecen_HIC_NEGATIF_olmuyor():
+    """Gece yarisi sarmasi: 00:00-00:04 arasinda son tetik dunun 21:05'i."""
+    for saat in range(24):
+        for dakika in (0, 4, 5, 6, 30, 59):
+            assert _gecen(saat, dakika) >= 0, f"{saat}:{dakika}"
+
+
+def test_gecen_SEKIZLIK_tuzagina_dusmuyor():
+    assert _gecen("08", "09") == 124  # 06:05'ten
+
+
+def test_uret_sh_GECIKMEYI_logluyor_ama_slotu_ATLAMIYOR():
+    """`uret.sh` fonksiyonu cagirmali ve sonucu `exit` degil `yaz` ile
+    islemeli: gecikmis bir tetik hala bir tetiktir, slot yakilmaz.
+
+    Mutasyon: `yaz "tetik gecikmesi"` satirini `exit 0` yap -> bu test duser.
+    """
+    metin = URET.read_text(encoding="utf-8")
+    assert "tetikten_gecen_dk" in metin
+    blok = metin.split('GECIKME_DK="$(tetikten_gecen_dk)"', 1)[1].split("fi", 1)[0]
+    assert 'yaz "tetik gecikmesi' in blok
+    assert "exit" not in blok
+
+
+def test_uret_sh_CAFFEINATE_ile_bosta_uykuyu_tutuyor():
+    """`caffeinate -i -w $$`: kilit betikle birlikte olmeli; yoksa her tetik
+    bir caffeinate sureci birakir. `command -v` korumasi Linux CI icin."""
+    metin = URET.read_text(encoding="utf-8")
+    assert "caffeinate -i -w $$ &" in metin
+    assert "command -v caffeinate" in metin

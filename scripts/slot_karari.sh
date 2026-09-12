@@ -233,6 +233,45 @@ sonraki_tetige_kalan_dk() {
   echo $((24 * 60 + ilk * 60 + 5 - simdi))
 }
 
+tetikten_gecen_dk() {
+  # $1 saat (0-23) · $2 dakika — verilmezse simdiki zaman.
+  # En son tetikten (HH:05) bu yana gecen dakika.
+  #
+  # ⚠️ NEDEN VAR — olculdu (2026-09-12, `pmset -g log` + `hata-*.log`).
+  # Bu makine bir MacBook ve kapak kapaninca UYUYOR. launchd tetigi uyku
+  # sirasinda atesleyemiyor, makine uyaninca atesliyor: 12 Eyl'de 00:05 tetigi
+  # 00:13'te, 05:05 tetigi 05:13'te basladi; 05:13 koşumu ~09:30'dan 11:12'ye
+  # (kapak acilana) kadar dondu ve uc tetik atlandi. 9-11 Eyl'de 4-8 saatlik
+  # ayni desen var. Uyku sirasinda zaman asimi yiyen bir LLM/render denemesi
+  # ODENMIS tokeni yakar.
+  #
+  # Kod uykuyu ENGELLEYEMEZ (kapak uykusunu `caffeinate` bile tutmaz); bu
+  # fonksiyon onu GORUNUR yapar: `uret.sh` gecikmeyi `zamanlayici.log`a
+  # yazar ki "koşum neden 6 saat surdu" sorusu hata loglarini elle acmadan
+  # cevaplansin. Slot ATLANMAZ — gecikmis bir tetik hala bir tetiktir.
+  #
+  # `10#` oneki `sonraki_tetige_kalan_dk` ile ayni sebepten.
+  local saat=$((10#${1:-$(date +%H)}))
+  local dakika=$((10#${2:-$(date +%M)}))
+  local simdi=$((saat * 60 + dakika))
+  local son=""
+  local tetik
+  for tetik in $TETIK_SAATLERI; do
+    local an=$((tetik * 60 + 5))
+    if [ "$an" -le "$simdi" ]; then
+      son="$an"
+    fi
+  done
+  if [ -n "$son" ]; then
+    echo $((simdi - son))
+    return 0
+  fi
+  # Gunun ilk tetiginden once: son tetik DUNUN sonuncusu.
+  local sonuncu
+  sonuncu=$(echo "$TETIK_SAATLERI" | awk '{print $NF}')
+  echo $((simdi + 24 * 60 - (sonuncu * 60 + 5)))
+}
+
 bugunku_yayin_sayisi() {
   # $1 python yolu · $2 state.json yolu
   local py="$1" durum="$2"
