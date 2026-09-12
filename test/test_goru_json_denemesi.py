@@ -131,3 +131,69 @@ def test_METIN_hepsi_duserse_ACIK_hata(monkeypatch, tmp_path):
         ya._json_completion("sistem", "kullanici")
 
     assert cagri["adet"] == ya.METIN_JSON_DENEMESI
+
+
+# --- `null` govde: sozluk degilse yeniden deneme ---------------------------
+#
+# ⚠️ Olculdu (2026-09-12, 18:38 tetigi, iki koşum): `_json_govdesi` sozluk
+# disi govdeyi (`null`) sessizce geciriyordu ve ikincil gorsel denetimi iki
+# kez "'NoneType' object has no attribute 'get'" ile ATLANDI — o dal
+# sarmalanmisti. Birincil kaynak kapisi ve hakem sarmalanmamis: ayni govde
+# orada ODENMIS render'i cökerterek atardi.
+
+
+def test_null_govde_SOZLUK_degil_diye_patliyor():
+    with pytest.raises(ValueError, match="NoneType"):
+        ya._json_govdesi("null")
+    with pytest.raises(ValueError, match="list"):
+        ya._json_govdesi("[1, 2]")
+    with pytest.raises(ValueError, match="str"):
+        ya._json_govdesi('"duz metin"')
+
+
+def test_hata_mesaji_govdenin_basini_tasiyor():
+    """Bir sonraki sefer sebep tahmin degil olcum olsun."""
+    with pytest.raises(ValueError, match=r"\[1, 2, 3\]"):
+        ya._json_govdesi("```json\n[1, 2, 3]\n```")
+
+
+def test_null_govde_GORU_yolunda_yeniden_deneniyor(monkeypatch, tmp_path, capsys):
+    """Ikincil denetimi iki kez atlatan govde: artik AttributeError degil, tekrar."""
+    gorsel, cagri = _hazirla(monkeypatch, tmp_path, ["null", '{"visual_alignment_score": 80}'])
+
+    assert ya._vision_json({"soru": "x"}, gorsel) == {"visual_alignment_score": 80}
+    assert cagri["adet"] == 2
+    assert "görü yanıtı okunamadı (deneme 1/" in capsys.readouterr().out
+
+
+def test_null_govde_METIN_yolunda_yeniden_deneniyor(monkeypatch, tmp_path):
+    _, cagri = _hazirla(monkeypatch, tmp_path, ["null", '{"topic": "x"}'])
+
+    assert ya._json_completion("sistem", "kullanici") == {"topic": "x"}
+    assert cagri["adet"] == 2
+
+
+def test_ikincil_denetim_null_govdeyle_ATLANMIYOR(monkeypatch, tmp_path):
+    """Bugunku satirin kendisi: `ikincil gorsel denetimi atlandi: 'NoneType'...`.
+    Ikinci denemede okunabilir cevap gelince kapi CALISIYOR ve sahneyi dusuruyor."""
+    _, cagri = _hazirla(
+        monkeypatch,
+        tmp_path,
+        ["null", '{"visual_alignment_score": 60, "issues": ["kare 2"], "problem_scene_numbers": [2], "frames": []}'],
+    )
+    monkeypatch.setattr(ya, "create_source_montage", lambda *_a, **_k: tmp_path / "kare.jpg")
+    (tmp_path / "kare.jpg").write_bytes(b"sahte-jpeg")
+    plan = ya.ContentPlan(
+        topic="Ephesus library",
+        visual_anchor="Ephesus",
+        title="t",
+        script="s",
+        scenes=[{"narration": f"c{i}", "search_term": f"Ephesus {i}"} for i in range(1, 4)],
+        description="d",
+        tags=["a"],
+    )
+
+    dusen = ya.ikincil_gorselleri_denetle(plan, [None, tmp_path / "kare.jpg", tmp_path / "kare.jpg"], 1)
+
+    assert dusen == [2]
+    assert cagri["adet"] == 2

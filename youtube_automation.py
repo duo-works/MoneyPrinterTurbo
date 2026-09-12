@@ -3494,7 +3494,22 @@ def _json_govdesi(icerik: str | None) -> dict[str, Any]:
             "model bos cevap dondurdu — cikti butcesi akil yurutmeye gitmis "
             "olabilir (bkz. _akil_yurutmeyi_kapat)"
         )
-    return json.loads(metin)
+    veri = json.loads(metin)
+    if not isinstance(veri, dict):
+        # ⚠️ `null`, liste ya da duz bir dize de GECERLI JSON: `json.loads`
+        # sessizce gecirir, cagiran `.get` deyince `AttributeError` ile duser.
+        # Olculdu (2026-09-12, 18:38 tetigi, iki koşum): ikincil gorsel
+        # denetimi iki kez "'NoneType' object has no attribute 'get'" ile
+        # ATLANDI — o dal sarmalanmis oldugu icin. Birincil kaynak kapisi ve
+        # hakem sarmalanMAMIS: ayni govde orada ODENMIS render'i cökerterek
+        # atardi. `ValueError` iki yeniden deneme dongusunun (metin ve gorü)
+        # zaten yakaladigi sinif; govdenin basi loga dusuyor ki bir sonraki
+        # sefer sebep tahmin degil olcum olsun.
+        raise ValueError(
+            f"model JSON nesnesi yerine {type(veri).__name__} dondurdu: {metin[:80]!r}"
+        )
+    return veri
+
 
 
 def _windows() -> bool:
