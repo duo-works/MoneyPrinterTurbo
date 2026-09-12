@@ -323,6 +323,7 @@ def _uret_sh_dali(cikti: str) -> str:
         ("already running", "atlandi | onceki kosum suruyor"),
         ("quotaExceeded", "kota doldu | YouTube gunluk kotasi"),
         ("KREDI_TABANI", "kredi bitti | bakiye tabanin altinda"),
+        ("AG_HATASI", "ag hatasi | kosum yarida kesildi"),
         ("SAGLAYICI_REDDI", "saglayici reddi | kosum sirasinda kesildi"),
     ):
         assert f'grep -q "{isaret}"' in betik, f"{isaret} dali kaybolmus"
@@ -360,6 +361,52 @@ def test_SAGLAYICI_REDDI_isareti_ayri_satir_yaziyor():
     assert _uret_sh_dali("⛔ SAGLAYICI_REDDI (HTTP 402): ...") == (
         "saglayici reddi | kosum sirasinda kesildi"
     )
+
+
+def test_AG_HATASI_isareti_ayri_satir_yaziyor():
+    """⚠️ Olculdu (12 Eyl 16:05): koşum kredi kapisini gecti, bes cikarim
+    cagrisi yapti ($0,0247) ve `images.weserv.nl` DNS'i cozulemeyince oldu.
+    Loga "HATA | cikis 1" dustu — yapisal kusurdan ayirt edilemez.
+    """
+    assert _uret_sh_dali(
+        "⛔ AG_HATASI: HTTPSConnectionPool(host='images.weserv.nl', port=443)"
+    ) == ("ag hatasi | kosum yarida kesildi")
+
+
+def test_ag_hatasi_kaydi_HARCAMAYI_tasiyor():
+    """ "Boşa giden bakiye" ancak kayit harcamayi tasirsa toplanabilir.
+
+    Mutasyon: `network_error` dalindan `"harcama"` alanini sil -> bu test
+    duser. (`provider_error` dalindaki alanin ikizi.)
+    """
+    govde = _islev("main")
+    sozlukler = [
+        d
+        for d in ast.walk(govde)
+        if isinstance(d, ast.Dict)
+        and any(isinstance(k, ast.Constant) and k.value == "stage" for k in d.keys)
+    ]
+    ag = [
+        d
+        for d in sozlukler
+        if any(
+            isinstance(v, ast.Constant) and v.value == "network_error" for v in d.values
+        )
+    ]
+    assert ag, "main'de network_error kaydi yok"
+    anahtarlar = {k.value for k in ag[0].keys if isinstance(k, ast.Constant)}
+    assert "harcama" in anahtarlar
+    assert "mesaj" in anahtarlar
+
+
+def test_ag_hatasi_KALITE_reddinden_ayri_cikis_kodu():
+    """Ag kesintisi ne kalite reddi (2) ne aday yoklugu (3) ne saglayici
+    reddi (4): ayri kod, cunku caresi de ayri (bekle ve yeniden dene).
+    """
+    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
+    govde = kaynak.split("except requests.exceptions.RequestException", 1)[1]
+    govde = govde.split("finally:", 1)[0]
+    assert "SystemExit(5)" in govde
 
 
 def test_ALAKASIZ_cikti_hala_HATA_diyor():

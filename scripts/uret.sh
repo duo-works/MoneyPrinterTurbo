@@ -292,6 +292,15 @@ case "$KOD" in
       yaz "kredi bitti | bakiye tabanin altinda"
       exit 0
     fi
+    if grep -q "AG_HATASI" "$CIKTI_DOSYASI"; then
+      # ⚠️ Ag kesintisi hat kirik DEGIL. Olculdu (12 Eyl 16:05): koşum bes
+      # cikarim cagrisi yaptiktan ($0,0247) sonra `images.weserv.nl` DNS'i
+      # cozulemeyince oldu; DNS 9 dakika sonra calisiyordu. Kayit `state.json`a
+      # `network_error` olarak dusuyor ve HARCAMAYI tasiyor — "boşa giden
+      # bakiye" ancak o alanla toplanabilir.
+      yaz "ağ hatası | koşum yarıda kesildi (harcama state.json'da)"
+      exit 0
+    fi
     if grep -q "SAGLAYICI_REDDI" "$CIKTI_DOSYASI"; then
       # Kosum SIRASINDA bakiye/kota bitti (402/403/429). Kayit `state.json`a
       # `provider_error` olarak dustu, yani telemetri bunu kalite reddinden

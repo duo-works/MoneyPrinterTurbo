@@ -10373,6 +10373,35 @@ def main() -> None:
         )
         save_state(durum_h)
         raise SystemExit(4) from hata
+    except requests.exceptions.RequestException as hata:
+        # ⚠️ AYNI KALIP, UCUNCU SEBEP (2026-09-12, olculdu). 16:05 koşumu kredi
+        # kapisini gecti, plani kurdu, BES cikarim cagrisi yapti ($0,0247) ve
+        # gorsel indirirken `images.weserv.nl` DNS'i cozulemedi:
+        #
+        #     NameResolutionError: Failed to resolve 'images.weserv.nl'
+        #
+        # `_get_with_retry` bes kez denedi (~30 sn geri cekilme), ag o pencerede
+        # kapaliydi, istisna `run_cycle`i ve `main`i DELIP GECTI. Sonuc:
+        # `state.json`a TEK BIR kayit yok, log "HATA | cikis 1" — yani ODENMIS
+        # is cope gitti ve satir gercek bir yapisal kusurla ayirt edilemedi.
+        # `RenderZamanAsimi` (201e142) ve `APIStatusError` (9710beb) icin iki kez
+        # kapatilan korlugun ucuncu kapisi.
+        #
+        # ⚠️ Ag hatasi bir KALITE reddi DEGIL ve bir SAGLAYICI reddi de degil:
+        # ayri `stage`, ayri cikis kodu. `harcama` alani bu koşumun ne kadar
+        # yaktigini tasiyor — "boşa giden bakiye" ancak boyle olculebilir.
+        print(f"⛔ AG_HATASI: {str(hata)[:300]}", flush=True)
+        durum_a = load_state()
+        durum_a.setdefault("rejected", []).append(
+            {
+                "stage": "network_error",
+                "mesaj": str(hata)[:400],
+                "harcama": harcama_ozeti(),
+                "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+            }
+        )
+        save_state(durum_a)
+        raise SystemExit(5) from hata
     finally:
         harcamayi_dosyaya_yaz()
     print(json.dumps(result, ensure_ascii=False, indent=2))
