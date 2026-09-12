@@ -285,7 +285,9 @@ def test_bakiye_oku_AG_DUSERSE_None(monkeypatch):
         raise RuntimeError("ag yok")
 
     monkeypatch.setattr(ya.requests, "get", patla)
-    monkeypatch.setitem(ya.config.app, "openai_base_url", "https://openrouter.ai/api/v1")
+    monkeypatch.setitem(
+        ya.config.app, "openai_base_url", "https://openrouter.ai/api/v1"
+    )
     monkeypatch.setitem(ya.config.app, "openai_api_key", "sahte")
 
     assert ya.bakiye_oku() is None
@@ -324,9 +326,7 @@ def _uret_sh_dali(cikti: str) -> str:
         ("SAGLAYICI_REDDI", "saglayici reddi | kosum sirasinda kesildi"),
     ):
         assert f'grep -q "{isaret}"' in betik, f"{isaret} dali kaybolmus"
-        kosullar.append(
-            f'if grep -q "{isaret}" "$F"; then echo "{mesaj}"; exit 0; fi'
-        )
+        kosullar.append(f'if grep -q "{isaret}" "$F"; then echo "{mesaj}"; exit 0; fi')
     kosullar.append('echo "HATA"')
 
     # ⚠️ GERCEK dosya: `/dev/stdin` ilk `grep` tarafindan tuketiliyor ve
@@ -369,3 +369,213 @@ def test_ALAKASIZ_cikti_hala_HATA_diyor():
     assert _uret_sh_dali("Traceback (most recent call last): ZeroDivisionError") == (
         "HATA"
     )
+
+
+# --- anahtar gunluk limiti + telemetriden taban (2026-09-12, DW-139) --------
+
+
+class _SahteHttp:
+    """`requests.get` yerine: URL'ye gore `data` dondurur ya da patlar."""
+
+    def __init__(self, cevaplar):
+        self.cevaplar = cevaplar
+        self.sorulan: list[str] = []
+
+    def __call__(self, url, **kwargs):
+        self.sorulan.append(url)
+        yol = url.rsplit("/", 1)[-1]
+        veri = self.cevaplar.get(yol, RuntimeError("ag yok"))
+        if isinstance(veri, Exception):
+            raise veri
+
+        class _Cevap:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": veri}
+
+        return _Cevap()
+
+
+@pytest.fixture
+def _openrouter(monkeypatch):
+    monkeypatch.setitem(
+        ya.config.app, "openai_base_url", "https://openrouter.ai/api/v1"
+    )
+    monkeypatch.setitem(ya.config.app, "openai_api_key", "sahte")
+
+
+def _http(monkeypatch, cevaplar):
+    sahte = _SahteHttp(cevaplar)
+    monkeypatch.setattr(ya.requests, "get", sahte)
+    return sahte
+
+
+def test_bakiye_ANAHTAR_LIMITI_bakiyeden_kucukse_ONU_donduruyor(
+    _openrouter, monkeypatch
+):
+    """⚠️ Olculdu (2026-09-12): bakiye $11,84, anahtarin gunluk limiti $5 ve
+    kalan $4,93. Yalnizca bakiyeye bakan kapi limit dolunca slotu baslatir,
+    her cagri 402 olur ve koşum ORTASINDA duser — odenen tokenler cop.
+
+    Mutasyon: `/key` okumasini kaldir -> 11,84 doner ve bu test duser.
+    """
+    _http(
+        monkeypatch,
+        {
+            "credits": {"total_credits": 25, "total_usage": 13.16},
+            "key": {"limit": 5, "limit_reset": "daily", "limit_remaining": 0.12},
+        },
+    )
+
+    assert ya.bakiye_oku() == pytest.approx(0.12)
+    assert ya.kredi_yetersiz_mi(ya.bakiye_oku()) is True
+
+
+def test_bakiye_LIMITSIZ_anahtarda_yalnizca_bakiyeye_bakiyor(_openrouter, monkeypatch):
+    """`limit: null` -> `limit_remaining` anlamsiz; kapi bakiyeyi kullanir.
+
+    Mutasyon: `limit is not None` kontrolunu kaldir -> `float(None)`
+    TypeError verir, anahtar dali sessizce dusur; bu test yine gecer ama
+    `test_bakiye_KIRILIMI_iki_kaynagi_ayri_veriyor` limitli anahtari
+    beklerken duser.
+    """
+    _http(
+        monkeypatch,
+        {
+            "credits": {"total_credits": 25, "total_usage": 13.16},
+            "key": {"limit": None, "limit_remaining": None},
+        },
+    )
+
+    assert ya.bakiye_oku() == pytest.approx(11.84)
+
+
+def test_bakiye_KIRILIMI_iki_kaynagi_ayri_veriyor(_openrouter, monkeypatch):
+    """`main` iki sayiyi da loga yaziyor: "kredi bitti" ile "gunluk limit
+    doldu" ayni kapidan duser ama caresi farkli."""
+    _http(
+        monkeypatch,
+        {
+            "credits": {"total_credits": 25, "total_usage": 13.16},
+            "key": {"limit": 5, "limit_remaining": 4.93},
+        },
+    )
+
+    kirilim = ya.bakiye_kirilimi()
+
+    assert kirilim["kredi"] == pytest.approx(11.84)
+    assert kirilim["anahtar"] == pytest.approx(4.93)
+
+
+def test_bakiye_YALNIZ_ANAHTAR_okunabilirse_yarim_bilgi_kullaniliyor(
+    _openrouter, monkeypatch
+):
+    """Bir uc duserken digeri calisiyorsa bilinen deger kullanilir; None'a
+    dusup kapiyi acik birakmak, bilinen bir 0 dolarla slot baslatmak olurdu.
+
+    Mutasyon: "ikisi de okunmali, yoksa None" yap -> bu test duser.
+    """
+    _http(
+        monkeypatch,
+        {
+            "credits": RuntimeError("ag yok"),
+            "key": {"limit": 5, "limit_remaining": 0.0},
+        },
+    )
+
+    assert ya.bakiye_oku() == pytest.approx(0.0)
+    assert ya.kredi_yetersiz_mi(ya.bakiye_oku()) is True
+
+
+def test_bakiye_IKI_UC_DE_DUSERSE_None(_openrouter, monkeypatch):
+    _http(monkeypatch, {})
+
+    assert ya.bakiye_oku() is None
+
+
+def test_kredi_tabani_AZ_KAYITLA_sabit_kaliyor():
+    """Tek kayitla p95 o kayitin kendisidir; bugunku tek kayit ($0,070, plan
+    asamasinda olen kosum) tabani asagi cekerdi.
+
+    Mutasyon: esigi 1 yap -> 0,1225 doner ve bu test duser.
+    """
+    assert ya.kredi_tabani([0.07]) == ya.KREDI_TABANI_USD
+    assert ya.kredi_tabani([]) == ya.KREDI_TABANI_USD
+    assert (
+        ya.kredi_tabani([0.9] * (ya.KREDI_TABANI_KAYIT_ESIGI - 1))
+        == ya.KREDI_TABANI_USD
+    )
+
+
+def test_kredi_tabani_YETERLI_KAYITLA_p95ten_turuyor():
+    """30 kosum: 26'si ucuz Shorts, 4'u pahali uzun kol (gunde 1 uzun / 5
+    tetik). p95 pahali kuyrugu gorur; ortalama (0,167) gormezdi.
+
+    Mutasyon: p95 yerine ortalama -> ~0,29 doner ve bu test duser.
+    """
+    maliyetler = [0.1] * 26 + [0.6] * 4
+
+    assert ya.kredi_tabani(maliyetler) == pytest.approx(0.6 * ya.KREDI_TABANI_KATSAYI)
+
+
+def test_kredi_tabani_SABITIN_ALTINA_inmiyor():
+    """Telemetri yalnizca plan asamasinda olen ucuz kosumlarla dolsa da
+    (gercek durum: 12 Eyl'e kadar 135 tetigin hepsi 402 ile ucuz oldu) taban
+    gevsemez — bir kosumun BITEBILMESI icin pay kalmali.
+
+    Mutasyon: `max(KREDI_TABANI_USD, ...)` sarmalini kaldir -> bu test duser.
+    """
+    assert ya.kredi_tabani([0.01] * 30) == ya.KREDI_TABANI_USD
+
+
+def test_kredi_tabani_DOSYA_YOKSA_sabit(tmp_path, monkeypatch):
+    """Telemetri okunamiyorsa kosum durmaz: sabit devreye girer.
+
+    Mutasyon: `_harcama_maliyetleri`deki `except`i kaldir -> bu test duser.
+    """
+    monkeypatch.setattr(ya, "LOG_DIR", tmp_path)
+
+    assert ya.kredi_tabani() == ya.KREDI_TABANI_USD
+
+
+def test_kredi_tabani_DOSYADAN_son_pencereyi_okuyor(tmp_path, monkeypatch):
+    """Eski pahali kosumlar pencere disinda kalinca tabani surmemeli; bozuk
+    satir da dosyayi gecersiz kilmamali."""
+    monkeypatch.setattr(ya, "LOG_DIR", tmp_path)
+    eski = [{"maliyet": 5.0}] * 10  # pencere disina dusecek
+    yeni = [{"maliyet": 0.1}] * ya.KREDI_TABANI_PENCERE
+    (tmp_path / "harcama.jsonl").write_text(
+        "\n".join(json.dumps(k) for k in eski + yeni) + "\nbozuk satir\n",
+        encoding="utf-8",
+    )
+
+    assert ya.kredi_tabani() == pytest.approx(
+        max(ya.KREDI_TABANI_USD, 0.1 * ya.KREDI_TABANI_KATSAYI)
+    )
+
+
+def test_main_kapisi_TABANI_TELEMETRIDEN_aliyor():
+    """`main` sabiti degil `kredi_tabani()`yi gecirmeli; yoksa A6 kapanmis
+    gorunur ama kapi hala bolmeden gelen sayiyla calisir.
+
+    Mutasyon: `kredi_yetersiz_mi(kalan)` (tek arguman) yap -> bu test duser.
+    """
+    govde = _islev("main")
+    cagrilar = [
+        d
+        for d in ast.walk(govde)
+        if isinstance(d, ast.Call)
+        and isinstance(d.func, ast.Name)
+        and d.func.id == "kredi_yetersiz_mi"
+    ]
+
+    assert cagrilar, "main kapiyi cagirmiyor"
+    assert all(len(c.args) == 2 for c in cagrilar)
+    adlar = {
+        d.func.id
+        for d in ast.walk(govde)
+        if isinstance(d, ast.Call) and isinstance(d.func, ast.Name)
+    }
+    assert "kredi_tabani" in adlar

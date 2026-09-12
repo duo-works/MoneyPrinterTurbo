@@ -3324,7 +3324,7 @@ def harcamayi_dosyaya_yaz() -> None:
 
 
 KREDI_TABANI_USD = 0.20
-"""Bakiye bunun altindaysa slot HIC baslatilmaz.
+"""Bakiye bunun altindaysa slot HIC baslatilmaz — TABAN DEGER.
 
 ⚠️ Uydurulmadi, OLCULEN bir orandan turetildi (2026-09-12): OpenRouter
 hesabi $10,0315 harcamisti ve ayni donemde `zamanlayici.log` 88 zamanlanmis
@@ -3334,40 +3334,133 @@ BASLAYAN bir kosumun bitebilmesi icin pay birakiyor.
 ⚠️ Bu bir KALITE esigi DEGIL, isletme esigi. Kalite esiklerinin hicbirine
 (gorsel 75, kaynak 70, tekrar 0,70, kelime 900, sahne 24-28) dokunulmadi.
 
-⚠️ Sayinin zayif yani biliniyor: bir BOLME isleminden geliyor ve cagri
-kirilimini bilmiyor. `harcama_ozeti` gercek kosum maliyetini yazmaya
-baslayinca taban ONDAN yeniden turetilmeli.
+⚠️ Sayi bir BOLME isleminden geliyor ve cagri kirilimini bilmiyor; o yuzden
+yalnizca ALT SINIR. `harcama.jsonl` yeterince dolunca gercek taban
+`kredi_tabani` ile ORADAN turetiliyor ve bu sabitin altina hic inmiyor.
 """
+
+KREDI_TABANI_KATSAYI = 1.75
+"""Taban, olculen kosum maliyetinin kac kati — 0,20'yi ureten oranin aynisi."""
+
+KREDI_TABANI_KAYIT_ESIGI = 5
+"""Bu kadar maliyetli kayit birikmeden telemetriden taban turetilmez.
+
+Tek kayitla p95 o kayitin kendisidir; bugunku tek kayit ($0,070, plan
+asamasinda olen kosum) tabani YANLIS yone (asagi) cekerdi.
+"""
+
+KREDI_TABANI_PENCERE = 30
+"""Son kac kosum sayilir — hat degisince eski maliyetler tabani surmesin."""
+
+
+def _harcama_maliyetleri(sinir: int = KREDI_TABANI_PENCERE) -> list[float]:
+    """`logs/harcama.jsonl` son `sinir` kaydin `maliyet` degerleri.
+
+    ⚠️ Okunamazsa BOS DONER, firlatmaz: taban telemetri yuzunden
+    hesaplanamiyorsa sabit devreye girer, kosum durmaz.
+    """
+    try:
+        satirlar = (LOG_DIR / "harcama.jsonl").read_text(encoding="utf-8").splitlines()
+    except Exception:  # noqa: BLE001 — dosya yok ya da okunamiyor
+        return []
+    maliyetler: list[float] = []
+    for satir in satirlar[-sinir:]:
+        try:
+            deger = json.loads(satir).get("maliyet")
+        except ValueError:
+            continue
+        if isinstance(deger, (int, float)) and deger >= 0:
+            maliyetler.append(float(deger))
+    return maliyetler
+
+
+def kredi_tabani(maliyetler: list[float] | None = None) -> float:
+    """Slot baslatmak icin gereken en az bakiye (USD).
+
+    Yeterli kayit varsa `KATSAYI x p95(kosum maliyeti)`, yoksa
+    `KREDI_TABANI_USD`. Sonuc hicbir zaman sabitin altina inmez: telemetri
+    ucuz kosumlarla dolsa da (plan asamasinda olenler) taban gevsemez.
+
+    ⚠️ p95, ortalama DEGIL: kapi "tipik kosum" icin degil "baslayan kosum
+    bitebilsin" icin var; pahali kuyruktaki kosum (uzun kol, bes deneme,
+    onarim) ortalamanin 3-4 kati.
+    """
+    if maliyetler is None:
+        maliyetler = _harcama_maliyetleri()
+    if len(maliyetler) < KREDI_TABANI_KAYIT_ESIGI:
+        return KREDI_TABANI_USD
+    sirali = sorted(maliyetler)
+    p95 = sirali[max(0, math.ceil(0.95 * len(sirali)) - 1)]
+    return max(KREDI_TABANI_USD, round(KREDI_TABANI_KATSAYI * p95, 4))
+
+
+def _openrouter_veri(yol: str, anahtar: str) -> dict[str, Any] | None:
+    """`GET https://openrouter.ai/api/v1/<yol>` -> `data`; okunamazsa `None`."""
+    try:
+        cevap = requests.get(
+            f"https://openrouter.ai/api/v1/{yol}",
+            headers={"Authorization": f"Bearer {anahtar}"},
+            timeout=20,
+        )
+        cevap.raise_for_status()
+        veri = cevap.json().get("data")
+        return veri if isinstance(veri, dict) else None
+    except Exception:  # noqa: BLE001 — bilinmiyor, red degil
+        return None
+
+
+def bakiye_kirilimi() -> dict[str, float | None]:
+    """OpenRouter'da harcanabilir para, IKI kaynaktan: `kredi` ve `anahtar`.
+
+    ⚠️ IKI UC ZORUNLU — olculdu (2026-09-12). `/credits` hesabin bakiyesini
+    verir ($11,84); anahtarin ise `/key` ucunda gorunen GUNLUK bir limiti var
+    ($5, `limit_reset: daily`). Yalnizca bakiyeye bakan kapi, limit dolunca
+    "$11 var" deyip slotu baslatir ve her cagri 402 ile duser — yani
+    SAGLAYICI_REDDI koşum ORTASINDA gelir, o ana kadar odenen tokenler cop.
+
+    Limitsiz anahtarda (`limit: null`) `anahtar` alani `None` kalir ve kapi
+    yalnizca bakiyeye bakar. Okunamayan uc da `None`: bilmemek red degil
+    (`olcum-dusunce-red-degil-bilinmiyor`).
+    """
+    kirilim: dict[str, float | None] = {"kredi": None, "anahtar": None}
+    temel = str(config.app.get("openai_base_url", "")).strip()
+    if "openrouter" not in temel.lower():
+        return kirilim
+    anahtar = str(config.app.get("openai_api_key", "")).strip()
+    if not anahtar:
+        return kirilim
+    kredi = _openrouter_veri("credits", anahtar)
+    if kredi is not None:
+        try:
+            kirilim["kredi"] = float(kredi.get("total_credits", 0)) - float(
+                kredi.get("total_usage", 0)
+            )
+        except (TypeError, ValueError):
+            pass
+    anahtar_verisi = _openrouter_veri("key", anahtar)
+    if anahtar_verisi is not None and anahtar_verisi.get("limit") is not None:
+        try:
+            kirilim["anahtar"] = float(anahtar_verisi.get("limit_remaining"))
+        except (TypeError, ValueError):
+            pass
+    return kirilim
 
 
 def bakiye_oku() -> float | None:
-    """OpenRouter'da kalan kredi (USD).
+    """OpenRouter'da harcanabilir para (USD): bakiye ile anahtar limitinin KUCUGU.
 
     ⚠️ OKUNAMAZSA `None` DONER ve kapi ACIK duser. Gerekce
     `olcum-dusunce-red-degil-bilinmiyor`: olcum dusunce bu "kredi yok"
     demek degil "bilmiyorum" demektir, ve bilmemek uretimi durdurmamali.
     Ag kesintisi butun bir gunun slotlarini yakmamali.
+
+    Iki uctan biri okunabildiyse o kullanilir: yarim bilgi de bilgidir.
     """
-    temel = str(config.app.get("openai_base_url", "")).strip()
-    if "openrouter" not in temel.lower():
-        return None
-    anahtar = str(config.app.get("openai_api_key", "")).strip()
-    if not anahtar:
-        return None
-    try:
-        cevap = requests.get(
-            "https://openrouter.ai/api/v1/credits",
-            headers={"Authorization": f"Bearer {anahtar}"},
-            timeout=20,
-        )
-        cevap.raise_for_status()
-        veri = cevap.json().get("data", {})
-        return float(veri.get("total_credits", 0)) - float(veri.get("total_usage", 0))
-    except Exception:  # noqa: BLE001 — bilinmiyor, red degil
-        return None
+    degerler = [v for v in bakiye_kirilimi().values() if v is not None]
+    return min(degerler) if degerler else None
 
 
-def kredi_yetersiz_mi(kalan: float | None) -> bool:
+def kredi_yetersiz_mi(kalan: float | None, taban: float = KREDI_TABANI_USD) -> bool:
     """Bakiye bir slot baslatmaya yetmiyor mu.
 
     ⚠️ AYRI FONKSIYON, `main` govdesinde degil: bu deponun kendi kurali —
@@ -3376,8 +3469,11 @@ def kredi_yetersiz_mi(kalan: float | None) -> bool:
     ⚠️ `None` -> `False`, yani kapi ACIK duser. Bakiye OKUNAMADI demek
     "kredi yok" demek degil, "bilmiyorum" demektir
     (`olcum-dusunce-red-degil-bilinmiyor`).
+
+    `taban` varsayilani sabit; `main` telemetriden turetilen `kredi_tabani()`
+    degerini gecirir.
     """
-    return kalan is not None and kalan < KREDI_TABANI_USD
+    return kalan is not None and kalan < taban
 
 
 def _json_govdesi(icerik: str | None) -> dict[str, Any]:
@@ -10215,11 +10311,21 @@ def main() -> None:
     #
     # ⚠️ Kalite kapisi degil: bakiye okunamazsa (None) ACIK duser.
     if not args.dry_run:
-        kalan = bakiye_oku()
-        if kredi_yetersiz_mi(kalan):
+        kirilim = bakiye_kirilimi()
+        degerler = [v for v in kirilim.values() if v is not None]
+        kalan = min(degerler) if degerler else None
+        taban = kredi_tabani()
+        if kredi_yetersiz_mi(kalan, taban):
+            # ⚠️ Iki sayi da yaziliyor: "kredi bitti" ile "gunluk anahtar
+            # limiti doldu" ayni kapidan dusuyor ama caresi farkli (kredi
+            # yuklemek / limiti buyutmek ya da yarini beklemek).
+            def _para(deger: float | None) -> str:
+                return "?" if deger is None else f"${deger:.4f}"
+
             print(
-                f"⛔ KREDI_TABANI: kalan ${kalan:.4f} < taban "
-                f"${KREDI_TABANI_USD:.2f} — slot başlatılmadı",
+                f"⛔ KREDI_TABANI: kalan {_para(kalan)} < taban ${taban:.2f} — "
+                f"slot başlatılmadı (bakiye {_para(kirilim['kredi'])} · "
+                f"anahtar günlük {_para(kirilim['anahtar'])})",
                 flush=True,
             )
             durum_k = load_state()
@@ -10227,7 +10333,9 @@ def main() -> None:
                 {
                     "stage": "credit_floor",
                     "kalan_usd": round(kalan, 6),
-                    "taban_usd": KREDI_TABANI_USD,
+                    "kredi_usd": kirilim["kredi"],
+                    "anahtar_usd": kirilim["anahtar"],
+                    "taban_usd": taban,
                     "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
                 }
             )
