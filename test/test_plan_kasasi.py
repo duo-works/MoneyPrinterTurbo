@@ -69,9 +69,13 @@ def _plan(sahne: int = 8, capa: str = "Cutty Sark") -> ya.ContentPlan:
 
 @pytest.fixture
 def kasa(tmp_path, monkeypatch):
-    yol = tmp_path / "plan_kasasi.json"
-    monkeypatch.setattr(ya, "PLAN_KASASI", yol)
-    return yol
+    """Kasa DIZINI bagliyor, Shorts-8 dosyasinin yolunu donuyor.
+
+    ⚠️ Dizin, tek dosya degil: ilk tasarim tek dosyaydi ve gecelik UZUN
+    koşum, kasadaki Shorts planini ustune yazip oldururdu.
+    """
+    monkeypatch.setattr(ya, "PLAN_KASASI", tmp_path / "plan_kasasi")
+    return ya.kasa_yolu(ya.SHORTS_BICIMI, 8)
 
 
 def _koy(kasa_yolu, plan, *, bicim=None, sahne=8, konu=None):
@@ -131,9 +135,28 @@ def test_BOS_KASA_None_donuyor(kasa):
 def test_BASKA_BICIM_kasayi_YAKMIYOR(kasa):
     """00:05 uzun kolu, kasadaki Shorts planini cope atamaz."""
     _koy(kasa, _plan())
-    assert _al(bicim=ya.UZUN_BICIMI, sahne=28) is None
+    assert _al(bicim=ya.UZUN_BICIMI, sahne=None) is None
     assert kasa.exists(), "uymayan bicim kasayi yakmamali"
     assert _al() is not None, "Shorts koşumu plani hala bulmali"
+
+
+def test_UZUN_PLAN_YAZMAK_Shorts_kasasini_EZMIYOR(kasa):
+    """⚠️ ILK TASARIMIN KUSURU, tam olarak bu.
+
+    Kasa tek dosyaydi. Izgarada bes tetik var (00:05 uzun + dort Shorts) ve
+    gece yarisi kurulan uzun plan, kasadaki Shorts planini USTUNE YAZIYORDU.
+    Yani "uymayan koşum kasayi yakmasin" kurali, kasanin kendi YAZMA yolundan
+    deliniyordu: gecelik koşum her gece bir Shorts planini oldururdu ve kimse
+    gormezdi, cunku kasa zaten bazen bos olabilen bir sey.
+    """
+    _koy(kasa, _plan(8, capa="Hagia Sophia"))
+    ya.plani_kasaya_koy(
+        _plan(6, capa="Petra"), bicim=ya.UZUN_BICIMI, sahne_sayisi=None, konu=None
+    )
+
+    geri = _al()
+    assert geri is not None, "uzun plan yazmak Shorts kasasini silmis"
+    assert geri.visual_anchor == "Hagia Sophia"
 
 
 def test_BASKA_SAHNE_SAYISI_kasayi_YAKMIYOR(kasa):
@@ -202,6 +225,7 @@ def test_SEMA_DEGISIRSE_yakiliyor(kasa):
 
 
 def test_BOZUK_JSON_kosumu_dusurmuyor(kasa):
+    kasa.parent.mkdir(parents=True, exist_ok=True)
     kasa.write_text("{ bu json degil", encoding="utf-8")
     assert _al() is None
 
@@ -311,8 +335,10 @@ class _RenderEDILDI(Exception):
     """`run_generator`a ULASILDIGINI isaretler — sentinel, kusur degil."""
 
 
-def _hat(monkeypatch, tmp_path, kasa_yolu):
-    monkeypatch.setattr(ya, "PLAN_KASASI", kasa_yolu)
+def _hat(monkeypatch, tmp_path):
+    # ⚠️ `PLAN_KASASI` BURADA baglanmiyor — `kasa` fixture'i zaten dizini
+    # bagladi. Ikinci kez baglamak dizini dosya yoluna cevirip kasayi
+    # `.../shorts-8.json/shorts-8.json` yapardi.
     monkeypatch.setattr(ya, "_acquire_lock", lambda: None)
     monkeypatch.setattr(ya, "LOCK_FILE", tmp_path / "automation.lock")
     monkeypatch.setattr(ya, "LOG_DIR", tmp_path / "logs")
@@ -325,11 +351,9 @@ def _hat(monkeypatch, tmp_path, kasa_yolu):
     monkeypatch.setattr(ya, "run_generator", _ulasildi)
 
 
-def test_KASADAKI_PLAN_cikarim_yapilmadan_uretime_giriyor(
-    monkeypatch, tmp_path, kasa
-):
+def test_KASADAKI_PLAN_cikarim_yapilmadan_uretime_giriyor(monkeypatch, tmp_path, kasa):
     """Kasa doluyken `generate_content_plan` HIC cagrilmamali — asil olcum."""
-    _hat(monkeypatch, tmp_path, kasa)
+    _hat(monkeypatch, tmp_path)
     _koy(kasa, _plan(8, capa="Hagia Sophia"))
 
     def _asla(*_a, **_k):
@@ -345,7 +369,7 @@ def test_KASADAKI_PLAN_cikarim_yapilmadan_uretime_giriyor(
 
 def test_KASA_BOSKEN_hat_normal_planliyor(monkeypatch, tmp_path, kasa):
     """Kasa bir YEDEK yol; bossa davranis birebir eskisi gibi kalmali."""
-    _hat(monkeypatch, tmp_path, kasa)
+    _hat(monkeypatch, tmp_path)
     cagrildi: list[int] = []
 
     def _planla(*_a, **_k):
