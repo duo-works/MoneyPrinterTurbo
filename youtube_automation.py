@@ -3511,7 +3511,6 @@ def _json_govdesi(icerik: str | None) -> dict[str, Any]:
     return veri
 
 
-
 def _windows() -> bool:
     """Windows'ta miyiz — platform kontrolu bilerek TEK bir fonksiyonda.
 
@@ -5212,20 +5211,63 @@ def _kaynak_ve_menu_blogu(
     return blok
 
 
-def uygun_capalar(state: dict[str, Any]) -> list[str]:
-    """Havuzdan HENUZ YAKILMAMIS capalar.
+def slottaki_ret_capalari(state: dict[str, Any], slot: str) -> list[str]:
+    """Bu slotta ZATEN reddedilmis capalar — `uygun_capalar` bunlari sona alir."""
+    return [
+        str(kayit.get("visual_anchor", ""))
+        for kayit in state.get("rejected", [])
+        if kayit.get("slot") == slot and str(kayit.get("visual_anchor", "")).strip()
+    ]
+
+
+def uygun_capalar(state: dict[str, Any], *, slot: str | None = None) -> list[str]:
+    """Havuzdan HENUZ YAKILMAMIS capalar; bu slotta reddedilenler EN SONDA.
 
     ⚠️ TEK KAYNAK olmasi zorunlu. Ayni liste hem `generate_content_plan`in
     yedek kip dalinda hem `run_cycle`in uzun kolunda geziliyor; iki yerde
     ayri kurulsaydi biri `engellenen_capalar`i okur digeri okumaz ve hat
     yakilmis bir capayi yeniden secerdi — deponun imza kusurunun aynisi.
+
+    ⚠️ AYNI SLOTTA REDDEDILEN CAPA SONA GIDER (2026-09-12). Havuz sirasi
+    sabitti ve `_yedek_capa_sec` her cagrida ILK uygun capayi aliyordu; ret
+    capayi butcesi dolana kadar ilk sirada BIRAKIYORDU. Yani koşum ici
+    yeniden planlama da `uret.sh` ikinci koşumu da az once dusen capayi
+    yeniden oduyordu; capa ancak 3/3 olunca degisiyordu. 18:38 tetigi:
+    Ayasofya 62 · 72 · 62, ucunde de "donem uyusmuyor" (arsiv modern turist
+    fotografi), butce bir saatte doldu, $0,10. Olculdu (`state.json`,
+    334 olay, 5 Agu - 12 Eyl):
+
+        capanin ilk denemesi             20/143   %14
+        AYNI slotta yeniden               1/116   %0,9
+        FARKLI slotta yeniden (<24 saat)   6/29   %21
+        FARKLI slotta yeniden (>=24 saat)  9/46   %20
+
+    Butce (`RET_DENEME_BUTCESI`) DOGRU: farkli slotta tekrar ilk denemeden
+    bile iyi. Israf yalnizca ayni slotta. Bu yuzden ENGEL DEGIL ERTELEME:
+    capa listede kaliyor, sadece sona gidiyor; onundekilerin menusu yetmezse
+    yine secilebilir (0 uygun capa = uretim durur, bkz. `generate_content_plan`).
+    `ADAY_SOGUMA_SAATI` (24 saat) bilerek KULLANILMADI: olcume gore pencere
+    gereksiz (2,6-3,9 saat sonra yayinlar var: Mesa Verde, Petra, Moai) ve
+    Baalbek gibi bir sonraki tetikte hakli olarak yeniden denenecek capayi
+    bir gun bekletirdi.
+
+    ⚠️ `slot` `run_cycle`dan geliyor. Ret kayitlari koşum BASINDAKI slotu
+    tasiyor ve koşum saat sinirini gecebiliyor (18:56'da baslayan koşum
+    19:06 ve 19:15'te ret yazdi, ucu de "…-18"). Saatten yeniden
+    hesaplansaydi koşum ici yeniden planlama kendi retlerini GORMEZDI.
+    `None` yalniz dis cagiranlar icin: saat anahtari.
     """
     engelli = engellenen_capalar(state)
-    return [
+    uygun = [
         capa
         for capa in EDITORIAL_ANCHOR_POOL
         if not is_duplicate_visual_anchor(capa, engelli)
     ]
+    bu_slot = slottaki_ret_capalari(state, slot or publication_slot_key())
+    if not bu_slot:
+        return uygun
+    ertelenen = [capa for capa in uygun if is_duplicate_visual_anchor(capa, bu_slot)]
+    return [capa for capa in uygun if capa not in ertelenen] + ertelenen
 
 
 def _yedek_capa_sec(
@@ -5692,8 +5734,13 @@ def generate_content_plan(
     *,
     bicim: VideoBicimi = SHORTS_BICIMI,
     capa_tekrari_serbest: bool = False,
+    slot: str | None = None,
 ) -> ContentPlan:
     """Video planini uretir; `konu` verilirse KONUYU SECMEZ, verileni isler.
+
+    `slot`: koşumun slot anahtari — bu slotta reddedilmis havuz capalari
+    siranin sonuna gider (gerekce ve olcum `uygun_capalar`da). `run_cycle`
+    kendi slotunu verir; verilmezse saat anahtari kullanilir.
 
     `konu` disaridan geldiginde (trend hunisinden, DW-89) benzerlik kontrolu
     uygulanmaz. Sebep: bu konuyu model degil, olculmus talep verisi ve onu
@@ -5806,7 +5853,7 @@ def generate_content_plan(
     previous = _recent_titles() + list(extra_exclusions or [])
     state = load_state()
     previous_anchors = engellenen_capalar(state)
-    eligible_anchors = uygun_capalar(state)
+    eligible_anchors = uygun_capalar(state, slot=slot)
     if not eligible_anchors and not konu:
         # ⚠️ SESSIZ TUKENME. Olculdu (2026-08-13): havuzdaki 15 capanin 15'i
         # de kullanilmisti, liste bos gidiyordu ve model bos listeyle ince
@@ -9644,7 +9691,7 @@ def run_cycle(
         # kusur (DW-114) ve uzun formatta kelime SAYISIYLA olcekleniyor.
         if not bicim.dikey and etkin_konu is None:
             havuz_capasi = _yedek_capa_sec(
-                uygun_capalar(state),
+                uygun_capalar(state, slot=slot),
                 bicim=bicim,
                 envanter_sinir=envanter_siniri(bicim),
                 sahne_sayisi=sahne_sayisi,
@@ -9753,6 +9800,7 @@ def run_cycle(
                     sahne_sayisi=sahne_sayisi,
                     bicim=aday_bicim,
                     capa_tekrari_serbest=capa_serbest,
+                    slot=slot,
                 )
                 bicim = aday_bicim
                 # Plan bu satirda ODENMIS durumda ve bundan sonraki her adim
@@ -10011,6 +10059,7 @@ def run_cycle(
                             sahne_sayisi=sahne_sayisi,
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
+                            slot=slot,
                         )
                         # Yeni konu, yeni kayit borcu — ve onceki konunun
                         # en iyi turu artik bu plana ait degil.
@@ -10107,6 +10156,7 @@ def run_cycle(
                             sahne_sayisi=sahne_sayisi,
                             bicim=bicim,
                             capa_tekrari_serbest=capa_serbest,
+                            slot=slot,
                         )
                         # Yeni konu, yeni kayit borcu — ve onceki konunun
                         # en iyi turu artik bu plana ait degil.
