@@ -854,6 +854,75 @@ def adayin_son_reddi(baslik: str, state: dict[str, Any]) -> datetime | None:
     return en_son
 
 
+ASGARI_KAYNAK_REDDI = 2
+"""Adayin "uretilemez" sayilmasi icin kac plani KAYNAK KAPISINDA dusmus olmali.
+
+⚠️ NEDEN VAR — olculdu (2026-09-12, 23:20 koşumu, $0,081, render yok).
+`Seçildi`deki War of Jenkins' Ear "ayrik arz 8/8" ile terfi etmisti ama
+arsivin verdigi kareler karikatur, bust ve kat planiydi; kaynak kapisi uc
+plani da render'a sokmadi (Walpole 45 · Vernon 45 · Walpole 35). Kopruden
+tek geri yol `adayi_birak` (→ `Seçildi`) oldugu icin aday kuyrukta kaldi:
+24 saat sonra ayni slotu yeniden yakacakti ve kaydi elle `Yeni`ye cekmek
+kanal sahibine dusuyordu. Karar kanal sahibinin: "bu isi ben yapmak zorunda
+kalmayayim, kod yapabilsin."
+
+Neden 2, neden 1 degil: tek kaynak reddi bir PLANIN kusuru olabilir (yanlis
+capa, yanlis arama terimi); ikincisi ayni arsive ikinci bir planla gidip yine
+dustuyse kusur arsivde. `state.json` (5 Agu - 12 Eyl): kaynak reddinden
+sonraki deneme 12 vakanin 3'unde kapiyi gecti, ayni slotta iki kaynak reddi
+alan adayin ucuncu denemesi 2/2 yine kaynakta dustu. n kucuk; sayi olcumden
+degil kanal sahibinin kararindan geliyor, kapsam bilerek dar: yalnizca HIC
+render'a ulasmayan koşum.
+"""
+
+
+def aday_uretilemez_mi(reviews: list[dict[str, Any]]) -> bool:
+    """Koşum adayin HICBIR planini render'a sokamadi mi.
+
+    Dogru olmasi icin en az `ASGARI_KAYNAK_REDDI` deneme kaynak kapisinda
+    dusmus olmali ve BASKA HICBIR asama gorulmemeli: bir tane bile `video`
+    (render oldu, hakem dusurdu) ya da `planning` (konu uretilemedi) kaydi
+    varsa kusur arsivde degil, planda/hakemde — o aday `adayi_birak` ile
+    kuyrukta kalir ve 24 saat sogur (bkz. `ADAY_SOGUMA_SAATI`).
+    """
+    asamalar = [str(kayit.get("stage", "")) for kayit in reviews]
+    return len(asamalar) >= ASGARI_KAYNAK_REDDI and all(
+        asama == "source_materials" for asama in asamalar
+    )
+
+
+def adayin_kaynak_retleri(baslik: str, state: dict[str, Any]) -> int:
+    """Adayin kayitli KAYNAK KAPISI reddi sayisi — `huni_besle` terfi kapisi icin.
+
+    `Yeni`ye geri cekilen aday, `huni_besle` ayrik-kare sayisina bakip onu
+    yeniden `Seçildi`ye tasirsa dongu kapanmaz: Jenkins' Ear 8/8 olcuyordu.
+    Ayrik sayi ALAKAYI olcmuyor; alakayi olcen tek sey kaynak kapisi ve onun
+    kaydi `state.json`da. Eslesme `adayin_son_reddi` ile ayni (tam baslik,
+    soguma damgasi), iki kapi farkli aday saymasin.
+    """
+    anahtar = _aday_anahtari(baslik)
+    if not anahtar:
+        return 0
+    gecerlilik = soguma_gecerliligi(state)
+    sayi = 0
+    for kayit in state.get("rejected", []):
+        if kayit.get("stage") != "source_materials":
+            continue
+        kayitli = kayit.get("aday_basligi")
+        if kayitli is None and kayit.get("kaynak") == "huni":
+            kayitli = kayit.get("topic")
+        if _aday_anahtari(kayitli) != anahtar:
+            continue
+        if gecerlilik is not None:
+            try:
+                if datetime.fromisoformat(str(kayit.get("rejected_at", ""))) < gecerlilik:
+                    continue
+            except ValueError:
+                continue
+        sayi += 1
+    return sayi
+
+
 def aday_sogumada_mi(
     baslik: str, state: dict[str, Any], *, simdi: datetime | None = None
 ) -> float:
@@ -10511,11 +10580,29 @@ def run_cycle(
         # geri konur. Her `return`'e ayri ayri yazilsaydi biri unutulur ve o
         # yol adayi `Uretiliyor`da birakirdi — sessizce, kimse gormeden.
         if aday is not None and not aday_kapatildi:
-            notion_kuyrugu.adayi_birak(
-                aday,
-                gerekce=f"{slot} koşumu video üretemedi; kuyruğa geri kondu",
-                ytoto_path=YTOTO_PATH,
-            )
+            # ⚠️ URETILEMEZ ADAY KUYRUGA DONMEZ, `Yeni`YE DONER (DW-140).
+            # Gerekce ve olcum `ASGARI_KAYNAK_REDDI`de. `reviews` `try`nin
+            # ikinci satirinda kuruluyor, burada her zaman tanimli.
+            if aday_uretilemez_mi(reviews):
+                skorlar = " · ".join(
+                    str((kayit.get("review") or {}).get("visual_alignment_score", "?"))
+                    for kayit in reviews
+                )
+                notion_kuyrugu.adayi_geri_cek(
+                    aday,
+                    gerekce=(
+                        f"{slot} koşumu: {len(reviews)} planın hiçbiri kaynak kapısını "
+                        f"geçmedi (skor {skorlar}) — arşiv anlatımı taşımıyor; "
+                        "yeniden seçilecekse dönem-uyumlu görsel kaynağı önce doğrulanmalı"
+                    ),
+                    ytoto_path=YTOTO_PATH,
+                )
+            else:
+                notion_kuyrugu.adayi_birak(
+                    aday,
+                    gerekce=f"{slot} koşumu video üretemedi; kuyruğa geri kondu",
+                    ytoto_path=YTOTO_PATH,
+                )
 
 
 def main() -> None:

@@ -223,6 +223,40 @@ def adayi_birak(
         )
 
 
+def adayi_geri_cek(
+    aday: Aday, *, gerekce: str, ytoto_path: str | None = None
+) -> None:
+    """`Uretiliyor` -> `Yeni`. Aday URETILEMEZ cikti; karar insana doner.
+
+    `adayi_birak` kapmayi geri alir ama adayi KUYRUKTA tutar — dogru olan da
+    bu, cunku dususlerin cogu plan/hakem varyansi ve ayni aday baska slotta
+    geciyor. Burasi farkli bir durum icin: adayin hicbir plani render'a
+    ulasamadi, kaynak kapisi arsivin anlatimi tasimadigini en az iki kez
+    olctu (`youtube_automation.aday_uretilemez_mi`). Boyle bir aday
+    `Seçildi`de kaldikca 24 saatte bir ayni slotu yeniden yakiyor ve kaydi
+    elle `Yeni`ye cekmek kanal sahibine dusuyordu — olculdu 12 Eyl 23:20,
+    War of Jenkins' Ear: "ayrik arz 8/8" ama kareler karikatur/bust/kat
+    plani, uc plan da kaynak kapisinda (45 · 45 · 35), $0,081.
+
+    ⚠️ HATA FIRLATMAZ ve KOPRU KOMUTU YOKSA `adayi_birak`A DUSER. Iki repo
+    ayri sevk ediliyor: `ytoto aday geri-cek` (Yt_Automation DW-140) canlida
+    degilse aday `Uretiliyor`da mahsur kalmamali. Eski davranis (kuyruga
+    geri) `Yeni`ye cekmekten kotu, mahsur kalmaktan iyidir.
+    """
+    sonuc = _kos(
+        ["aday", "geri-cek", aday.kimlik, "--not", gerekce[:1800]], ytoto_path=ytoto_path
+    )
+    if sonuc.returncode == 0:
+        print(f"⏮️ aday kuyruktan çekildi ({aday.baslik}): {gerekce[:160]}", flush=True)
+        return
+    print(
+        f"⚠️ aday `Yeni`ye çekilemedi ({aday.baslik}) — kuyruğa geri konuyor: "
+        f"{sonuc.stderr.strip()[-200:]}",
+        flush=True,
+    )
+    adayi_birak(aday, gerekce=gerekce, ytoto_path=ytoto_path)
+
+
 def adayi_kapat(
     aday: Aday,
     *,

@@ -33,10 +33,12 @@ import notion_kuyrugu
 import wikimedia_materials
 from youtube_automation import (
     ASGARI_SAHNE_ARZI,
+    ASGARI_KAYNAK_REDDI,
     SAHNE_KOLU_TAVANI,
     SHORTS_BICIMI,
     YTOTO_PATH,
     aday_kapilabilir_mi,
+    adayin_kaynak_retleri,
     arsiv_envanteri,
     arsiv_videoyu_tasir,
     engellenen_capalar,
@@ -338,6 +340,16 @@ def besle(kuru: bool = False) -> dict:
         if is_duplicate_visual_anchor(aday.baslik, kullanilmis):
             elenen.append((aday.baslik, -1))
             continue
+        # ⚠️ KAYNAK KAPISINDA DUSMUS ADAY YENIDEN TERFI ETMEZ (DW-140). Uretim
+        # onu `Yeni`ye geri cekti (`adayi_geri_cek`); burasi ayrik-kare
+        # sayisina bakip yeniden `Seçildi`ye tasirsa dongu kapanmaz —
+        # Jenkins' Ear 8/8 olcuyordu, kareler karikatur/bust/kat planiydi.
+        # Ayrik sayi ALAKAYI olcmuyor; olcen tek kapi kaynak kapisi. Insan
+        # `ytoto aday sec` ile yine secebilir; huni secmez. AGA GITMIYOR.
+        kaynak_reddi = adayin_kaynak_retleri(aday.baslik, state)
+        if kaynak_reddi >= ASGARI_KAYNAK_REDDI:
+            elenen.append((aday.baslik, -2))
+            continue
         if olcum >= OLCUM_TAVANI:
             # ⚠️ Sessiz kesme OLMAZ: bu satir olmadan "kuyrukta uretilebilir
             # aday yok" ile "kuyrugun geri kalanina bakmadim" ayni gorunurdu.
@@ -367,7 +379,12 @@ def besle(kuru: bool = False) -> dict:
         kullanilmis.append(aday.baslik)
 
     for baslik, adet in elenen[:8]:
-        sebep = "benzeri üretilmiş" if adet < 0 else f"menü {adet} < {ASGARI_MENU}"
+        if adet == -2:
+            sebep = f"kaynak kapısında ≥{ASGARI_KAYNAK_REDDI} kez düştü — arşiv anlatımı taşımıyor"
+        elif adet < 0:
+            sebep = "benzeri üretilmiş"
+        else:
+            sebep = f"menü {adet} < {ASGARI_MENU}"
         print(f"  – atlandı: {baslik[:46]} ({sebep})")
     if tavana_carpti:
         print(
