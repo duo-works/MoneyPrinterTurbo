@@ -3808,9 +3808,21 @@ def _vision_json(
             # akil yurutme butceyi yerse kapi BOS cevap alip sessizce duser.
             **_istek_ekleri(base_url),
         )
-        # ⚠️ Ayristirmadan once — metin yolundaki gerekcenin aynisi. Goru
-        # cagrisi kontak sayfasi TASIYOR, yani giris tokeni metin yolundan
-        # kat kat pahali; okunamayan bir goru cevabi en pahali israftir.
+        # ⚠️ Ayristirmadan once — metin yolundaki gerekcenin aynisi.
+        #
+        # ⚠️ DUZELTME (2026-09-12): burada once "goru cagrisi kontak sayfasi
+        # tasidigi icin metin yolundan KAT KAT pahali" yaziyordu. Telemetrinin
+        # ilk gercek kosumu bunu CURUTTU — plan asamasinda olen bir kosumda:
+        #
+        #     metin 9 cagri · giris 54.380 tk · $0,065874  -> cagri basina $0,00732
+        #     goru  1 cagri · giris  2.877 tk · $0,004544  -> cagri basina $0,00454
+        #
+        # Yani cagri basina METIN daha pahali: plan istemi ~6.000 giris tokeni
+        # tasiyor ve bes deneme birikiyor. Goru cagrisi tek kontak sayfasiyla
+        # ~2.900 tokende kaliyor. ⚠️ Yine de bu TEK kosum ve render'a hic
+        # ulasmadi (hakem goru cagrilari hic yapilmadi); render eden bir
+        # kosumun kirilimi farkli cikabilir. `logs/harcama.jsonl` birikince
+        # yeniden okunacak — bu yorum o zamana kadar bir olcum, kural degil.
         harcamayi_kaydet("goru", response)
         try:
             return _json_govdesi(response.choices[0].message.content)
