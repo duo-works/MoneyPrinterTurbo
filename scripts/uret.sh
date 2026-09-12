@@ -250,6 +250,13 @@ fi
 # da deneme yakmis olabilir ve o da sinyaldir.
 # ⚠️ `|| true` — betikte `set -e` yok (`set -uo pipefail`) ama eslesmeyen
 # grep 1 donduruyor; bagimliligi yok etmek icin acikca yutuluyor.
+# ⚠️ `case`ten ONCE ve her cikis kodu icin: kasadan gelen plan YAYINLA da
+# bitebilir, REDLE de, ve iki durumda da tasarruf gerceklesmis olur. Satiri
+# yalnizca basarili dala yazmak, kurtarilan parayi eksik saydirirdi.
+if grep -q "plan kasadan geldi" "$CIKTI_DOSYASI"; then
+  yaz "kasa | plan yeniden odenmeden kullanildi ($(grep -o 'plan kasadan geldi: [^·]*' "$CIKTI_DOSYASI" | head -1 | cut -d: -f2- | xargs))"
+fi
+
 case "$KOD" in
   0)
     URL="$(grep -o '"url": "[^"]*"' "$CIKTI_DOSYASI" | head -1 | cut -d'"' -f4)"
@@ -298,14 +305,25 @@ case "$KOD" in
       # cozulemeyince oldu; DNS 9 dakika sonra calisiyordu. Kayit `state.json`a
       # `network_error` olarak dusuyor ve HARCAMAYI tasiyor — "boşa giden
       # bakiye" ancak o alanla toplanabilir.
-      yaz "ağ hatası | koşum yarıda kesildi (harcama state.json'da)"
+      # ⚠️ IKI AYRI SATIR, cunku iki ayri DURUM: plan kasadaysa odenen para
+      # geri gelecek, kasa bossa gercekten yandi. Tek satir yazmak, "boşa
+      # giden bakiye" sorusunu logdan cevaplanamaz kilardi.
+      if grep -q "plan kasada duruyor" "$CIKTI_DOSYASI"; then
+        yaz "ağ hatası | koşum kesildi, PLAN KASADA (sonraki tetik yeniden ödemez)"
+      else
+        yaz "ağ hatası | koşum yarıda kesildi (harcama state.json'da)"
+      fi
       exit 0
     fi
     if grep -q "SAGLAYICI_REDDI" "$CIKTI_DOSYASI"; then
       # Kosum SIRASINDA bakiye/kota bitti (402/403/429). Kayit `state.json`a
       # `provider_error` olarak dustu, yani telemetri bunu kalite reddinden
       # ayirt edebiliyor.
-      yaz "saglayici reddi | kosum sirasinda kesildi"
+      if grep -q "plan kasada duruyor" "$CIKTI_DOSYASI"; then
+        yaz "saglayici reddi | kesildi, PLAN KASADA (kredi gelince yeniden odenmez)"
+      else
+        yaz "saglayici reddi | kosum sirasinda kesildi"
+      fi
       exit 0
     fi
     HATA_DOSYASI="$LOG_DIZINI/hata-$(date +%Y%m%d-%H%M%S).log"

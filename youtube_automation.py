@@ -9206,6 +9206,195 @@ def _acquire_lock() -> None:
         stream.write(str(os.getpid()))
 
 
+PLAN_KASASI = LOG_DIR.parent / "plan_kasasi.json"
+"""ODENMIS ama HENUZ KULLANILMAMIS planin durdugu yer.
+
+⚠️ NEDEN VAR — olculdu 2026-09-12, `logs/hata-*.log` 156 dosya tarandi:
+
+    plan KURULDUKTAN sonra traceback ile olen koşum : 117
+    bunlarin yayin yapabilmis olani                 :   0
+
+Yani hattin bugune kadarki her cokusu, PARASI ODENMIS bir plani cope atti.
+Bugunku 16:05 koşumu bunun canli ve kalemi kalemine olculmus hali:
+
+    metin  4 cagri  giris 28.136 tk  cikis 4.728 tk  $0,0217   <- PLAN
+    goru   1 cagri  giris  2.750 tk  cikis   557 tk  $0,0030   <- kaynak hakemi
+                                                     -------
+                                                     $0,0247
+
+Dort metin cagrisi Ayasofya planini kurdu (uc deneme kelime kapisindan
+dustu, dorduncusu gecti), goru cagrisi kaynaklari onayladi ve sonra
+`images.weserv.nl` DNS'i cozulemedi. Plan hicbir yere yazilmamisti; bir
+sonraki tetik ayni $0,0217'yi bastan odeyecekti. Kurtarilabilir paranin
+%88'i PLAN, yani kurtarilmasi gereken sey render ya da goru degil plan.
+
+⚠️ NEDEN WRITE-AHEAD — plan kurulur kurulmaz yaziliyor, olum aninda degil.
+Bu kasayi oldurmesi beklenen sebeplerin bir kismi hicbir `except` blogunun
+calismasina izin vermiyor: makine uykusu, `launchctl` kill'i, SIGKILL.
+"Olurken kaydet" yaklasimi tam da en cok kaybettiren vakalarda calismazdi.
+"""
+
+PLAN_KASASI_OMRU_SAAT = 24
+"""Kasadaki plan kac saat sonra bayat sayilir.
+
+Aday sogumasi (`ADAY_SOGUMA_SAATI`) ve capa butcesi bu pencerede donuyor;
+daha uzun tutmak, dunyasi degismis bir plani bugunun kapilarina sokmak olur.
+"""
+
+PLAN_KASASI_AZAMI_DENEME = 3
+"""Ayni kasa plani kac koşumda denenir.
+
+⚠️ BU BIR EMNIYET SUBABI, kapi degil. Kaliteden dusen plan zaten kalite
+reddi yolunda yakiliyor; sayac, o yollardan BIRI atlanirsa kasanin sonsuza
+kadar ayni plani geri vermesini imkansiz kiliyor. Deponun imza kusuru tam
+olarak bu: kurtarma yolu, kendisini durduracak kapinin calistigini varsayar.
+"""
+
+
+def kasayi_bosalt(gerekce: str) -> None:
+    """Kasadaki plani siler. HICBIR KOSULDA FIRLATMAZ.
+
+    `harcamayi_kaydet` doktrininin aynisi: kasa bir TASARRUF araci, video
+    uretimini dusurme yetkisi yok.
+    """
+    try:
+        if PLAN_KASASI.exists():
+            PLAN_KASASI.unlink()
+            print(f"ℹ️ plan kasası boşaltıldı: {gerekce}", flush=True)
+    except OSError:
+        return
+
+
+def plani_kasaya_koy(
+    plan: ContentPlan,
+    *,
+    bicim: VideoBicimi,
+    sahne_sayisi: int | None,
+    konu: str | None,
+) -> None:
+    """Yeni kurulmus plani diske yazar. HICBIR KOSULDA FIRLATMAZ."""
+    try:
+        PLAN_KASASI.parent.mkdir(parents=True, exist_ok=True)
+        PLAN_KASASI.write_text(
+            json.dumps(
+                {
+                    "plan": asdict(plan),
+                    "bicim": bicim.ad,
+                    "sahne_sayisi": sahne_sayisi,
+                    "konu": konu,
+                    # Kurtarilan paranin RAPOR EDILEBILMESI icin. Tasarruf
+                    # olculemezse "boşa giden bakiye yok" bir iddia olarak
+                    # kalir, olcum olarak degil.
+                    "harcama": harcama_ozeti(),
+                    "deneme": 0,
+                    "yazildi": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    except (OSError, TypeError, ValueError):
+        return
+
+
+def kasadan_plan_al(
+    *,
+    bicim: VideoBicimi,
+    sahne_sayisi: int | None,
+    konu: str | None,
+    state: dict[str, Any],
+) -> ContentPlan | None:
+    """Kasadaki plan BUGUN de gecerliyse dondurur; degilse `None`.
+
+    ⚠️ BUTUN KAPILAR YEREL VE BEDAVA. Kasanin tek varlik sebebi cikarim
+    parasi odememek; gecerliligi bir LLM cagrisiyla olcmek mekanizmayi
+    anlamsiz kilardi.
+
+    ⚠️ IKI AYRI "hayir" var ve ayri kalmalari zorunlu:
+
+      · `None` dondur, kasayi BIRAK — plan bu koşuma uymuyor ama baska bir
+        koşuma uyabilir (00:05 uzun slotu, kasadaki Shorts planini YAKMAZ).
+      · `None` dondur, kasayi YAK — plan artik hicbir koşumda gecerli degil.
+
+    Bu ayrim olmasaydi gecelik uzun kol her gece bir Shorts planini sessizce
+    cope atardi, yani kasa tam da kurtarmak icin yazildigi parayi yakardi.
+    """
+    try:
+        veri = json.loads(PLAN_KASASI.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(veri, dict):
+        kasayi_bosalt("okunamayan kayıt")
+        return None
+
+    # --- Bu koşuma uymuyor: kasa DURUYOR --------------------------------
+    if veri.get("bicim") != bicim.ad:
+        return None
+    if veri.get("sahne_sayisi") != sahne_sayisi:
+        return None
+    plan_verisi = veri.get("plan")
+    if not isinstance(plan_verisi, dict):
+        kasayi_bosalt("okunamayan plan")
+        return None
+    # Konu disaridan geldiyse (acik konu / kuyruk adayi) plan O KONUNUN plani
+    # olmali. Konu verilmediyse (model secer kipi) kasadaki konu zaten
+    # modelin ayni havuzdan sectigi bir konu — kabul.
+    if konu is not None and konu not in (veri.get("konu"), plan_verisi.get("topic")):
+        return None
+
+    # --- Artik hicbir koşumda gecerli degil: kasa YANIYOR ----------------
+    try:
+        yas = datetime.now(ZoneInfo(TIMEZONE_NAME)) - datetime.fromisoformat(
+            str(veri.get("yazildi"))
+        )
+    except (TypeError, ValueError):
+        kasayi_bosalt("okunamayan zaman damgası")
+        return None
+    if yas.total_seconds() > PLAN_KASASI_OMRU_SAAT * 3600:
+        kasayi_bosalt(f"bayat ({yas.total_seconds() / 3600:.0f} saat)")
+        return None
+    deneme = int(veri.get("deneme", 0) or 0)
+    if deneme >= PLAN_KASASI_AZAMI_DENEME:
+        kasayi_bosalt(f"{deneme} koşumda denendi, tutmadı")
+        return None
+    try:
+        plan = ContentPlan(**plan_verisi)
+    except TypeError:
+        kasayi_bosalt("plan şeması değişmiş")
+        return None
+    # ⚠️ TEK KAYNAK: engel listesi `engellenen_capalar`. Buraya ayri bir
+    # "yayinlanmis konular" listesi yazmak, `uygun_capalar` docstring'inin
+    # uyardigi kusurun ta kendisi olurdu. Yayinlanan capa zaten o listede.
+    if plan.visual_anchor in engellenen_capalar(state):
+        kasayi_bosalt(f"çapa artık engelli ({plan.visual_anchor})")
+        return None
+    try:
+        validate_content_plan(plan, sahne_sayisi, bicim=bicim, konu=konu or plan.topic)
+    except ValueError as hata:
+        kasayi_bosalt(f"bugünün kapılarından düştü ({hata})")
+        return None
+
+    # Sayac ANINDA artiyor: koşum bu satirdan sonra oldurulse bile deneme
+    # sayilmis olur, yoksa emniyet subabi tam da sert olumlerde islemezdi.
+    veri["deneme"] = deneme + 1
+    try:
+        PLAN_KASASI.write_text(
+            json.dumps(veri, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        pass
+    kurtarilan = (veri.get("harcama") or {}).get("maliyet")
+    para = f" · ${kurtarilan:.4f} yeniden ödenmedi" if kurtarilan else ""
+    print(
+        f"♻️ plan kasadan geldi: {plan.topic} · çapa '{plan.visual_anchor}' · "
+        f"{len(plan.scenes)} sahne · deneme {deneme + 1}/"
+        f"{PLAN_KASASI_AZAMI_DENEME}{para}",
+        flush=True,
+    )
+    return plan
+
+
 def run_cycle(
     *,
     dry_run: bool = False,
@@ -9472,6 +9661,19 @@ def run_cycle(
         # icin kullanilmis sayilmiyor, sonraki `--turet` ayni pencereyi
         # yeniden deniyor.
         yeniden_planlanabilir = turet is None
+        # ♻️ ODENMIS PLAN, CIKARIMDAN DA ONCE. Kasada bu koşuma uyan gecerli
+        # bir plan varsa model HIC cagrilmiyor; kasa bossa ya da plan bayatsa
+        # hicbir sey degismez ve asagidaki dongu normal calisir. Gerekce ve
+        # olcum `PLAN_KASASI` sabitinde (117/156 cokus, hepsi odenmis plan).
+        if turet is None and plan is None:
+            if kasa_plani := kasadan_plan_al(
+                bicim=bicim,
+                sahne_sayisi=sahne_sayisi,
+                konu=etkin_konu,
+                state=state,
+            ):
+                plan = kasa_plani
+                denenecek = []
         for aday_bicim in denenecek:
             try:
                 plan = generate_content_plan(
@@ -9482,6 +9684,15 @@ def run_cycle(
                     capa_tekrari_serbest=capa_serbest,
                 )
                 bicim = aday_bicim
+                # Plan bu satirda ODENMIS durumda ve bundan sonraki her adim
+                # (indirme, render, yukleme, hatta makinenin uykuya dalmasi)
+                # onu kaybettirebilir. Kayit bu yuzden HEMEN, is bitince degil.
+                plani_kasaya_koy(
+                    plan,
+                    bicim=bicim,
+                    sahne_sayisi=sahne_sayisi,
+                    konu=etkin_konu,
+                )
                 break
             except UzunFormatUygunDegilError as exc:
                 # ⚠️ ARTIK SHORTS'A GECMIYOR (bkz. `denenecek` gerekcesi).
@@ -9734,6 +9945,15 @@ def run_cycle(
                         # en iyi turu artik bu plana ait degil.
                         son_plan_kayitli = False
                         son_render = None
+                        # Kasa YENI plani tutar. Eskisi kaliteden dustu; onu
+                        # kasada birakmak, reddedilmis bir plani bir sonraki
+                        # koşuma bedava diye geri vermek olurdu.
+                        plani_kasaya_koy(
+                            plan,
+                            bicim=bicim,
+                            sahne_sayisi=sahne_sayisi,
+                            konu=etkin_konu,
+                        )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -9821,6 +10041,15 @@ def run_cycle(
                         # en iyi turu artik bu plana ait degil.
                         son_plan_kayitli = False
                         son_render = None
+                        # Kasa YENI plani tutar. Eskisi kaliteden dustu; onu
+                        # kasada birakmak, reddedilmis bir plani bir sonraki
+                        # koşuma bedava diye geri vermek olurdu.
+                        plani_kasaya_koy(
+                            plan,
+                            bicim=bicim,
+                            sahne_sayisi=sahne_sayisi,
+                            konu=etkin_konu,
+                        )
                     except DistinctTopicUnavailableError as planning_error:
                         reviews.append(
                             {
@@ -9946,6 +10175,12 @@ def run_cycle(
             if not son_plan_kayitli and son_render is not None:
                 _video_reddini_kaydet(*son_render)
                 son_plan_kayitli = True
+            # ⚠️ KALITE REDDI KASAYI YAKAR. Kasanin isi ODENMIS ama
+            # DENENMEMIS plani saklamak; burada plan denendi ve dustu.
+            # Saklamak, reddedilmis bir plani bir sonraki koşuma "bedava"
+            # diye geri vermek — yani tasarruf araciyla kalite kapisini
+            # delmek olurdu.
+            kasayi_bosalt("kalite reddi — plan denendi ve düştü")
             result = {
                 "status": "rejected",
                 "slot": slot,
@@ -10102,6 +10337,11 @@ def run_cycle(
             state.setdefault("completed_slots", []).append(slot)
             state.setdefault("published", []).append(record)
             save_state(state)
+        # Plan isini gordu. Kasada birakmak, YAYINLANMIS bir plani ertesi
+        # koşuma geri vermek olurdu; `engellenen_capalar` capayi zaten
+        # engellerdi ama kasa o kapiyi ancak OKUDUGU icin gecerdi — iki
+        # savunmanin da ayni yonu gostermesi gerekiyor.
+        kasayi_bosalt("yayınlandı")
         if aday is not None and url:
             notion_kuyrugu.adayi_kapat(
                 aday,
@@ -10361,6 +10601,11 @@ def main() -> None:
         # BURADA: kayit AYRI bir `stage` ile dusuyor, kalite reddi gibi
         # gorunmuyor — `RenderZamanAsimi`in `201e142`deki kalibinin aynisi.
         print(f"⛔ SAGLAYICI_REDDI (HTTP {hata.status_code}): {hata}", flush=True)
+        if PLAN_KASASI.exists():
+            print(
+                "♻️ plan kasada duruyor — kredi gelince yeniden ödenmeden kullanılacak",
+                flush=True,
+            )
         durum_h = load_state()
         durum_h.setdefault("rejected", []).append(
             {
@@ -10368,6 +10613,11 @@ def main() -> None:
                 "http": hata.status_code,
                 "mesaj": str(hata)[:400],
                 "harcama": harcama_ozeti(),
+                # ⚠️ `harcama` ne HARCANDIGINI soyler, `kasa` o paranin GERI
+                # GELIP GELMEYECEGINI. Ikisi olmadan "boşa giden bakiye"
+                # toplanamaz: kasadaki plan bir sonraki koşumda yeniden
+                # odenmeyecek, yani o satir kayip DEGIL.
+                "kasa": PLAN_KASASI.exists(),
                 "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
             }
         )
@@ -10391,12 +10641,20 @@ def main() -> None:
         # ayri `stage`, ayri cikis kodu. `harcama` alani bu koşumun ne kadar
         # yaktigini tasiyor — "boşa giden bakiye" ancak boyle olculebilir.
         print(f"⛔ AG_HATASI: {str(hata)[:300]}", flush=True)
+        if PLAN_KASASI.exists():
+            print(
+                "♻️ plan kasada duruyor — bir sonraki tetik onu yeniden "
+                "ödemeden kullanacak",
+                flush=True,
+            )
         durum_a = load_state()
         durum_a.setdefault("rejected", []).append(
             {
                 "stage": "network_error",
                 "mesaj": str(hata)[:400],
                 "harcama": harcama_ozeti(),
+                # Bkz. `provider_error` kaydindaki gerekce.
+                "kasa": PLAN_KASASI.exists(),
                 "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
             }
         )
