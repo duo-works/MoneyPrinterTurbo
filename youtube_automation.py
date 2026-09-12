@@ -27,6 +27,7 @@ from imageio_ffmpeg import get_ffmpeg_exe
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from openai import (
     APIConnectionError,
+    APIStatusError,
     APITimeoutError,
     BadRequestError,
     InternalServerError,
@@ -3214,6 +3215,171 @@ def _akil_yurutmeyi_kapat(base_url: str) -> dict[str, Any]:
     return {"extra_body": {"reasoning": {"enabled": False}}}
 
 
+def _istek_ekleri(base_url: str) -> dict[str, Any]:
+    """`_akil_yurutmeyi_kapat` + harcama raporu, TEK `extra_body` icinde.
+
+    ⚠️ `_akil_yurutmeyi_kapat` bilerek DEGISTIRILMEDI: kendi gerekcesi ve
+    kendi testleri var. Iki ek ayri ayri `**` ile gecirilseydi ikinci
+    `extra_body` birincisini EZERDI ve akil yurutme sessizce geri acilirdi —
+    bu hattin uzun formatini tek basina durduran kusur oydu.
+
+    `usage.include` OpenRouter'a "cevaba maliyeti de yaz" der ve bedavadir.
+    """
+    ek = _akil_yurutmeyi_kapat(base_url)
+    if "openrouter" not in base_url.lower():
+        return ek
+    govde = dict(ek.get("extra_body") or {})
+    govde["usage"] = {"include": True}
+    return {"extra_body": govde}
+
+
+# ⚠️ HARCAMA TELEMETRISI (2026-09-12). Bugune kadar hicbir yerde token ya da
+# maliyet kaydi YOKTU. "Kosum basina $0,114" rakami $10,03'u 88 kosuma
+# bolerek cikarilmisti, yani hangi CAGRININ pahali oldugu bilinmiyordu ve
+# "tasarruflu olalim" talebi olcusuz kalirdi. Ilk uc tasarruf fikri zaten
+# olculerek curudu (genis `max_tokens` BEDAVA, fatura uretilen tokene gore;
+# plan denemesini 5'ten 3'e kismak 22 URETKEN kosumu oldururdu), yani
+# tahminle devam etmenin bedeli olculmus durumda.
+_HARCAMA: list[dict[str, Any]] = []
+
+
+def harcamayi_kaydet(tur: str, response: Any) -> None:
+    """Bir LLM cevabinin token/maliyetini biriktirir.
+
+    ⚠️ HICBIR KOSULDA FIRLATMAZ. Telemetri ugruna video uretimi dusmemeli —
+    `muzik_kunyesi` ve `arsiv_envanteri`nin `return []` doktrininin aynisi.
+    """
+    try:
+        kullanim = getattr(response, "usage", None)
+        if kullanim is None:
+            return
+        kayit: dict[str, Any] = {
+            "tur": tur,
+            "giris": int(getattr(kullanim, "prompt_tokens", 0) or 0),
+            "cikis": int(getattr(kullanim, "completion_tokens", 0) or 0),
+        }
+        # OpenRouter maliyeti `usage.cost` olarak dondurur. Pydantic modelde
+        # tanimli OLMAYAN alanlar `model_extra`ya duser, o yuzden iki yol.
+        maliyet = getattr(kullanim, "cost", None)
+        if maliyet is None:
+            ek = getattr(kullanim, "model_extra", None) or {}
+            maliyet = ek.get("cost") if isinstance(ek, dict) else None
+        if maliyet is not None:
+            kayit["maliyet"] = float(maliyet)
+        _HARCAMA.append(kayit)
+    except Exception:  # noqa: BLE001 — telemetri asla kosumu dusurmez
+        return
+
+
+def harcama_ozeti() -> dict[str, Any]:
+    """Bu kosumda yapilan LLM cagrilarinin ozeti (tur kirilimiyla)."""
+    ozet: dict[str, Any] = {
+        "cagri": len(_HARCAMA),
+        "giris_token": sum(k.get("giris", 0) for k in _HARCAMA),
+        "cikis_token": sum(k.get("cikis", 0) for k in _HARCAMA),
+    }
+    maliyetler = [k["maliyet"] for k in _HARCAMA if "maliyet" in k]
+    if maliyetler:
+        ozet["maliyet"] = round(sum(maliyetler), 6)
+    kirilim: dict[str, dict[str, Any]] = {}
+    for k in _HARCAMA:
+        d = kirilim.setdefault(
+            k["tur"], {"cagri": 0, "giris": 0, "cikis": 0, "maliyet": 0.0}
+        )
+        d["cagri"] += 1
+        d["giris"] += k.get("giris", 0)
+        d["cikis"] += k.get("cikis", 0)
+        d["maliyet"] = round(d["maliyet"] + k.get("maliyet", 0.0), 6)
+    ozet["tur"] = kirilim
+    return ozet
+
+
+def harcamayi_dosyaya_yaz() -> None:
+    """Kosumun harcama ozetini `logs/harcama.jsonl`e EKLER.
+
+    ⚠️ Neden JSONL ve neden tek dosya: `zamanlayici.log` ile ayni kalip.
+    Slot basina ayri dosya yazilsaydi (`<slot>-rejected.json` gibi) toplama
+    icin her oturumda elden Python yazmak gerekirdi — `uretim_rapor.py`nin
+    varlik sebebi tam olarak o zahmetti.
+
+    ⚠️ Hicbir kosulda firlatmaz ve HIC cagri yapilmadiysa satir yazmaz.
+    """
+    try:
+        if not _HARCAMA:
+            return
+        ozet = harcama_ozeti()
+        ozet["zaman"] = datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat()
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with (LOG_DIR / "harcama.jsonl").open("a", encoding="utf-8") as dosya:
+            dosya.write(json.dumps(ozet, ensure_ascii=False) + "\n")
+        maliyet = ozet.get("maliyet")
+        para = f" · ${maliyet:.4f}" if isinstance(maliyet, (int, float)) else ""
+        print(
+            f"ℹ️ harcama: {ozet['cagri']} çağrı · giriş {ozet['giris_token']} tk "
+            f"· çıkış {ozet['cikis_token']} tk{para}",
+            flush=True,
+        )
+    except Exception:  # noqa: BLE001 — telemetri asla kosumu dusurmez
+        return
+
+
+KREDI_TABANI_USD = 0.20
+"""Bakiye bunun altindaysa slot HIC baslatilmaz.
+
+⚠️ Uydurulmadi, OLCULEN bir orandan turetildi (2026-09-12): OpenRouter
+hesabi $10,0315 harcamisti ve ayni donemde `zamanlayici.log` 88 zamanlanmis
+kosum bitirmisti -> kosum basina ~$0,114. Taban bunun ~1,75 kati; yani
+BASLAYAN bir kosumun bitebilmesi icin pay birakiyor.
+
+⚠️ Bu bir KALITE esigi DEGIL, isletme esigi. Kalite esiklerinin hicbirine
+(gorsel 75, kaynak 70, tekrar 0,70, kelime 900, sahne 24-28) dokunulmadi.
+
+⚠️ Sayinin zayif yani biliniyor: bir BOLME isleminden geliyor ve cagri
+kirilimini bilmiyor. `harcama_ozeti` gercek kosum maliyetini yazmaya
+baslayinca taban ONDAN yeniden turetilmeli.
+"""
+
+
+def bakiye_oku() -> float | None:
+    """OpenRouter'da kalan kredi (USD).
+
+    ⚠️ OKUNAMAZSA `None` DONER ve kapi ACIK duser. Gerekce
+    `olcum-dusunce-red-degil-bilinmiyor`: olcum dusunce bu "kredi yok"
+    demek degil "bilmiyorum" demektir, ve bilmemek uretimi durdurmamali.
+    Ag kesintisi butun bir gunun slotlarini yakmamali.
+    """
+    temel = str(config.app.get("openai_base_url", "")).strip()
+    if "openrouter" not in temel.lower():
+        return None
+    anahtar = str(config.app.get("openai_api_key", "")).strip()
+    if not anahtar:
+        return None
+    try:
+        cevap = requests.get(
+            "https://openrouter.ai/api/v1/credits",
+            headers={"Authorization": f"Bearer {anahtar}"},
+            timeout=20,
+        )
+        cevap.raise_for_status()
+        veri = cevap.json().get("data", {})
+        return float(veri.get("total_credits", 0)) - float(veri.get("total_usage", 0))
+    except Exception:  # noqa: BLE001 — bilinmiyor, red degil
+        return None
+
+
+def kredi_yetersiz_mi(kalan: float | None) -> bool:
+    """Bakiye bir slot baslatmaya yetmiyor mu.
+
+    ⚠️ AYRI FONKSIYON, `main` govdesinde degil: bu deponun kendi kurali —
+    govdeye gomulu bir karar sinanamaz (`slot_karari.sh`in varlik sebebi).
+
+    ⚠️ `None` -> `False`, yani kapi ACIK duser. Bakiye OKUNAMADI demek
+    "kredi yok" demek degil, "bilmiyorum" demektir
+    (`olcum-dusunce-red-degil-bilinmiyor`).
+    """
+    return kalan is not None and kalan < KREDI_TABANI_USD
+
+
 def _json_govdesi(icerik: str | None) -> dict[str, Any]:
     """Modelin dondurdugu metni JSON'a cevirir; ```json cercevesini soyar.
 
@@ -3502,7 +3668,7 @@ def _json_completion(
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                **_akil_yurutmeyi_kapat(base_url),
+                **_istek_ekleri(base_url),
             )
         except APITimeoutError as exc:
             # ⚠️ AYNI DERS, UCUNCU YOL. `826777a` zaman asiminin KOSUMU
@@ -3524,6 +3690,11 @@ def _json_completion(
             raise CikarimZamanAsimi(
                 f"openai text inference timed out after {zaman_asimi} seconds"
             ) from exc
+        # ⚠️ AYRISTIRMADAN ONCE kaydediliyor: okunamayan cevap da token YAKAR.
+        # Kayit `return`den sonraya konsaydi telemetri yalnizca BASARILI
+        # cagrilari gorur ve "5 denemede tukenen kosum bedava" gibi bir
+        # yanilsama uretirdi — oysa en pahali kosumlar tam onlar.
+        harcamayi_kaydet("metin", response)
         try:
             return _json_govdesi(response.choices[0].message.content)
         except (RuntimeError, ValueError) as hata:
@@ -3635,8 +3806,12 @@ def _vision_json(
             ],
             # ⚠️ Gorü yolunda da kapali: iki kalite kapisi da buradan geciyor ve
             # akil yurutme butceyi yerse kapi BOS cevap alip sessizce duser.
-            **_akil_yurutmeyi_kapat(base_url),
+            **_istek_ekleri(base_url),
         )
+        # ⚠️ Ayristirmadan once — metin yolundaki gerekcenin aynisi. Goru
+        # cagrisi kontak sayfasi TASIYOR, yani giris tokeni metin yolundan
+        # kat kat pahali; okunamayan bir goru cevabi en pahali israftir.
+        harcamayi_kaydet("goru", response)
         try:
             return _json_govdesi(response.choices[0].message.content)
         except (RuntimeError, ValueError) as hata:
@@ -10021,17 +10196,65 @@ def main() -> None:
                 flush=True,
             )
             raise SystemExit(3)
-    result = run_cycle(
-        dry_run=args.dry_run,
-        privacy=args.privacy,
-        not_before=args.not_before,
-        kuyruktan=args.from_notion,
-        yedek_konu=args.yedek_konu,
-        sahne_sayisi=args.sahne_sayisi,
-        bicim=bicim,
-        konu_override=args.konu,
-        turet=turet_girdisi,
-    )
+    # ⚠️ KREDI TABANI KAPISI. 2026-08-23 15:15'ten 09-12'ye kadar hat 135 kez
+    # tetiklendi, 135'i de HTTP 402 ile yigin iziyle oldu ve `state.json`'a
+    # TEK BIR kayit bile yazmadi: raporda yalnizca "HATA" gorunuyordu, sebebi
+    # ancak hata logu elle acilirsa biliniyordu. Kapi bunu ONDEN kesiyor.
+    #
+    # ⚠️ Kalite kapisi degil: bakiye okunamazsa (None) ACIK duser.
+    if not args.dry_run:
+        kalan = bakiye_oku()
+        if kredi_yetersiz_mi(kalan):
+            print(
+                f"⛔ KREDI_TABANI: kalan ${kalan:.4f} < taban "
+                f"${KREDI_TABANI_USD:.2f} — slot başlatılmadı",
+                flush=True,
+            )
+            durum_k = load_state()
+            durum_k.setdefault("rejected", []).append(
+                {
+                    "stage": "credit_floor",
+                    "kalan_usd": round(kalan, 6),
+                    "taban_usd": KREDI_TABANI_USD,
+                    "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+                }
+            )
+            save_state(durum_k)
+            raise SystemExit(4)
+
+    try:
+        result = run_cycle(
+            dry_run=args.dry_run,
+            privacy=args.privacy,
+            not_before=args.not_before,
+            kuyruktan=args.from_notion,
+            yedek_konu=args.yedek_konu,
+            sahne_sayisi=args.sahne_sayisi,
+            bicim=bicim,
+            konu_override=args.konu,
+            turet=turet_girdisi,
+        )
+    except APIStatusError as hata:
+        # ⚠️ 402/403/429 `_json_completion` icinde BILEREK yakalanmiyor (orada
+        # yazili gerekce: olu bir anahtar bes denemeyi yakip loga "red | skor 0"
+        # yazdirirdi ve kalite reddinden ayirt edilemezdi). O yuzden kapi
+        # BURADA: kayit AYRI bir `stage` ile dusuyor, kalite reddi gibi
+        # gorunmuyor — `RenderZamanAsimi`in `201e142`deki kalibinin aynisi.
+        print(f"⛔ SAGLAYICI_REDDI (HTTP {hata.status_code}): {hata}", flush=True)
+        durum_h = load_state()
+        durum_h.setdefault("rejected", []).append(
+            {
+                "stage": "provider_error",
+                "http": hata.status_code,
+                "mesaj": str(hata)[:400],
+                "harcama": harcama_ozeti(),
+                "rejected_at": datetime.now(ZoneInfo(TIMEZONE_NAME)).isoformat(),
+            }
+        )
+        save_state(durum_h)
+        raise SystemExit(4) from hata
+    finally:
+        harcamayi_dosyaya_yaz()
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if result.get("status") == "rejected":
         raise SystemExit(2)

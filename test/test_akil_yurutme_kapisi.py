@@ -19,6 +19,7 @@ gecerli JSON donduruyor.
   - baska Kimi surumleri (k2.5, k2.7-code) -> ikisi de dusunuyor
 """
 
+import ast
 import sys
 from pathlib import Path
 
@@ -122,7 +123,40 @@ def test_iki_yol_da_akil_yurutmeyi_KAPATIYOR():
 
     Metin yolu senaryoyu uretiyor, gorü yolu iki kalite kapisini da
     calistiriyor. Gorü unutulursa kotu video durdurulamaz.
-    """
-    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
 
-    assert kaynak.count("**_akil_yurutmeyi_kapat(base_url)") == 2
+    ⚠️ ESKIDEN METNE CAKILIYDI: `kaynak.count("**_akil_yurutmeyi_kapat(
+    base_url)") == 2`. 2026-09-12'de harcama telemetrisi eklenince iki cagri
+    da `_istek_ekleri`ye sarildi — AYNI eki daha genis bir govdeyle veriyor —
+    ve test DAVRANIS DOGRUYKEN dustu. Bu oturum ailesinde metne cakili test
+    SEKIZINCI kez kirildi.
+
+    Artik AST gercek `create(...)` cagrilarini buluyor ve her `**` ekinin
+    urettigi govde KOSTURULUP akil yurutmenin kapali oldugu olculuyor.
+    """
+    agac = ast.parse(Path(ya.__file__).read_text(encoding="utf-8"))
+
+    ek_adlari: list[str] = []
+    for dugum in ast.walk(agac):
+        if not isinstance(dugum, ast.Call):
+            continue
+        hedef = dugum.func
+        if not (isinstance(hedef, ast.Attribute) and hedef.attr == "create"):
+            continue
+        for anahtar in dugum.keywords:
+            if anahtar.arg is None and isinstance(anahtar.value, ast.Call):
+                islev = anahtar.value.func
+                if isinstance(islev, ast.Name):
+                    ek_adlari.append(islev.id)
+
+    assert len(ek_adlari) == 2, (
+        f"iki cikarim yolu da `**` ile bir ek gecirmeli; bulunan: {ek_adlari}"
+    )
+
+    # ⚠️ ASIL OLCUM: adi ne olursa olsun, o fonksiyon OpenRouter icin akil
+    # yurutmeyi KAPATAN bir govde uretmeli. Yeni bir sarmalayici eklenirse
+    # test onu da bu sartla sinar.
+    for ad in ek_adlari:
+        govde = getattr(ya, ad)("https://openrouter.ai/api/v1")["extra_body"]
+        assert govde.get("reasoning") == {"enabled": False}, (
+            f"`{ad}` akil yurutmeyi kapatmiyor"
+        )

@@ -20,19 +20,29 @@
 # Kanal sahibinin karari (21 Agu): slot basina EN FAZLA IKI koşum, ikincisi
 # kanitlanmis capa havuzundan.
 
-TETIK_SAATLERI="0 5 7 9 11 13 15 17 19 21"
+TETIK_SAATLERI="0 6 11 16 21"
 # ⚠️ TEK KAYNAK. Zamanlayici (`com.shemz.uretim.plist`) ayni diziyi tasiyor
 # ve `test_slot_karari.py` ikisini KARSILASTIRIYOR — ayrisirlarsa
 # `sonraki_tetige_kalan_dk` gercekte olmayan bir tetigi bekler ve ikinci
 # koşum penceresi yanlis hesaplanir. `sahne_kolu` da bu diziyi geziyor.
 #
-# ⚠️ SHORTS BANDI 2 SAATLIK, GECE BANDI DEGIL (2026-08-23, kanal sahibinin
-# karari): 00:05 UZUN · 05:05 07:05 09:05 11:05 13:05 15:05 17:05 19:05 21:05.
+# ⚠️ 10 TETIK -> 5 TETIK (2026-09-12, kanal sahibinin karari: "tasarruflu
+# olmamiz lazim"): 00:05 UZUN · 06:05 11:05 16:05 21:05.
 #
-# Gun 24 saat ve uzun slot 5 saatini yiyor, yani "tam 2 saatte bir" ile
-# "uzun slota genis pencere" AYNI ANDA saglanamaz. Kanal sahibi olcumu gorup
-# uzun slotu korumayi secti; Shorts bandi 05:05-21:05 arasinda tam 2 saatte
-# bir, 21:05 -> 00:05 arasi uzun slotun kosu pisti.
+# ⚠️ VE BU BIR VERIM ARTISI DEGIL, SURE UZATMASIDIR — karistirilmasin.
+# Olculdu: hesap $10,0315 harcamis, ayni donemde 88 zamanlanmis kosum
+# bitmis -> ~$0,114/kosum; 16 YAYIN -> ~$0,63/yayinlanan video. Kredi KOSUM
+# satin aliyor, GUN degil. Tetigi yariya indirmek ayni ~24 videoyu daha uzun
+# zamana yayar; dolar basina video sayisini DEGISTIRMEZ. Onu degistirmenin
+# tek yolu bosa giden kosumu azaltmak (redlerin %59'u kalite reddi).
+#
+#     10 tetik/gun -> ~$1,14/gun -> kalan $14,97 ~13 gun
+#      5 tetik/gun -> ~$0,57/gun -> kalan $14,97 ~26 gun
+#
+# ⚠️ Eski 2 saatlik Shorts bandi (05/07/09/11/13/15/17/19/21) BUNUN yerine
+# geldi. Bosluklar 5 saat, yani her slot tek kosumluk pencereden (olculen
+# max 60 dk) kat kat genis; uzun slot 00:05 -> 06:05 = 360 dk ile ESKISINDEN
+# de genis (onceki 300 dk).
 #
 # ⚠️ 120 DAKIKALIK PENCERE OLCULDU (`zamanlayici.log`, "kol |" satirinin
 # eklendigi 22 Agu'dan beri, n=8 Shorts slotu — dusuk ama DURUST n):
@@ -49,7 +59,7 @@ TETIK_SAATLERI="0 5 7 9 11 13 15 17 19 21"
 # pencereye sigmaz, yani "uzun israr et" karari devre disi kalirdi.
 
 UZUN_SAAT=0
-# ⚠️ Gunde TEK uzun video. Kalan DOKUZ tetik Shorts.
+# ⚠️ Gunde TEK uzun video. Kalan DORT tetik Shorts (2026-09-12 oncesi dokuzdu).
 
 uzun_slot_mu() {
   # $1 saat (0-23) — verilmezse simdiki saat.

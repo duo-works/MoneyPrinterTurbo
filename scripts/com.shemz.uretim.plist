@@ -57,20 +57,15 @@
 
     <!-- Saatin 5'inde, tam saat degil: baska bir zamanlanmis is ya da elle
          baslatilan bir koşum tam saatte yigilmasin.
-         00 UZUN kol · 05/07/09/11/13/15/17/19/21 Shorts.
+         00 UZUN kol · 06/11/16/21 Shorts (2026-09-12: tasarruf icin 10 -> 5).
          ⚠️ Bu dizi `scripts/slot_karari.sh` icindeki `TETIK_SAATLERI` ile
          AYNI olmak zorunda; `test_slot_karari.py` ikisini karsilastiriyor. -->
     <key>StartCalendarInterval</key>
     <array>
         <dict><key>Hour</key><integer>0</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>5</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>5</integer></dict>
         <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>5</integer></dict>
-        <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
         <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>5</integer></dict>
     </array>
 

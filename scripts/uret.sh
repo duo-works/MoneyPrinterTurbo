@@ -264,6 +264,22 @@ case "$KOD" in
       yaz "kota doldu | YouTube gunluk kotasi"
       exit 0
     fi
+    if grep -q "KREDI_TABANI" "$CIKTI_DOSYASI"; then
+      # ⚠️ Bakiye tabanin altinda; hat kirik DEGIL ve hata logu gerekmiyor.
+      # Olculdu: 23 Agu 15:15 - 12 Eyl arasi 135 tetigin 135'i HTTP 402 ile
+      # yigin iziyle oldu ve hepsi loga "HATA | cikis 1" yazdi. O satir
+      # gercek bir kusurla ayni gorunuyordu; sebebi gormek icin her seferinde
+      # hata logunu elle acmak gerekiyordu.
+      yaz "kredi bitti | bakiye tabanin altinda"
+      exit 0
+    fi
+    if grep -q "SAGLAYICI_REDDI" "$CIKTI_DOSYASI"; then
+      # Kosum SIRASINDA bakiye/kota bitti (402/403/429). Kayit `state.json`a
+      # `provider_error` olarak dustu, yani telemetri bunu kalite reddinden
+      # ayirt edebiliyor.
+      yaz "saglayici reddi | kosum sirasinda kesildi"
+      exit 0
+    fi
     HATA_DOSYASI="$LOG_DIZINI/hata-$(date +%Y%m%d-%H%M%S).log"
     cp "$CIKTI_DOSYASI" "$HATA_DOSYASI"
     # ⚠️ OAuth ayrı isaretleniyor. Olculmus not (`youtube_upload`): onay

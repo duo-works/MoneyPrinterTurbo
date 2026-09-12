@@ -121,11 +121,20 @@ def test_GUNLUK_TAVANDA_ikinci_kosum_YOK(yayin):
     assert _karar(kod=2, kalan=150, yayin=yayin, kilit=0) is False
 
 
-@pytest.mark.parametrize("yayin", [0, 3, 5, 6, 9])
+@pytest.mark.parametrize("yayin", [0, 1, 3, 4])
 def test_TAVANIN_ALTINDA_deneniyor(yayin):
-    """⚠️ 6 ve 9 REGRESYON KILIDI: eski tavan (6) bunlari bloklardi ve 22 Agu
-    olcumu (6 slot -> 4 yayin) 9 slotta ~6 yayin demek, yani tam da bloklanan
-    band."""
+    """Tavanin ALTINDAKI her yayin sayisinda ikinci koşum denenebilmeli.
+
+    ⚠️ 2026-09-12'de parametreler [0, 3, 5, 6, 9] idi ve 6/9 bir REGRESYON
+    KILIDIYDI (eski yanlis tavan 6 onlari bloklardi). Izgara tasarruf icin
+    10 tetikten 5'e inince tavan da 5'e dustu, yani 5/6/9 artik tanim geregi
+    tavanin ALTINDA degil ve o kilit bu haliyle anlamsizlasti.
+
+    ⚠️ Kilidin KENDISI kaybolmadi, turetilmis haliyle duruyor:
+    `test_TAVAN_hicbir_SLOTU_bloklamiyor` tavanin gunun hicbir slotunu
+    kesemeyecegini TETIK SAYISINDAN turetiyor, yani izgara ne olursa olsun
+    ayni ozelligi sinar. Sabit sayi yerine turetilmis kilit daha saglam.
+    """
     assert _karar(kod=2, kalan=150, yayin=yayin, kilit=0) is True
 
 
@@ -161,13 +170,17 @@ def test_TAVAN_hicbir_SLOTU_bloklamiyor():
 @pytest.mark.parametrize(
     "saat,dakika,beklenen",
     [
-        (0, 30, 275),  # UZUN slot yeni basladi -> 05:05, pencere 5 saat
-        (6, 30, 35),  # 07:05 — ⚠️ 3 saatlik formul burada 155 derdi (09:05)
-        (8, 30, 35),  # 09:05
-        (12, 5, 60),  # 13:05
-        (13, 0, 5),  # 13:05
-        (15, 19, 106),  # 17:05
-        (20, 30, 35),  # 21:05 — gunun SON Shorts slotu
+        # ⚠️ IZGARA 2026-09-12'de 10 tetikten 5'e indi: 0 · 6 · 11 · 16 · 21.
+        # Sayilar BILEREK acikca yazili, `TETIK_SAATLERI`den turetilmiyor:
+        # turetilseydi test izgara degisiminde sessizce gecerdi ve tripwire
+        # islevini kaybederdi. Nitekim bu degisiklikte DUSTU ve guncellendi.
+        (0, 30, 335),  # UZUN slot yeni basladi -> 06:05, pencere 6 saat
+        (6, 30, 275),  # 11:05 — ⚠️ eski 2 saatlik bantta bu 35 idi
+        (8, 30, 155),  # 11:05
+        (12, 5, 240),  # 16:05
+        (13, 0, 185),  # 16:05
+        (15, 19, 46),  # 16:05
+        (20, 30, 35),  # 21:05 — gunun SON Shorts slotu (degismedi)
         (21, 10, 175),  # ⚠️ GECE YARISI SARMASI -> uzun slotun kosu pisti
         (23, 59, 6),  # sarmanin sinir vakasi
     ],
@@ -206,8 +219,13 @@ def test_kalan_HIC_NEGATIF_olmuyor():
 
 def test_SEKIZLIK_tuzagi_yok():
     """⚠️ `date +%H` saat 08/09'da '08'/'09' veriyor ve bash bunu sekizlik
-    sanip hata verir. Ayni tuzak `uret.sh`te bir kez yasandi."""
-    assert _kalan("08", "09") == 56  # 09:05
+    sanip hata verir. Ayni tuzak `uret.sh`te bir kez yasandi.
+
+    ⚠️ Beklenen deger izgarayla birlikte degisti (2026-09-12): 08:09'dan
+    sonraki tetik artik 09:05 degil 11:05. Sinanan sey DEGISMEDI — onemli
+    olan cagrinin HATA VERMEMESI ve dogru sayiyi uretmesi.
+    """
+    assert _kalan("08", "09") == 176  # 11:05
 
 
 # --- Kol secimi -------------------------------------------------------------
