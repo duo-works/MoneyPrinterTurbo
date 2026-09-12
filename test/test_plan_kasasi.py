@@ -199,6 +199,27 @@ def test_OMRUN_ICINDEKI_plan_duruyor(kasa):
     assert _al() is not None
 
 
+def test_OMUR_UZUN_KOLUN_PERIYODUNU_asiyor():
+    """⚠️ 24 saatlik omur uzun kolu TAMAMEN disarida birakiyordu.
+
+    Kasa `(bicim, sahne sayisi)` ile anahtarli ve `sahne_kolu` tetikten
+    tetige donuyor (00:05 uzun · 06/11/16/21:05 Shorts, sahne 6/8/6/8/6).
+    Yani plan kendi koluna ait BIR SONRAKI tetikte kurtariliyor ve uzun
+    kolda o aralik TAM 24 SAAT — omur 24 olunca plan saniyesinde bayat
+    sayilirdi. Ustelik uzun plan en pahalisi (kelime tavani 2.200 / 150).
+    """
+    assert ya.PLAN_KASASI_OMRU_SAAT > 24, (
+        "uzun kolun periyodu 24 saat; omur bunun uzerinde olmali"
+    )
+
+
+def test_TAM_24_SAATLIK_plan_hala_gecerli(kasa):
+    """Uzun kolun bir sonraki tetigi: gecikmesiz halde tam 24 saat."""
+    _koy(kasa, _plan())
+    _yasini_geriye_al(kasa, 24)
+    assert _al() is not None, "uzun kol kendi planini bulamiyor"
+
+
 def test_ENGELLI_CAPA_yakiliyor(kasa):
     """Yayinlanan capa `engellenen_capalar`a girer — kasa o kapiyi OKUR."""
     _koy(kasa, _plan(capa="Cutty Sark"))

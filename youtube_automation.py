@@ -9242,11 +9242,30 @@ calismasina izin vermiyor: makine uykusu, `launchctl` kill'i, SIGKILL.
 "Olurken kaydet" yaklasimi tam da en cok kaybettiren vakalarda calismazdi.
 """
 
-PLAN_KASASI_OMRU_SAAT = 24
+PLAN_KASASI_OMRU_SAAT = 30
 """Kasadaki plan kac saat sonra bayat sayilir.
 
-Aday sogumasi (`ADAY_SOGUMA_SAATI`) ve capa butcesi bu pencerede donuyor;
-daha uzun tutmak, dunyasi degismis bir plani bugunun kapilarina sokmak olur.
+⚠️ 24 DEGIL, VE SEBEBI OLCULDU. Ilk deger 24'tu (aday sogumasi
+`ADAY_SOGUMA_SAATI` ile ayni pencere) ve bir kolu TAMAMEN disarida
+birakiyordu. Kasa `(bicim, sahne sayisi)` ciftiyle anahtarlaniyor ve
+`sahne_kolu` tetikten tetige donuyor:
+
+    00:05 uzun  6 sahne      <- periyodu TAM 24 SAAT
+    06:05 shorts 8
+    11:05 shorts 6
+    16:05 shorts 8
+    21:05 shorts 6
+
+Yani bir plan, kendi koluna ait BIR SONRAKI tetikte kurtariliyor: Shorts'ta
+en fazla 14 saat sonra, uzun kolda tam 24 saat sonra. 24 saatlik omur, uzun
+kolun tetigine SANIYESINDE denk geliyordu — pratikte plan her seferinde
+bayat sayilirdi. Ve uzun plan en pahali olani: kelime tavani 2.200, Shorts'un
+150'sine karsi.
+
+30 saat, 24'un uzerine alti saatlik pay birakiyor. Ust sinir serbest degil:
+plani BUGUNUN kapilarindan gecirmek zorundayiz ve o kapilar (`engellenen_capalar`,
+`validate_content_plan`) zaten her okumada calisiyor — omur, o kapilarin
+gormedigi yavas degisimler (arsiv arzi, kuyruk icerigi) icin duruyor.
 """
 
 PLAN_KASASI_AZAMI_DENEME = 3
