@@ -138,6 +138,16 @@ class VideoParams(BaseModel):
     subtitle_enabled: Optional[bool] = True
     subtitle_position: Optional[str] = config.ui.get("subtitle_position", "bottom")  # top, bottom, center, custom
     custom_position: float = config.ui.get("custom_position", 70.0)
+    # Görünür HARFLERİN alt kenarı, üstten yüzde (yalnızca `custom` konumda,
+    # `custom_position` yerine). `custom_position` kutuyu yerleştirir; kutu
+    # satır sayısıyla büyüdükçe harfler aşağı kayar. Bu alan harfleri sabitler:
+    # blok yukarı doğru büyür. None → eski davranış, webui/API değişmez.
+    subtitle_text_bottom: Optional[float] = None
+    # Sarma genişliği, kare genişliğinin yüzdesi. None → kareye göre varsayılan
+    # (dikey %90, yatay %65; bkz. `create_text_clip`).
+    subtitle_width: Optional[float] = None
+    # Altyazı bloğunun merkezi, soldan yüzde. None → kare ortası.
+    subtitle_center_x: Optional[float] = None
     font_name: Optional[str] = "STHeitiMedium.ttc"
     text_fore_color: Optional[str] = "#FFFFFF"
     text_background_color: Union[bool, str] = False

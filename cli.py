@@ -92,6 +92,15 @@ def _percent_position(value: str) -> float:
     return parsed
 
 
+def _percent_width(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0 or parsed > 100:
+        raise argparse.ArgumentTypeError(
+            f"subtitle-width must be a finite number in (0, 100], got {value!r}"
+        )
+    return parsed
+
+
 def _hex_color(value: str) -> str:
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", value):
         raise argparse.ArgumentTypeError(
@@ -464,6 +473,35 @@ Output and exit status:
         ),
     )
     subtitle_group.add_argument(
+        "--subtitle-text-bottom",
+        type=_percent_position,
+        default=None,
+        help=(
+            "pin the bottom edge of the VISIBLE subtitle glyphs at this percent "
+            "from top, 0-100, so the block grows upwards as lines are added; "
+            "requires --subtitle-position custom and replaces --custom-position "
+            "(which places the text box, not the glyphs)"
+        ),
+    )
+    subtitle_group.add_argument(
+        "--subtitle-width",
+        type=_percent_width,
+        default=None,
+        help=(
+            "subtitle wrap width as percent of the video width, (0, 100] "
+            "(default: 90 for portrait frames, 65 for landscape)"
+        ),
+    )
+    subtitle_group.add_argument(
+        "--subtitle-center-x",
+        type=_percent_position,
+        default=None,
+        help=(
+            "horizontal centre of the subtitle block as percent from left, "
+            "0-100 (default: frame centre)"
+        ),
+    )
+    subtitle_group.add_argument(
         "--text-fore-color",
         type=_hex_color,
         default=None,
@@ -558,6 +596,14 @@ Output and exit status:
 
     if args.custom_position is not None and args.subtitle_position != "custom":
         parser.error("--custom-position requires --subtitle-position custom")
+    if args.subtitle_text_bottom is not None:
+        if args.subtitle_position != "custom":
+            parser.error("--subtitle-text-bottom requires --subtitle-position custom")
+        if args.custom_position is not None:
+            parser.error(
+                "--subtitle-text-bottom and --custom-position both place the "
+                "subtitle vertically; pass only one of them"
+            )
     if args.stop_at == "subtitle" and not args.subtitle_enabled:
         parser.error("--stop-at subtitle cannot be combined with --no-subtitle-enabled")
     if args.subtitle_background_enabled is False and (
@@ -629,6 +675,9 @@ def build_video_params(args: argparse.Namespace) -> VideoParams:
         "font_name",
         "subtitle_position",
         "custom_position",
+        "subtitle_text_bottom",
+        "subtitle_width",
+        "subtitle_center_x",
         "text_fore_color",
         "font_size",
         "stroke_color",

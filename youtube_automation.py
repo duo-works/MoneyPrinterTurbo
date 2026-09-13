@@ -6474,6 +6474,58 @@ SHORTS_EN = 1080
 SHORTS_BOY = 1920
 """Shorts karesi. Kaynak gorseller buna getirilmezse ekranin bir kismi siyah kalir."""
 
+SHORTS_ARAYUZ_BOLGELERI: tuple[tuple[int, int, int, int], ...] = (
+    # (x0, y0, x1, y1) — kare koordinati, ust sinir dahil degil.
+    (0, 1434, SHORTS_EN, SHORTS_BOY),  # sol alt: avatar, kanal adi, baslik, "Public · views"
+    (904, 1031, SHORTS_EN, SHORTS_BOY),  # sag sutun: Begen / Yorum / Kaydet / Paylas / Remix
+)
+"""YouTube Shorts oynaticisinin KARE UZERINE cizdigi arayuz — OLCULDU, varsayilmadi.
+
+Kaynak: kanal sahibinin 2026-09-13 11:00 telefon ekran goruntusu (Baalbek,
+1sf6rULIR2Q, sahip gorunumu; 924x2000 ekran, video alani 0-1808 → x1,062).
+Ekranda olculen piksel karenin 1080x1920'sine cevrildi:
+
+    sol alt blok (avatarin ustu)          y ≥ 1434  (%74,7)
+    sag sutun ("Remix" etiketinin solu)    x ≥ 904   (%83,7), y ≥ 1031
+
+⚠️ Bu tablo 23 Agu'daki "altyazi zaten guvenli bantta" hukmunu CURUTUYOR. O
+hukum harfleri dogru olcmustu (alt kenar 1516, tabandan %18,8) ama hedef
+banti tablo_sessiz'in %22'sinden odunc almisti; YouTube'un arayuzu hic
+olculmemisti. Ekran goruntusunde 3 satirlik altyazi (harfler 1326-1539)
+hem kanal adi/baslik blogunun hem de Kaydet/Paylas sutununun altinda.
+
+⚠️ Uzun telefonlarda (19,5:9) oynatici karenin iki yanindan ~49 px kirpiyor;
+sol kenara yakin harfler de gider. Genislik ve merkez buna gore secildi.
+
+Yalnizca dikey Shorts icin: yatay videoyu YouTube arayuzsuz oynatir.
+"""
+
+ALTYAZI_ALT_KENAR_YUZDE = 71
+"""Gorunur HARFLERIN alt kenari, ustten yuzde (y 1363) — DW-141.
+
+Neden 71: sol alt blok 1434'te basliyor; 1363 onun 71 px ustu. Daha yukari
+cikmak gorselden calar (bantli karede fotograf 656-1264 arasinda), daha
+asagi inmek arayuze girer. Blok bu kenardan YUKARI dogru buyur, yani 4
+satirlik cumle de arayuze yaklasmaz — eski `--custom-position 78` KUTUYU
+yerlestiriyordu ve kutu buyudukce harfler asagi kayiyordu (1 satir 1509,
+3 satir 1545).
+
+Geri donus tek satir: `altyazi_bayraklari` icinde eski `--custom-position`.
+"""
+
+ALTYAZI_GENISLIK_YUZDE = 74
+"""Sarma genisligi, kare genisliginin yuzdesi (800 px) — DW-141.
+
+Neden 74: sag sutun 904'te basliyor, kirpilan sol kenar 49'da bitiyor.
+800 px'lik blok %43,5 merkezle x 70-870'e oturur: sutuna 34+ px, gorunur sol
+kenara 21+ px pay. Olculdu (Baalbek, 15 altyazi, STHeiti 56px): %90'da
+1/2/3 satir dagilimi 5/9/1, %74'te 2/8/4/1 — bir cumle 4 satira cikiyor,
+yukari dogru buyudugu icin yine arayuze girmiyor.
+"""
+
+ALTYAZI_MERKEZ_X_YUZDE = 43.5
+"""Blogun yatay merkezi, soldan yuzde (470 px) — DW-141. Bkz. genislik."""
+
 UZUN_EN = 1920
 UZUN_BOY = 1080
 """Uzun format karesi (16:9).
@@ -8264,6 +8316,89 @@ def _deneme_logu_yaz(
     return log_path
 
 
+def altyazi_bayraklari(bicim: VideoBicimi) -> list[str]:
+    """MPT CLI'ye gecen altyazi bayraklari — konum, font, kontur, serit.
+
+    Ayri fonksiyon (2026-09-13, DW-141) ki test GERCEK bayraklari
+    `cli.parse_args` → `build_video_params` → `generate_video` zincirinden
+    gecirip harflerin karede nereye dustugunu olcebilsin; eskiden kaynak
+    metinde `"78"` araniyordu ve o test arayuzle kesismeyi goremiyordu.
+    """
+    if bicim.dikey:
+        konum = [
+            # ⚠️ Konum ARTIK HARFLERE gore, kutuya gore degil (DW-141).
+            # Eski `--custom-position 78` kutuyu yerlestiriyordu; kutu satir
+            # sayisiyla buyudukce harfler asagi kayip YouTube'un kanal
+            # adi/baslik blogunun ve Kaydet/Paylas sutununun altina giriyordu
+            # (kanal sahibinin 13 Eyl ekran goruntusu, Baalbek). Sayilarin
+            # gerekcesi `SHORTS_ARAYUZ_BOLGELERI` ve `ALTYAZI_*` sabitlerinde.
+            "--subtitle-text-bottom",
+            str(ALTYAZI_ALT_KENAR_YUZDE),
+            "--subtitle-width",
+            str(ALTYAZI_GENISLIK_YUZDE),
+            "--subtitle-center-x",
+            str(ALTYAZI_MERKEZ_X_YUZDE),
+        ]
+    else:
+        konum = [
+            # ⚠️ Konum ve font birlikte ayarlanir; biri digerini bozar (DW-93).
+            # Olculdu: en uzun altyazi blogu 82 karakter ve 72px fontta 1080
+            # genislige **4-5 satir** sigiyor. Blok o kadar buyuyor ki %72'lik
+            # konumdan yukari tasip gorselin ana oznesini kapatiyordu — Viking
+            # gemisinin govdesi, akveduktcunun eli.
+            #
+            # 56px'te ayni blok 3 satira iniyor ve %78 konumla alt ucte birde
+            # kaliyor. Daha da kucultmek Shorts'ta okunabilirligi bozar; asil
+            # cozum satiri kisaltmak degil, blogu kucultmek.
+            #
+            # Yatay videoyu YouTube arayuzsuz oynatir; bu dal eski degerde.
+            "--custom-position",
+            "78",
+        ]
+    return [
+        "--subtitle-enabled",
+        "--subtitle-position",
+        "custom",
+        *konum,
+        "--text-fore-color",
+        "#FFFFFF",
+        "--font-size",
+        "56",
+        "--stroke-color",
+        "#000000",
+        # ⚠️ Kontur artik arka planin YERINE okunabilirligi sagliyor, o yuzden
+        # kalinlastirildi (3 → 5). Siyah serit kalkinca beyaz metnin acik
+        # zeminde (mavi gokyuzu, kum tasi, bulut) kaybolmamasi yalnizca
+        # kontura bagli.
+        # ⚠️ 5 -> 7 (2026-08-17). Olculdu (16-17 Agu, 7 render): altyazi
+        # kapisi 7 koşumun DORDUNDE dustu — 65, 70, 72, 78; kapi 80. Hakem
+        # gerekceyi her seferinde ayni yazdi:
+        #
+        #   "white text lacks sufficient contrast against cloudy skies"
+        #   "light text on light uniform details / on light paper background"
+        #
+        # Yani kontur 5 acik zeminde (bulut, kum tasi, kagit) tek basina
+        # yetmiyor ve serit kalkinca okunabilirligi ayakta tutan tek sey o.
+        #
+        # ⚠️ SERIT ACILMADI ve acilmayacak — kanal sahibinin istegi (DW-103):
+        # "metin dogrudan goruntunun uzerinde dursun". Yari saydam kutu
+        # secenegi (`--rounded-subtitle-background`, kod hazir) 17 Agu'da
+        # ACIKCA soruldu ve REDDEDILDI. Tek kaldirac kontur; golge destegi
+        # bu hatta yok (`cli.py`de shadow parametresi yok).
+        #
+        # ⚠️ 7 bilincli bir TAVAN: 56px fontta 7px kontur ~%12,5 ve bunun
+        # ustu harflerin ic bosluklarini (a, e, o) kapatmaya baslar. Sonraki
+        # koşumda altyazi skoru olculecek; harfler bozulursa 6'ya inilir,
+        # yukari CIKILMAZ.
+        "--stroke-width",
+        "7",
+        # Siyah serit yok: metin dogrudan goruntunun uzerinde durur (DW-103).
+        # Serit alt ucte biri kapatiyordu ve Shorts'ta goruntuden calinan her
+        # piksel pahali.
+        "--no-subtitle-background-enabled",
+    ]
+
+
 def run_generator(
     plan: ContentPlan,
     attempt: int,
@@ -8756,56 +8891,7 @@ def run_generator(
         # demekti. Gerekcenin tamami `muzik_kazanci` docstring'inde.
         "--bgm-volume",
         str(muzik_sesi),
-        "--subtitle-enabled",
-        "--subtitle-position",
-        "custom",
-        # ⚠️ Konum ve font birlikte ayarlanir; biri digerini bozar (DW-93).
-        # Olculdu: en uzun altyazi blogu 82 karakter ve 72px fontta 1080
-        # genislige **4-5 satir** sigiyor. Blok o kadar buyuyor ki %72'lik
-        # konumdan yukari tasip gorselin ana oznesini kapatiyordu — Viking
-        # gemisinin govdesi, akveduktcunun eli.
-        #
-        # 56px'te ayni blok 3 satira iniyor ve %78 konumla alt ucte birde
-        # kaliyor. Daha da kucultmek Shorts'ta okunabilirligi bozar; asil
-        # cozum satiri kisaltmak degil, blogu kucultmek.
-        "--custom-position",
-        "78",
-        "--text-fore-color",
-        "#FFFFFF",
-        "--font-size",
-        "56",
-        "--stroke-color",
-        "#000000",
-        # ⚠️ Kontur artik arka planin YERINE okunabilirligi sagliyor, o yuzden
-        # kalinlastirildi (3 → 5). Siyah serit kalkinca beyaz metnin acik
-        # zeminde (mavi gokyuzu, kum tasi, bulut) kaybolmamasi yalnizca
-        # kontura bagli.
-        # ⚠️ 5 -> 7 (2026-08-17). Olculdu (16-17 Agu, 7 render): altyazi
-        # kapisi 7 koşumun DORDUNDE dustu — 65, 70, 72, 78; kapi 80. Hakem
-        # gerekceyi her seferinde ayni yazdi:
-        #
-        #   "white text lacks sufficient contrast against cloudy skies"
-        #   "light text on light uniform details / on light paper background"
-        #
-        # Yani kontur 5 acik zeminde (bulut, kum tasi, kagit) tek basina
-        # yetmiyor ve serit kalkinca okunabilirligi ayakta tutan tek sey o.
-        #
-        # ⚠️ SERIT ACILMADI ve acilmayacak — kanal sahibinin istegi (DW-103):
-        # "metin dogrudan goruntunun uzerinde dursun". Yari saydam kutu
-        # secenegi (`--rounded-subtitle-background`, kod hazir) 17 Agu'da
-        # ACIKCA soruldu ve REDDEDILDI. Tek kaldirac kontur; golge destegi
-        # bu hatta yok (`cli.py`de shadow parametresi yok).
-        #
-        # ⚠️ 7 bilincli bir TAVAN: 56px fontta 7px kontur ~%12,5 ve bunun
-        # ustu harflerin ic bosluklarini (a, e, o) kapatmaya baslar. Sonraki
-        # koşumda altyazi skoru olculecek; harfler bozulursa 6'ya inilir,
-        # yukari CIKILMAZ.
-        "--stroke-width",
-        "7",
-        # Siyah serit yok: metin dogrudan goruntunun uzerinde durur (DW-103).
-        # Serit alt ucte biri kapatiyordu ve Shorts'ta goruntuden calinan her
-        # piksel pahali.
-        "--no-subtitle-background-enabled",
+        *altyazi_bayraklari(bicim),
     ]
     # ⚠️ Yuva sureleri KOSULLU ekleniyor. Liste bos oldugunda bayrak hic
     # gecmiyor ve MPT eski davranisina (esit sure) duşuyor — yani hesap
@@ -9049,9 +9135,16 @@ def review_video(
             # ile video kapisi FARKLI goruntuler goruyor: kaynak kapisi ham
             # gorseli, bu kapi kirpilmis ve altyazili nihai kareyi. Yalnizca
             # birine koymak digerini acik birakir.
+            # ⚠️ Altyazinin YERI istemde dogru tarif edilmeli (DW-141). 13 Eyl'den
+            # beri Shorts altyazisi karenin alt ucte birinde DEGIL, alt yarisinda
+            # (harflerin alt kenari %71, blok yukari buyur). Eski "alt kenar
+            # boyunca" tarifi kalsaydi hakem alt yarinin ortasindaki
+            # beyaz-konturlu metni "resim ici yazi" sayardi — istem kendi
+            # kapisini beslerdi (`test_capa_adi` bunu govdede ariyor).
             "Also answer two specific questions for every frame. First: is there readable "
-            "lettering inside the picture itself — not the subtitle burned along the bottom, "
-            "which is intended — but words on a sign, plaque, carved stone, book, paper or "
+            "lettering inside the picture itself — not the white, black-outlined subtitle "
+            "burned into the lower half of the frame, which is intended — but words on a "
+            "sign, plaque, carved stone, book, paper or "
             "nameplate? Quote what you can read. Second: when the narration is about a named "
             "person, is the human on screen actually that person, or somebody else sharing "
             "the same medal, uniform, institution or era? Report either as an issue."
@@ -9088,7 +9181,8 @@ def review_video(
             # Esik veri birikince konacak. Once olc, sonra kapi kur.
             '"lettering": <true when readable words appear INSIDE the picture — a sign, '
             "plaque, caption, book cover, stamp, map label or nameplate — not counting the "
-            "subtitle burned along the bottom, which is intended>, "
+            "white, black-outlined subtitle burned into the lower half of the frame, which "
+            "is intended>, "
             # ⚠️ Tur listesi kaynak kapisiyla AYNI olmali; ayrisirsa iki kapi
             # ayni goruntuye baska ad verir ve teshis imkansizlasir. `composite`
             # gerekcesi `FOTOGRAF_OLMAYAN_TURLER`de.

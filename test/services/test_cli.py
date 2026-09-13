@@ -460,6 +460,60 @@ class TestCli(unittest.TestCase):
 
         self.assertEqual(cm.exception.code, 2)
 
+    def test_subtitle_glyph_placement_options_reach_video_params(self):
+        """DW-141: harf tabani, genislik ve merkez CLI'dan VideoParams'a gecer."""
+        args = cli.parse_args(
+            [
+                "--video-subject",
+                "test",
+                "--subtitle-position",
+                "custom",
+                "--subtitle-text-bottom",
+                "71",
+                "--subtitle-width",
+                "74",
+                "--subtitle-center-x",
+                "43.5",
+            ]
+        )
+
+        params = cli.build_video_params(args)
+
+        self.assertEqual(params.subtitle_position, "custom")
+        self.assertEqual(params.subtitle_text_bottom, 71.0)
+        self.assertEqual(params.subtitle_width, 74.0)
+        self.assertEqual(params.subtitle_center_x, 43.5)
+
+    def test_subtitle_glyph_placement_defaults_stay_unset(self):
+        """Bayrak verilmeyince None kalir: webui/API ve eski `custom` yolu degismez."""
+        params = cli.build_video_params(cli.parse_args(["--video-subject", "test"]))
+
+        self.assertIsNone(params.subtitle_text_bottom)
+        self.assertIsNone(params.subtitle_width)
+        self.assertIsNone(params.subtitle_center_x)
+
+    def test_subtitle_text_bottom_rejects_conflicting_or_invalid_arguments(self):
+        invalid_argvs = [
+            # iki dikey konum birden
+            [
+                "--video-subject", "test", "--subtitle-position", "custom",
+                "--subtitle-text-bottom", "71", "--custom-position", "78",
+            ],
+            # custom disinda anlamsiz
+            ["--video-subject", "test", "--subtitle-text-bottom", "71"],
+            # aralik disi
+            [
+                "--video-subject", "test", "--subtitle-position", "custom",
+                "--subtitle-text-bottom", "101",
+            ],
+            ["--video-subject", "test", "--subtitle-width", "0"],
+            ["--video-subject", "test", "--subtitle-center-x", "nan"],
+        ]
+        for argv in invalid_argvs:
+            with self.subTest(argv=argv), self.assertRaises(SystemExit) as cm:
+                cli.parse_args(argv)
+            self.assertEqual(cm.exception.code, 2)
+
     def test_task_id_must_be_uuid(self):
         task_id = str(uuid4())
         args = cli.parse_args(

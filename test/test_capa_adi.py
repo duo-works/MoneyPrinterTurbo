@@ -139,8 +139,16 @@ def test_hakem_ozne_kimligini_soruyor():
 
 
 def test_video_hakemi_altyaziyi_kusur_sanmiyor():
-    """Altyazi kadrajin altina BILEREK basiliyor; yeni soru onu suclamamali."""
-    assert "not the subtitle burned along the bottom" in _istem_metni("review_video")
+    """Altyazi kareye BILEREK basiliyor; yeni soru onu suclamamali.
+
+    ⚠️ Yer tarifi 13 Eyl'de degisti (DW-141): altyazi artik alt kenarda
+    degil, alt YARIDA (harflerin alti %71, blok yukari buyur). "along the
+    bottom" kalsaydi hakem alt yarinin ortasindaki metni resim ici yazi
+    sayardi — istem kendi kapisini beslerdi.
+    """
+    metin = _istem_metni("review_video")
+    assert "not the white, black-outlined subtitle burned into the lower half" in metin
+    assert "along the bottom" not in metin
 
 
 def test_hakem_istemlerinde_esik_hala_anilmiyor():

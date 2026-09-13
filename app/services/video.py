@@ -912,6 +912,73 @@ def _get_visible_center_position(
     return x, y
 
 
+def _visible_row_bounds(clip) -> tuple[int, int] | None:
+    """Klibin maskesinde piksel tasiyan ilk ve son satir (klip koordinati).
+
+    `_get_visible_center_position` ile ayni okuma: TextClip tuvali font satir
+    yuksekligi ve taban cizgisi bosluklarini icerir, gorunen harfler tuvalin
+    tamamini doldurmaz. Maske okunamazsa None — cagiran kutuya duser.
+    """
+    try:
+        if clip.mask is None:
+            return None
+        mask_frame = clip.mask.get_frame(0)
+        ys, _ = np.where(mask_frame > 0.01)
+        if len(ys) == 0:
+            return None
+        return int(ys.min()), int(ys.max())
+    except Exception as exc:
+        logger.debug(f"failed to read subtitle mask bounds: {str(exc)}")
+        return None
+
+
+def _subtitle_clip_position(clip, params: VideoParams, video_width: int, video_height: int):
+    """Altyazi klibinin karedeki (x, y) konumu.
+
+    `bottom` / `top` / `custom` / `center` dallari eski degerleriyle duruyor.
+    Yeni olan `subtitle_text_bottom` (2026-09-13, DW-141): `custom_position`
+    KUTUYU yerlestirir — `(H - h) * p` — ve kutu satir sayisiyla buyudukce
+    gorunen harfler ASAGI kayar. Olculdu (Shorts, STHeiti 56px, %78): 1 satirda
+    harflerin alt kenari 1509, 3 satirda 1545 — yani uzun cumle tam da
+    YouTube'un kanal adi/baslik blogunun (y≥1434) icine iniyor. Bu dal
+    harflerin alt kenarini sabitler: blok yalnizca YUKARI dogru buyur.
+
+    `subtitle_center_x` yatay eksen icin ayni sey: sag sutun (x≥904) altyazi
+    ortalaninca 3 satirlik blogun sag ucunu ortuyor; merkez sola cekilince
+    blok sutunun solunda kalir.
+    """
+    if getattr(params, "subtitle_center_x", None) is not None:
+        x = video_width * (params.subtitle_center_x / 100) - clip.w / 2
+        x = max(0, min(x, video_width - clip.w))
+    else:
+        x = "center"
+
+    margin = 10  # Additional margin, in pixels
+    text_bottom = getattr(params, "subtitle_text_bottom", None)
+    if params.subtitle_position == "custom" and text_bottom is not None:
+        bounds = _visible_row_bounds(clip)
+        # Maske yoksa kutunun alt kenari harflerin alt kenari sayilir: harfler
+        # hedeften bir miktar YUKARIDA kalir, asla asagi sarkmaz.
+        visible_bottom = bounds[1] + 1 if bounds else clip.h
+        y = video_height * (text_bottom / 100) - visible_bottom
+        y = max(margin, min(y, video_height - clip.h - margin))
+        return (x, y)
+    if params.subtitle_position == "bottom":
+        return (x, video_height * 0.95 - clip.h)
+    if params.subtitle_position == "top":
+        return (x, video_height * 0.05)
+    if params.subtitle_position == "custom":
+        # Ensure the subtitle is fully within the screen bounds
+        max_y = video_height - clip.h - margin
+        min_y = margin
+        custom_y = (video_height - clip.h) * (params.custom_position / 100)
+        custom_y = max(
+            min_y, min(custom_y, max_y)
+        )  # Constrain the y value within the valid range
+        return (x, custom_y)
+    return (x, "center")
+
+
 def subtitle_colors_are_indistinguishable(params: VideoParams) -> bool:
     """判断字幕文字和背景是否同色，提醒用户可能无法看清字幕。"""
     if not params.subtitle_enabled or not params.text_background_color:
@@ -1034,6 +1101,13 @@ def generate_video(
         # Yatayda %65: 1920 x 0,65 = 1248 piksel, yani dikeydeki 972'ye
         # yakin bir satir uzunlugu ve iki yanda okumayi rahatlatan bosluk.
         oran = 0.9 if video_height >= video_width else 0.65
+        # ⚠️ Cagiran genisligi kendisi de verebilir (2026-09-13, DW-141).
+        # Olculdu: Shorts'ta YouTube'un sag sutunu (Begen/Yorum/Paylas)
+        # x≥904'te basliyor ve %90'lik blok 3 satirda x 80-999'a yayilip o
+        # sutunun altina giriyor. Kareye gore varsayilan duruyor; yalnizca
+        # istenirse daraliyor.
+        if getattr(params, "subtitle_width", None):
+            oran = params.subtitle_width / 100
         max_width = video_width * oran
         bg_color = resolve_subtitle_background_color()
         rounded_bg_enabled = bool(
@@ -1142,10 +1216,12 @@ def generate_video(
                 size=size,
             )
         else:
-            size = (
-                int(max_width),
-                clip_h,
-            )
+            # ⚠️ Yukseklik ARTIK SABIT DEGIL (2026-09-13, DW-141). Eskiden
+            # `size=(max_width, clip_h)` idi ve `clip_h` bir TAHMIN: olculdu,
+            # STHeiti 56px + 7px konturda 800px genislikte 3 satirlik blogun
+            # son satiri 13px kirpiliyordu (harflerin alt kuyruklari). Seritli
+            # iki dal zaten `size=(w, None)` + `margin` kullaniyor; bu dal da
+            # ayni kuruluma cekildi: yukseklik metinden gelir, kirpilmaz.
             _clip = TextClip(
                 text=wrapped_txt,
                 font=font_path,
@@ -1155,30 +1231,17 @@ def generate_video(
                 stroke_color=params.stroke_color,
                 stroke_width=params.stroke_width,
                 interline=interline,
-                size=size,
+                size=(int(max_width), None),
                 text_align="center",
+                margin=(0, text_clip_margin_y),
             )
         duration = subtitle_item[0][1] - subtitle_item[0][0]
         _clip = _clip.with_start(subtitle_item[0][0])
         _clip = _clip.with_end(subtitle_item[0][1])
         _clip = _clip.with_duration(duration)
-        if params.subtitle_position == "bottom":
-            _clip = _clip.with_position(("center", video_height * 0.95 - _clip.h))
-        elif params.subtitle_position == "top":
-            _clip = _clip.with_position(("center", video_height * 0.05))
-        elif params.subtitle_position == "custom":
-            # Ensure the subtitle is fully within the screen bounds
-            margin = 10  # Additional margin, in pixels
-            max_y = video_height - _clip.h - margin
-            min_y = margin
-            custom_y = (video_height - _clip.h) * (params.custom_position / 100)
-            custom_y = max(
-                min_y, min(custom_y, max_y)
-            )  # Constrain the y value within the valid range
-            _clip = _clip.with_position(("center", custom_y))
-        else:  # center
-            _clip = _clip.with_position(("center", "center"))
-        return _clip
+        return _clip.with_position(
+            _subtitle_clip_position(_clip, params, video_width, video_height)
+        )
 
     # MoviePy 的 CompositeAudioClip.close() 不会关闭子 AudioFileClip。这里用
     # ExitStack 显式持有所有原始文件 reader，确保成功、字幕异常、混音失败和

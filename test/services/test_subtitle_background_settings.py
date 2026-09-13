@@ -87,6 +87,94 @@ class TestSubtitleBackgroundSettings(unittest.TestCase):
         # 因为 mask 顶部从 12px 开始，所以 TextClip 本身需要向上移动到 18px。
         self.assertEqual(y, 18)
 
+    def _fake_clip(self, *, w=100, h=46, visible=(12, 46)):
+        """Gorunen harfleri tuvalin `visible` satir araliginda olan sahte klip."""
+
+        class FakeMask:
+            def get_frame(self, _):
+                mask = np.zeros((h, w), dtype=float)
+                mask[visible[0] : visible[1], 10 : w - 10] = 1.0
+                return mask
+
+        class FakeClip:
+            pass
+
+        clip = FakeClip()
+        clip.w, clip.h, clip.mask = w, h, FakeMask()
+        return clip
+
+    def test_subtitle_clip_position_legacy_branches_unchanged(self):
+        """`bottom`/`top`/`custom`/`center` — DW-141 oncesi degerler birebir."""
+        clip = self._fake_clip()
+        beklenen = {
+            "bottom": ("center", 1920 * 0.95 - 46),
+            "top": ("center", 1920 * 0.05),
+            "custom": ("center", (1920 - 46) * 0.78),
+            "center": ("center", "center"),
+        }
+        for konum, cevap in beklenen.items():
+            params = VideoParams(video_subject="t", subtitle_position=konum, custom_position=78.0)
+            with self.subTest(konum=konum):
+                self.assertEqual(video._subtitle_clip_position(clip, params, 1080, 1920), cevap)
+
+    def test_subtitle_clip_position_pins_visible_glyph_bottom(self):
+        """`subtitle_text_bottom` HARFLERIN alt kenarini yerlestirir, kutuyu degil.
+
+        Tuval 46px, harfler 12-45 arasinda. Hedef %71 → 1363,2; klip y'si
+        1363,2 − 46 = 1317,2 olmali ki son harf satiri 1362'de bitsin.
+        """
+        clip = self._fake_clip()
+        params = VideoParams(
+            video_subject="t", subtitle_position="custom", custom_position=78.0,
+            subtitle_text_bottom=71.0, subtitle_center_x=43.5,
+        )
+
+        x, y = video._subtitle_clip_position(clip, params, 1080, 1920)
+
+        self.assertAlmostEqual(y, 1920 * 0.71 - 46)
+        # merkez 469,8 − 50 = 419,8
+        self.assertAlmostEqual(x, 1080 * 0.435 - 50)
+
+    def test_subtitle_clip_position_pin_is_independent_of_canvas_height(self):
+        """Ayni harf alt kenari: uzun tuval yukari buyur, asagi kaymaz."""
+        params = VideoParams(
+            video_subject="t", subtitle_position="custom", subtitle_text_bottom=71.0
+        )
+        kisa = self._fake_clip(h=46, visible=(12, 46))
+        uzun = self._fake_clip(h=300, visible=(12, 300))
+
+        _, y_kisa = video._subtitle_clip_position(kisa, params, 1080, 1920)
+        _, y_uzun = video._subtitle_clip_position(uzun, params, 1080, 1920)
+
+        self.assertAlmostEqual(y_kisa + 46, y_uzun + 300)
+
+    def test_subtitle_clip_position_without_mask_uses_box_bottom(self):
+        """Maske okunamazsa harfler hedefin ustunde kalir, altina sarkmaz; hata yok."""
+
+        class Maskesiz:
+            w, h, mask = 100, 46, None
+
+        params = VideoParams(
+            video_subject="t", subtitle_position="custom", subtitle_text_bottom=71.0
+        )
+
+        x, y = video._subtitle_clip_position(Maskesiz(), params, 1080, 1920)
+
+        self.assertEqual(x, "center")
+        self.assertAlmostEqual(y, 1920 * 0.71 - 46)
+
+    def test_subtitle_clip_position_clamps_inside_frame(self):
+        clip = self._fake_clip(w=2000, h=3000)
+        params = VideoParams(
+            video_subject="t", subtitle_position="custom",
+            subtitle_text_bottom=1.0, subtitle_center_x=100.0,
+        )
+
+        x, y = video._subtitle_clip_position(clip, params, 1080, 1920)
+
+        self.assertEqual(x, 0)
+        self.assertEqual(y, 10)
+
     def test_detects_indistinguishable_subtitle_colors(self):
         invisible_params = VideoParams(
             video_subject="subtitle color validation",

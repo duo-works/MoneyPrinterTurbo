@@ -90,13 +90,21 @@ def test_sahne_sirasi_korunuyor(tmp_path):
         assert abs(kirmizi - sira * 30) < 12, f"sahne {sira} yanlis gorselden"
 
 
-@pytest.mark.parametrize("bayrak,beklenen", [("--custom-position", "78"), ("--font-size", "56")])
-def test_altyazi_ayarlari_alt_ucte_biri_hedefliyor(bayrak, beklenen):
-    """Olculdu: 82 karakterlik blok 72px fontta 4-5 satira cikip gorselin
-    ana oznesini kapatiyordu. 56px'te 3 satira iniyor, %78 konumla alt ucte
-    birde kaliyor."""
-    kaynak = Path(ya.__file__).read_text(encoding="utf-8")
-    i = kaynak.index(f'"{bayrak}"')
-    sonraki = kaynak[i : i + 200]
+@pytest.mark.parametrize(
+    "bicim,bayrak,beklenen",
+    [
+        # Olculdu: 82 karakterlik blok 72px fontta 4-5 satira cikip gorselin
+        # ana oznesini kapatiyordu; 56px'te 3 satira iniyor.
+        (ya.SHORTS_BICIMI, "--font-size", "56"),
+        (ya.UZUN_BICIMI, "--font-size", "56"),
+        # Yatay: %78 kutu konumu (YouTube arayuzsuz oynatir).
+        (ya.UZUN_BICIMI, "--custom-position", "78"),
+        # Dikey: HARFLERIN alt kenari sabit — kutu degil (DW-141). Arayuzle
+        # kesismeme olcumu `test_altyazi_guvenli_alan.py`de.
+        (ya.SHORTS_BICIMI, "--subtitle-text-bottom", str(ya.ALTYAZI_ALT_KENAR_YUZDE)),
+    ],
+)
+def test_altyazi_ayarlari_bicime_gore(bicim, bayrak, beklenen):
+    bayraklar = ya.altyazi_bayraklari(bicim)
 
-    assert f'"{beklenen}"' in sonraki, f"{bayrak} degeri {beklenen} olmali"
+    assert bayraklar[bayraklar.index(bayrak) + 1] == beklenen
