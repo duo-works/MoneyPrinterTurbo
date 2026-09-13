@@ -20,7 +20,13 @@
 # Kanal sahibinin karari (21 Agu): slot basina EN FAZLA IKI koşum, ikincisi
 # kanitlanmis capa havuzundan.
 
-TETIK_SAATLERI="0 6 11 16 21"
+TETIK_SAATLERI="6 11 16 21"
+# ⚠️ UZUN KOL KAPALI (2026-09-13, kanal sahibinin karari): uzun videolar artik
+# OpenMontage autopilot'undan geliyor (gunde 2, zamanlanmis yayin —
+# `~/Projects/OpenMontage-autopilot`, launchd `com.shemz.openmontage.autopilot`).
+# 00:05 tetigi kaldirildi; bu hat yalnizca Shorts uretir. Geri acmak icin:
+# "0 6 11 16 21" + `UZUN_SAAT=0` + plist'e 00:05 + testlerdeki tablo.
+#
 # ⚠️ TEK KAYNAK. Zamanlayici (`com.shemz.uretim.plist`) ayni diziyi tasiyor
 # ve `test_slot_karari.py` ikisini KARSILASTIRIYOR — ayrisirlarsa
 # `sonraki_tetige_kalan_dk` gercekte olmayan bir tetigi bekler ve ikinci
@@ -58,8 +64,10 @@ TETIK_SAATLERI="0 6 11 16 21"
 # 03:05 ise uzun slotun IKINCI koşumunu oldururdu — 120 dk esigi 3 saatlik
 # pencereye sigmaz, yani "uzun israr et" karari devre disi kalirdi.
 
-UZUN_SAAT=0
-# ⚠️ Gunde TEK uzun video. Kalan DORT tetik Shorts (2026-09-12 oncesi dokuzdu).
+UZUN_SAAT=-1
+# ⚠️ UZUN KOL KAPALI (2026-09-13): hicbir saat -1 olmadigi icin `uzun_slot_mu`
+# her zaman yanlis doner; dort tetigin dordu de Shorts. Eskiden `0` idi
+# (gunde TEK uzun video, 00:05).
 
 uzun_slot_mu() {
   # $1 saat (0-23) — verilmezse simdiki saat.

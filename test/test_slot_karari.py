@@ -121,9 +121,12 @@ def test_GUNLUK_TAVANDA_ikinci_kosum_YOK(yayin):
     assert _karar(kod=2, kalan=150, yayin=yayin, kilit=0) is False
 
 
-@pytest.mark.parametrize("yayin", [0, 1, 3, 4])
+@pytest.mark.parametrize("yayin", [0, 1, 2, 3])
 def test_TAVANIN_ALTINDA_deneniyor(yayin):
     """Tavanin ALTINDAKI her yayin sayisinda ikinci koşum denenebilmeli.
+
+    ⚠️ 2026-09-13: uzun kol kaldirilinca izgara 4 tetige, tavan 4'e indi;
+    parametreler [0, 1, 3, 4] -> [0, 1, 2, 3] (4 artik tanim geregi tavanda).
 
     ⚠️ 2026-09-12'de parametreler [0, 3, 5, 6, 9] idi ve 6/9 bir REGRESYON
     KILIDIYDI (eski yanlis tavan 6 onlari bloklardi). Izgara tasarruf icin
@@ -174,15 +177,16 @@ def test_TAVAN_hicbir_SLOTU_bloklamiyor():
         # Sayilar BILEREK acikca yazili, `TETIK_SAATLERI`den turetilmiyor:
         # turetilseydi test izgara degisiminde sessizce gecerdi ve tripwire
         # islevini kaybederdi. Nitekim bu degisiklikte DUSTU ve guncellendi.
-        (0, 30, 335),  # UZUN slot yeni basladi -> 06:05, pencere 6 saat
+        # ⚠️ 2026-09-13: 00:05 UZUN tetigi kaldirildi -> 6 · 11 · 16 · 21.
+        (0, 30, 335),  # gece -> 06:05
         (6, 30, 275),  # 11:05 — ⚠️ eski 2 saatlik bantta bu 35 idi
         (8, 30, 155),  # 11:05
         (12, 5, 240),  # 16:05
         (13, 0, 185),  # 16:05
         (15, 19, 46),  # 16:05
         (20, 30, 35),  # 21:05 — gunun SON Shorts slotu (degismedi)
-        (21, 10, 175),  # ⚠️ GECE YARISI SARMASI -> uzun slotun kosu pisti
-        (23, 59, 6),  # sarmanin sinir vakasi
+        (21, 10, 535),  # ⚠️ GECE YARISI SARMASI -> ertesi 06:05
+        (23, 59, 366),  # sarmanin sinir vakasi -> 06:05
     ],
 )
 def test_sonraki_tetige_kalan_dogru(saat, dakika, beklenen):
@@ -196,17 +200,17 @@ def test_sonraki_tetige_kalan_dogru(saat, dakika, beklenen):
     assert _kalan(saat, dakika) == beklenen
 
 
-def test_UZUN_SLOTUN_kosu_pisti_3_SAAT():
-    """⚠️ 21:05 gunun son Shorts slotu ve ondan sonra 00:05'e kadar tetik YOK.
+def test_GECE_tetik_YOK():
+    """⚠️ 21:05 gunun son Shorts slotu ve ondan sonra 06:05'e kadar tetik YOK.
 
-    Gerekcesi olcum: Shorts koşumu tek koşumda max 60 dk, iki koşumda 144 dk
-    surdu. 23:05'e bir tetik konsaydi 1/4 ihtimalle kilidi 00:05'e tasiyip
-    UZUN slotu yakardi.
+    2026-09-13: 00:05 UZUN tetigi kaldirildi (uzun videolar OpenMontage
+    autopilot'undan). Gece bandi bos kalir; gece koşumu Mac'te autopilot'un
+    render'iyla CPU yarisina girerdi.
 
-    Mutasyon: 23:05 tetigi eklemek bu testi dusurur.
+    Mutasyon: 00:05 ya da 23:05 tetigi eklemek bu testi dusurur.
     """
-    assert _kalan(21, 10) == 175, "21:05 sonrasi sonraki tetik 00:05 olmali"
-    assert _kalan(22, 0) == 125
+    assert _kalan(21, 10) == 535, "21:05 sonrasi sonraki tetik ertesi 06:05 olmali"
+    assert _kalan(22, 0) == 485
 
 
 def test_kalan_HIC_NEGATIF_olmuyor():
@@ -231,12 +235,14 @@ def test_SEKIZLIK_tuzagi_yok():
 # --- Kol secimi -------------------------------------------------------------
 
 
-def test_SAAT_SIFIR_uzun_kol():
-    """⚠️ Kanal sahibinin karari: 00:05 uzun video, kalani Shorts.
+def test_UZUN_KOL_KAPALI():
+    """⚠️ Kanal sahibinin karari (2026-09-13): uzun videolar OpenMontage
+    autopilot'undan geliyor; bu hat HICBIR saatte uzun kola girmez.
 
-    Mutasyon: kol secimini sabitlemek bu testi dusurur.
+    Mutasyon: `UZUN_SAAT`i gecerli bir saate (orn. 0) geri almak bu testi
+    dusurur.
     """
-    assert _uzun_slot(0) is True
+    assert all(_uzun_slot(saat) is False for saat in range(24))
 
 
 @pytest.mark.parametrize("saat", [5, 8, 11, 14, 17, 20])
@@ -247,7 +253,7 @@ def test_KALAN_TETIKLER_shorts(saat):
 def test_uzun_slot_SEKIZLIK_tuzagina_dusmuyor():
     """`date +%H` saat 08'de "08" veriyor."""
     assert _uzun_slot("08") is False
-    assert _uzun_slot("00") is True
+    assert _uzun_slot("00") is False
 
 
 # --- Pencere esigi BICIME BAGLI --------------------------------------------
@@ -699,7 +705,7 @@ def _gecen(saat, dakika) -> int:
     [
         (16, 5, 0),  # tam tetik aninda
         (16, 12, 7),  # launchd'nin olagan birkac dakikasi
-        (5, 13, 308),  # 12 Eyl: 00:05 tetiginden 05:13'e (05:05 artik tetik degil)
+        (5, 13, 488),  # 2026-09-13: 00:05 tetigi kalkti -> son tetik DUNUN 21:05'i
         (11, 12, 7),  # 12 Eyl: 05:13 koşumu 11:12'de uyandi — 11:05 tetigine gore
         (0, 3, 178),  # gunun ilk tetiginden ONCE: son tetik DUNUN 21:05'i
         (23, 59, 174),  # 21:05'ten sonra
